@@ -23,7 +23,7 @@
             background-size: cover;
             background-position: center;
         }
-        /* ヘッダー背景の薄いオーバーレイ */
+        /* ヘッダー背景の暗いオーバーレイ */
         .header-bg::before {
             content: '';
             position: absolute;
@@ -31,58 +31,67 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: rgba(255, 255, 255, 0.7); /* 白いオーバーレイで画像を薄く見せます */
+            background-color: rgba(0, 0, 0, 0.4); /* 黒いオーバーレイで画像を少し暗くし、文字を読みやすくします */
             z-index: 1;
         }
         .header-content {
             position: relative;
             z-index: 2;
         }
+        /* テキストに影をつけ、読みやすくします */
+        .text-shadow {
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-gray-800">
 
     <!-- ヘッダー -->
-    <header class="header-bg relative shadow-md">
-        <div class="header-content container mx-auto px-6 py-4">
-            <div class="flex items-center justify-between">
-                <h1 class="text-2xl md:text-3xl font-bold text-cyan-800">ぶち癒しフェスタin東京</h1>
-                <!-- デスクトップ用ナビゲーション -->
-                <nav class="hidden md:flex space-x-6 text-gray-700">
-                    <a href="#home" class="hover:text-cyan-600 transition duration-300">ホーム</a>
-                    <a href="#event" class="hover:text-cyan-600 transition duration-300">イベント概要</a>
-                    <a href="#exhibitors" class="hover:text-cyan-600 transition duration-300">出展者紹介</a>
-                    <a href="#access" class="hover:text-cyan-600 transition duration-300">アクセス</a>
-                    <a href="#info" class="hover:text-cyan-600 transition duration-300">出展のご案内</a>
-                    <a href="#contact" class="hover:text-cyan-600 transition duration-300">お問い合わせ</a>
-                </nav>
-                <!-- モバイル用ハンバーガーボタン -->
-                <button id="mobile-menu-button" class="md:hidden text-gray-800 focus:outline-none">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-                </button>
+    <header id="home" class="header-bg relative shadow-md h-screen min-h-[500px] flex flex-col">
+        <div class="header-content w-full">
+            <!-- ナビゲーションバー -->
+            <div class="bg-black/50">
+                <div class="container mx-auto px-6 py-3">
+                    <div class="flex items-center justify-between">
+                        <h1 class="text-xl md:text-2xl font-bold text-white text-shadow">ぶち癒しフェスタin東京</h1>
+                        <!-- デスクトップ用ナビゲーション -->
+                        <nav class="hidden md:flex space-x-6 text-white">
+                            <a href="#home" class="hover:text-cyan-300 transition duration-300 text-shadow">ホーム</a>
+                            <a href="#event" class="hover:text-cyan-300 transition duration-300 text-shadow">イベント概要</a>
+                            <a href="#exhibitors" class="hover:text-cyan-300 transition duration-300 text-shadow">出展者紹介</a>
+                            <a href="#access" class="hover:text-cyan-300 transition duration-300 text-shadow">アクセス</a>
+                            <a href="#info" class="hover:text-cyan-300 transition duration-300 text-shadow">出展のご案内</a>
+                            <a href="#contact" class="hover:text-cyan-300 transition duration-300 text-shadow">お問い合わせ</a>
+                        </nav>
+                        <!-- モバイル用ハンバーガーボタン -->
+                        <button id="mobile-menu-button" class="md:hidden text-white focus:outline-none">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+             <!-- モバイル用ナビゲーション（初期状態では非表示） -->
+            <div id="mobile-menu" class="hidden md:hidden bg-black/80 backdrop-blur-sm">
+                <a href="#home" class="block py-2 px-6 text-sm text-white hover:bg-cyan-900">ホーム</a>
+                <a href="#event" class="block py-2 px-6 text-sm text-white hover:bg-cyan-900">イベント概要</a>
+                <a href="#exhibitors" class="block py-2 px-6 text-sm text-white hover:bg-cyan-900">出展者紹介</a>
+                <a href="#access" class="block py-2 px-6 text-sm text-white hover:bg-cyan-900">アクセス</a>
+                <a href="#info" class="block py-2 px-6 text-sm text-white hover:bg-cyan-900">出展のご案内</a>
+                <a href="#contact" class="block py-2 px-6 text-sm text-white hover:bg-cyan-900">お問い合わせ</a>
             </div>
         </div>
-        <!-- モバイル用ナビゲーション（初期状態では非表示） -->
-        <div id="mobile-menu" class="hidden md:hidden bg-white/80 backdrop-blur-sm">
-            <a href="#home" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">ホーム</a>
-            <a href="#event" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">イベント概要</a>
-            <a href="#exhibitors" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">出展者紹介</a>
-            <a href="#access" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">アクセス</a>
-            <a href="#info" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">出展のご案内</a>
-            <a href="#contact" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">お問い合わせ</a>
+
+        <!-- ヒーローコンテンツ -->
+        <div class="header-content flex-grow flex items-center justify-center text-center text-white p-6">
+            <div>
+                 <h2 class="text-4xl md:text-6xl font-bold mb-4 text-shadow leading-tight">元気が明日の笑顔へと<br>つながる！</h2>
+                <p class="text-lg md:text-xl text-shadow">浅草橋で出会う、心と体の癒し体験</p>
+            </div>
         </div>
     </header>
 
     <!-- メインコンテンツ -->
     <main>
-        <!-- ヒーローセクション -->
-        <section id="home" class="bg-cyan-50 py-20 text-center">
-            <div class="container mx-auto px-6">
-                <h2 class="text-4xl md:text-5xl font-bold text-cyan-700 mb-4">元気が明日の笑顔へとつながる！</h2>
-                <p class="text-lg text-gray-600">浅草橋で出会う、心と体の癒し体験</p>
-            </div>
-        </section>
-
         <!-- イベントへようこそ -->
         <section class="py-16">
             <div class="container mx-auto px-6 text-center">
@@ -112,12 +121,12 @@
                 <h2 class="text-3xl font-bold text-center mb-12 text-cyan-800">主催者紹介</h2>
                 <div class="grid md:grid-cols-2 gap-12 items-center">
                     <div class="text-center">
-                        <img src="日本一行列のできる鑑定士の1人  Kanmei.jpg?text=Kanmei" alt="Kanmei" class="w-36 h-36 rounded-full mx-auto mb-4 shadow-lg">
+                        <img src="kanmei.jpg" alt="Kanmei" class="w-36 h-36 rounded-full mx-auto mb-4 shadow-lg">
                         <h3 class="text-xl font-bold mb-2">Kanmei</h3>
                         <p class="text-gray-600">日本で最も行列の出来る鑑定士の一人<br>フェロモンアップヒーリング®開発者</p>
                     </div>
                     <div class="text-center">
-                        <img src="マリアンヌ*ミシェル.jpg?text=ミシェル" alt="マリアンヌミシェル" class="w-36 h-36 rounded-full mx-auto mb-4 shadow-lg">
+                        <img src="michelle.jpg" alt="マリアンヌミシェル" class="w-36 h-36 rounded-full mx-auto mb-4 shadow-lg">
                         <h3 class="text-xl font-bold mb-2">マリアンヌミシェル</h3>
                         <p class="text-gray-600">神様ミッションもこなす巫女セラピスト<br>株式会社Kヒーリング代表取締役社長</p>
                     </div>
@@ -216,3 +225,4 @@
     </script>
 </body>
 </html>
+
