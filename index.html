@@ -3,27 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ぶち癒しフェスタin東京</title>
-    <!-- Tailwind CSSを読み込みます -->
+    <title>ぶち癒しフェスタ in 東京 公式サイト</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts（日本語対応）を読み込みます -->
+    <!-- Inter Font -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+    
     <style>
-        /* Noto Sans JPフォントを全体に適用します */
-        body {
-            font-family: 'Noto Sans JP', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
+        /* スムーズスクロールを有効にする */
+        html {
+            scroll-behavior: smooth;
         }
-        /* ヘッダーの背景画像設定 */
+        /* フォント設定 */
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+        /* ヘッダーの背景画像（薄く表示） */
         .header-bg {
-            background-image: url('header_bg.jpg');
+            position: relative;
+            background-image: url('https://images.unsplash.com/photo-1500462918059-b1a0cb512f1d?auto=format&fit=crop&w=1920&q=80');
             background-size: cover;
             background-position: center;
         }
-        /* ヘッダー背景の薄いオーバーレイ */
+        /* 背景画像の上に薄い紫のオーバーレイをかける */
         .header-bg::before {
             content: '';
             position: absolute;
@@ -31,195 +35,600 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: rgba(255, 255, 255, 0.8); /* 白いオーバーレイで画像を薄く見せます */
+            background-color: rgba(233, 213, 255, 0.8); /* Tailwindのpurple-100の透明度80% */
             z-index: 1;
         }
-        .header-content {
+        /* ヘッダーのコンテンツがオーバーレイの上に表示されるようにする */
+        nav, .hero-content {
             position: relative;
             z-index: 2;
         }
-        /* テキストに影をつけ、読みやすくします (今回は使いませんが念のため残します) */
-        .text-shadow {
-            text-shadow: 1px 1px 3px rgba(0,0,0,0.6);
+
+        /* モバイルメニューの表示・非表示 */
+        #mobile-menu {
+            display: none;
+        }
+        #mobile-menu.open {
+            display: block;
+        }
+
+        /* セクションタイトル */
+        .section-title {
+            font-size: 2.25rem; /* 3xl */
+            font-weight: 700;
+            color: #4C1D95; /* deep purple */
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        /* サブタイトル */
+        .section-subtitle {
+            font-size: 1.5rem; /* xl */
+            font-weight: 600;
+            color: #6D28D9; /* purple-700 */
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #C4B5FD; /* purple-300 */
+            padding-bottom: 0.5rem;
         }
     </style>
 </head>
-<body class="bg-slate-50 text-gray-800">
+<body class="bg-purple-50 text-gray-800">
 
-    <!-- ヘッダー -->
-    <header id="home" class="header-bg relative shadow-md h-[70vh] min-h-[450px] flex flex-col">
-        <div class="header-content w-full">
-            <!-- ナビゲーションバー -->
-            <div>
-                <div class="container mx-auto px-6 py-3">
-                    <div class="flex items-center justify-between">
-                        <h1 class="text-xl md:text-2xl font-bold text-cyan-800">ぶち癒しフェスタin東京</h1>
-                        <!-- デスクトップ用ナビゲーション -->
-                        <nav class="hidden md:flex space-x-6 text-gray-700 font-semibold">
-                            <a href="#home" class="hover:text-cyan-600 transition duration-300">ホーム</a>
-                            <a href="#event" class="hover:text-cyan-600 transition duration-300">イベント概要</a>
-                            <a href="#exhibitors" class="hover:text-cyan-600 transition duration-300">出展者紹介</a>
-                            <a href="#access" class="hover:text-cyan-600 transition duration-300">アクセス</a>
-                            <a href="#info" class="hover:text-cyan-600 transition duration-300">出展のご案内</a>
-                            <a href="#contact" class="hover:text-cyan-600 transition duration-300">お問い合わせ</a>
-                        </nav>
-                        <!-- モバイル用ハンバーガーボタン -->
-                        <button id="mobile-menu-button" class="md:hidden text-gray-800 focus:outline-none">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-                        </button>
-                    </div>
-                </div>
+    <!-- ===== ヘッダー & ナビゲーション ===== -->
+    <header class="header-bg sticky top-0 shadow-lg z-50">
+        <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <!-- サイトタイトル -->
+            <div class="text-2xl font-bold text-purple-900">
+                <a href="#home">ぶち癒しフェスタ in 東京</a>
             </div>
-             <!-- モバイル用ナビゲーション（初期状態では非表示） -->
-            <div id="mobile-menu" class="hidden md:hidden bg-white/90 backdrop-blur-sm">
-                <a href="#home" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">ホーム</a>
-                <a href="#event" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">イベント概要</a>
-                <a href="#exhibitors" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">出展者紹介</a>
-                <a href="#access" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">アクセス</a>
-                <a href="#info" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">出展のご案内</a>
-                <a href="#contact" class="block py-2 px-6 text-sm text-gray-700 hover:bg-cyan-100">お問い合わせ</a>
-            </div>
-        </div>
 
-        <!-- ヒーローコンテンツ -->
-        <div class="header-content flex-grow flex items-center justify-center text-center p-6">
-            <div>
-                 <h2 class="text-4xl md:text-5xl font-bold mb-4 text-cyan-800 leading-tight">元気が明日の笑顔へと<br>つながる！</h2>
-                <p class="text-lg md:text-xl text-gray-700">浅草橋で出会う、心と体の癒し体験</p>
+            <!-- PC用ナビゲーション -->
+            <div class="hidden md:flex space-x-6">
+                <a href="#home" class="text-purple-800 hover:text-purple-600 font-semibold">ホーム</a>
+                <a href="#event-summary" class="text-purple-800 hover:text-purple-600 font-semibold">イベント概要</a>
+                <a href="#exhibitors" class="text-purple-800 hover:text-purple-600 font-semibold">出展者紹介</a>
+                <a href="#access" class="text-purple-800 hover:text-purple-600 font-semibold">アクセス</a>
+                <a href="#exhibit-info" class="text-purple-800 hover:text-purple-600 font-semibold">出展のご案内</a>
+                <a href="#contact" class="text-purple-800 hover:text-purple-600 font-semibold">お問い合わせ</a>
             </div>
+
+            <!-- モバイル用ハンバーガーボタン -->
+            <div class="md:hidden">
+                <button id="hamburger-btn" class="text-purple-900 focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path>
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <!-- モバイル用メニュー -->
+        <div id="mobile-menu" class="md:hidden bg-purple-50 bg-opacity-95 shadow-lg">
+            <a href="#home" class="block px-6 py-3 text-purple-800 font-semibold hover:bg-purple-100">ホーム</a>
+            <a href="#event-summary" class="block px-6 py-3 text-purple-800 font-semibold hover:bg-purple-100">イベント概要</a>
+            <a href="#exhibitors" class="block px-6 py-3 text-purple-800 font-semibold hover:bg-purple-100">出展者紹介</a>
+            <a href="#access" class="block px-6 py-3 text-purple-800 font-semibold hover:bg-purple-100">アクセス</a>
+            <a href="#exhibit-info" class="block px-6 py-3 text-purple-800 font-semibold hover:bg-purple-100">出展のご案内</a>
+            <a href="#contact" class="block px-6 py-3 text-purple-800 font-semibold hover:bg-purple-100">お問い合わせ</a>
         </div>
     </header>
 
-    <!-- メインコンテンツ -->
+    <!-- ===== メインコンテンツ ===== -->
     <main>
-        <!-- イベントへようこそ -->
-        <section class="py-16">
-            <div class="container mx-auto px-6 text-center">
-                <h2 class="text-3xl font-bold mb-8 text-cyan-800">☆ぶち癒しフェスタ in 東京へようこそ☆</h2>
-                <p class="max-w-3xl mx-auto text-gray-600 leading-relaxed">
-                    お客さまも出展者の皆さまも楽しく過ごせる、入場無料、元気がコンセプトの癒しイベントです！<br>
-                    ぶち癒しフェスタは、山口を拠点に10年間活動を続けています。<br>
-                    不安や悩みはここで解消して、元気と癒しをチャージして皆様の明日の笑顔へと繋がりますように♡
+
+        <!-- ===== 1. ホーム (旧LP) ===== -->
+        <section id="home" class="hero-content pt-16 pb-24 text-center header-bg">
+            <div class="container mx-auto px-6">
+                <h1 class="text-5xl md:text-6xl font-extrabold text-purple-900 mb-6 drop-shadow-md">
+                    元気が明日の笑顔へと<br>つながる！
+                </h1>
+                <p class="text-xl md:text-2xl text-purple-800 font-semibold mb-10">
+                    浅草橋で出会う、心と体の癒し体験
                 </p>
+                
+                <!-- 次回開催情報 -->
+                <div class="bg-white bg-opacity-80 rounded-lg shadow-xl max-w-2xl mx-auto p-6 mb-12 border-2 border-purple-300">
+                    <h2 class="text-2xl font-bold text-purple-900 mb-3">第4回 ぶち癒しフェスタ in 東京</h2>
+                    <p class="text-lg font-semibold text-gray-700 mb-2">
+                        <span class="font-bold">日時:</span> 2026年1月25日（日） 11:00～17:00
+                    </p>
+                    <p class="text-lg font-semibold text-gray-700 mb-4">
+                        <span class="font-bold">場所:</span> 東京文具共和会館2階会議室 (JR浅草橋駅より徒歩3分)
+                    </p>
+                    <span class="inline-block bg-yellow-400 text-yellow-900 text-xl font-bold px-6 py-2 rounded-full shadow-md">
+                        入場無料
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-left max-w-5xl mx-auto">
+                    <!-- コンセプト -->
+                    <div class="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg">
+                        <h3 class="section-subtitle text-purple-700">☆ぶち癒しフェスタへようこそ☆</h3>
+                        <p class="text-gray-700 leading-relaxed">
+                            お客さまも出展者の皆さまも楽しく過ごせる、入場無料、元気がコンセプトの癒しイベントです！
+                            ぶち癒しフェスタは、山口を拠点に10年間活動を続けています。
+                        </p>
+                        <p class="text-gray-700 leading-relaxed mt-4">
+                            不安や悩みはここで解消して、元気と癒しをチャージして皆様の明日の笑顔へと繋がりますように♡
+                        </p>
+                        <p class="text-gray-700 leading-relaxed mt-4">
+                            様々な占い・リーディング・ヒーリング・整体・マッサージ・アロマ・セラピーや
+                            パワーストーン・癒し系の商品・ハンドメイド作品（販売）をご用意。
+                            イベント価格で体験できる☆元気になれる☆
+                            出展者一同 お客様を笑顔でお迎えいたします!
+                        </p>
+                    </div>
+
+                    <!-- 主催者の思い -->
+                    <div class="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg">
+                        <h3 class="section-subtitle text-purple-700">主催者の思い</h3>
+                        <p class="text-gray-700 leading-relaxed">
+                            こんにちは。ミシェルです。
+                            わたしたち一人ひとりが持つ「創造の力」。
+                            それは、人生を“思い通り”に動かすために生まれながらに授かった、神聖なギフトです。
+                        </p>
+                        <p class="text-gray-700 leading-relaxed mt-4">
+                            このイベントは、そのギフトを思い出し、
+                            “自分の人生の道を創る”ための場として生まれました。
+                        </p>
+                        <p class="text-gray-700 leading-relaxed mt-4">
+                            新しい可能性の扉を開きに来てください。
+                        </p>
+                    </div>
+                </div>
+
+                <!-- 主催者紹介 -->
+                <div class="mt-16 max-w-4xl mx-auto">
+                    <h3 class="section-subtitle text-purple-700 text-center">主催者紹介</h3>
+                    <div class="flex flex-col md:flex-row justify-center items-center gap-10 mt-6">
+                        <div class="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg text-center w-64">
+                            <img src="https://placehold.co/150x150/E9D5FF/333333?text=Kanmei" alt="Kanmei" class="w-36 h-36 rounded-full mx-auto mb-4 border-4 border-purple-300">
+                            <h4 class="text-xl font-bold text-purple-900">Kanmei</h4>
+                            <p class="text-gray-600 mt-2">日本で最も行列の出来る鑑定士の一人<br>フェロモンアップヒーリング®開発者</p>
+                        </div>
+                        <div class="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg text-center w-64">
+                            <img src="https://placehold.co/150x150/E9D5FF/333333?text=Marianne+Michelle" alt="マリアンヌミシェル" class="w-36 h-36 rounded-full mx-auto mb-4 border-4 border-purple-300">
+                            <h4 class="text-xl font-bold text-purple-900">マリアンヌミシェル</h4>
+                            <p class="text-gray-600 mt-2">神様ミッションもこなす巫女セラピスト<br>株式会社Kヒーリング代表取締役社長、フェロモンアップヒーリング®会長</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- お客様・出展者の声 -->
+                <div class="mt-16 max-w-5xl mx-auto">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+                        <div class="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg">
+                            <h3 class="section-subtitle text-purple-700">お客様の声</h3>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>また参加したいです</li>
+                                <li>元気になれました</li>
+                            </ul>
+                        </div>
+                        <div class="bg-white bg-opacity-90 p-6 rounded-lg shadow-lg">
+                            <h3 class="section-subtitle text-purple-700">出展者様の声</h3>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>安心して参加できました</li>
+                                <li>スタッフの配慮にありがとうございました。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
         
-        <!-- 出展のご案内 -->
-        <section id="info" class="bg-rose-50 py-16">
-            <div class="container mx-auto px-6 text-center">
-                <h2 class="text-3xl font-bold mb-4 text-rose-800">出展をご希望の方へ</h2>
-                <p class="text-gray-600 mb-8">詳細はこちらの出展規約をご確認ください。</p>
-                <a href="#" class="bg-rose-500 text-white font-bold py-3 px-8 rounded-full hover:bg-rose-600 transition duration-300 shadow-lg transform hover:scale-105">
-                    ☝ 今すぐ出展お申込み（LINE公式へ）
-                </a>
+        <!-- ===== 2. イベント概要 ===== -->
+        <section id="event-summary" class="py-20 bg-white">
+            <div class="container mx-auto px-6 max-w-5xl">
+                <h2 class="section-title">イベント概要</h2>
+
+                <!-- 開催概要 -->
+                <div class="bg-purple-50 p-8 rounded-lg shadow-lg mb-12 border border-purple-200">
+                    <h3 class="section-subtitle">第4回 ぶち癒しフェスタ in 東京</h3>
+                    <ul class="text-lg space-y-4 text-gray-700">
+                        <li><strong>【開催日】</strong> 2026年1月25日（日）</li>
+                        <li><strong>【時間】</strong> 11:00 ～ 17:00 （※16:30から変更になりました）</li>
+                        <li><strong>【入場料】</strong> <span class="font-bold text-xl text-red-600">無料</span></li>
+                        <li><strong>【会場】</strong> 東京文具共和会館2階会議室</li>
+                        <li><strong>【住所】</strong> 〒111-8611 東京都台東区柳橋１－２－１０</li>
+                        <li><strong>【アクセス】</strong> JR総武線 浅草橋 東口より徒歩約3分 / 都営浅草線 浅草橋駅 A1出口より徒歩約3分</li>
+                    </ul>
+                </div>
+
+                <!-- 今後のスケジュール -->
+                <div class="bg-purple-50 p-8 rounded-lg shadow-lg mb-12 border border-purple-200">
+                    <h3 class="section-subtitle">今後のスケジュール</h3>
+                    <p class="text-lg text-gray-700 mb-4">場所：東京都立産業貿易センター台東館</p>
+                    <ul class="text-lg space-y-3 text-gray-700 list-disc list-inside">
+                        <li>2026年 5月24日 (日)</li>
+                        <li>2026年 9月19日 (土)</li>
+                        <li>2027年 1月23日 (土)</li>
+                    </ul>
+                </div>
+
+                <!-- よくあるご質問 (Q&A) -->
+                <div class="bg-purple-50 p-8 rounded-lg shadow-lg border border-purple-200">
+                    <h3 class="section-subtitle">Q&A（よくあるご質問）</h3>
+                    <div class="space-y-6 mt-6">
+                        <div>
+                            <h4 class="text-lg font-bold text-purple-800">Q. 入場料はいくらですか？</h4>
+                            <p class="text-gray-700 mt-1">A. 入場は【無料】です。どなたでもお気軽にご来場いただけます。</p>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-purple-800">Q. 男性でも参加できますか？</h4>
+                            <p class="text-gray-700 mt-1">A. もちろん大歓迎です！性別・年齢を問わずお楽しみいただけます。</p>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-purple-800">Q. 子ども連れでも大丈夫ですか？</h4>
+                            <p class="text-gray-700 mt-1">A. はい、小さなお子さま連れでも安心してご来場いただけます。</p>
+                        </div>
+                        <div>
+                            <h4 class="text-lg font-bold text-purple-800">Q. 当日予約なしで入れますか？</h4>
+                            <p class="text-gray-700 mt-1">A. はい、事前予約なしでもそのままご入場いただけます。</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
-        <!-- 主催者紹介 -->
-        <section class="py-16">
-            <div class="container mx-auto px-6">
-                <h2 class="text-3xl font-bold text-center mb-12 text-cyan-800">主催者紹介</h2>
-                <div class="grid md:grid-cols-2 gap-12 items-center">
-                    <div class="text-center">
-                        <img src="kanmei.jpg" alt="Kanmei" class="w-36 h-36 rounded-full mx-auto mb-4 shadow-lg">
-                        <h3 class="text-xl font-bold mb-2">Kanmei</h3>
-                        <p class="text-gray-600">日本で最も行列の出来る鑑定士の一人<br>フェロモンアップヒーリング®開発者</p>
+        <!-- ===== 3. 出展者紹介 ===== -->
+        <section id="exhibitors" class="py-20 bg-purple-50">
+            <div class="container mx-auto px-6 max-w-6xl">
+                <h2 class="section-title">出展者紹介</h2>
+                <p class="text-center text-lg text-gray-700 mb-10">
+                    イベントを彩る素敵な出展者の皆様をご紹介します。
+                </p>
+
+                <!-- ここに「第3回出展者様のご紹介」の具体的な内容が入ります -->
+                <!-- 現状のテキストには出展者一覧がないため、プレースホルダーを設置 -->
+                <div class="text-center bg-white p-10 rounded-lg shadow-lg border border-purple-200">
+                    <h3 class="text-2xl font-bold text-purple-800 mb-4">第3回 出展者様のご紹介</h3>
+                    <p class="text-gray-600">
+                        （ここに、前回の出展者様の一覧や紹介文が入ります）<br>
+                        準備中です。次回の素晴らしい出展者様をお楽しみに！
+                    </p>
+                    <!-- 
+                    例：出展者カード
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mt-8">
+                        <div class="bg-purple-50 p-6 rounded-lg shadow-md border border-purple-200">
+                            <h4 class="text-xl font-bold text-purple-900">出展者名</h4>
+                            <p class="text-gray-600 mt-2">キャッチコピーやセッション内容の概要...</p>
+                        </div>
+                    </div> 
+                    -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== 4. アクセス ===== -->
+        <section id="access" class="py-20 bg-white">
+            <div class="container mx-auto px-6 max-w-5xl">
+                <h2 class="section-title">アクセス</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+                    <!-- アクセス情報 -->
+                    <div class="bg-purple-50 p-8 rounded-lg shadow-lg border border-purple-200">
+                        <h3 class="section-subtitle">会場：東京文具共和会館2階会議室</h3>
+                        <p class="text-lg text-gray-700 mb-6">
+                            〒111-8611 東京都台東区柳橋１－２－１０
+                        </p>
+                        
+                        <h4 class="text-xl font-semibold text-purple-800 mb-3">電車でのアクセス</h4>
+                        <ul class="list-disc list-inside text-lg text-gray-700 space-y-2">
+                            <li>JR総武線 <span class="font-bold">浅草橋駅</span> 東口より徒歩約3分</li>
+                            <li>都営浅草線 <span class="font-bold">浅草橋駅</span> A1出口より徒歩約3分</li>
+                        </ul>
                     </div>
-                    <div class="text-center">
-                        <img src="michelle.jpg" alt="マリアンヌミシェル" class="w-36 h-36 rounded-full mx-auto mb-4 shadow-lg">
-                        <h3 class="text-xl font-bold mb-2">マリアンヌミシェル</h3>
-                        <p class="text-gray-600">神様ミッションもこなす巫女セラピスト<br>株式会社Kヒーリング代表取締役社長</p>
+
+                    <!-- Google Map 埋め込み -->
+                    <div class="rounded-lg shadow-lg overflow-hidden border-2 border-purple-300">
+                        <iframe
+                            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3240.245849880153!2d139.7828068152591!3d35.69550798019098!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x60188ea440430933%3A0x606a5f156d357e9!2z5p2x5Lqs5paT5YWJ5YWn5ZKM5Lya6ZMI!5e0!3m2!1sja!2sjp!4v1678886611333!5m2!1sja!2sjp"
+                            width="100%"
+                            height="400"
+                            style="border:0;"
+                            allowfullscreen=""
+                            loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade">
+                        </iframe>
                     </div>
                 </div>
-                <div class="mt-12 bg-white p-8 rounded-lg shadow-md max-w-3xl mx-auto">
-                    <h3 class="text-2xl font-bold text-center mb-4 text-cyan-700">主催者の思い</h3>
-                    <p class="text-gray-600 leading-relaxed">
-                        こんにちは。ミシェルです。<br>
-                        わたしたち一人ひとりが持つ「創造の力」。それは、人生を“思い通り”に動かすために生まれながらに授かった、神聖なギフトです。このイベントは、そのギフトを思い出し、“自分の人生の道を創る”ための場として生まれました。新しい可能性の扉を開きに来てください。
+            </div>
+        </section>
+
+        <!-- ===== 5. 出展のご案内 ===== -->
+        <section id="exhibit-info" class="py-20 bg-purple-50">
+            <div class="container mx-auto px-6 max-w-5xl">
+                <h2 class="section-title">出展のご案内</h2>
+
+                <!-- 出展募集 CTA -->
+                <div class="bg-white p-8 rounded-lg shadow-xl text-center mb-12 border-2 border-purple-300">
+                    <h3 class="text-3xl font-bold text-purple-900 mb-4">あなたの技術と情熱を、より多くの人々に届けませんか？</h3>
+                    <p class="text-lg text-gray-700 mb-6">
+                        ぶち癒しフェスタは「元気が明日の笑顔へと繋がる」をコンセプトにした、癒しと出会いのお祭りです。
+                        一緒にこのお祭りを盛り上げてくださる出展者さまをお待ちしています！
+                    </p>
+                    <p class="text-lg text-gray-700 mb-6 font-bold">
+                        🍁第4回早期お申し込み割引き🍁（10月1日～10月31日）<br>
+                        半テーブル: 500円引き / 1テーブル: 1000円引き
+                    </p>
+                    <a href="#exhibit-apply" class="inline-block bg-gradient-to-r from-pink-500 to-yellow-500 hover:from-pink-600 hover:to-yellow-600 text-white text-xl font-bold py-4 px-10 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
+                        今すぐ出展を申し込む (LINE公式へ)
+                    </a>
+                </div>
+
+                <!-- 出展のメリット -->
+                <div class="bg-white p-8 rounded-lg shadow-lg mb-12 border border-purple-200">
+                    <h3 class="section-subtitle">❇️ イベントの魅力 ❇️</h3>
+                    <ul class="list-none space-y-4 text-lg text-gray-700">
+                        <li><strong>⭐ 大規模集客：</strong> 多くの来場者が癒しを求めて訪れます。あなたの技術を直接体験してもらえる絶好のチャンスです。</li>
+                        <li><strong>⭐ ネットワーキング：</strong> 他のセラピストや業界のプロフェッショナルと交流し、新たな人脈を築くことができます。</li>
+                        <li><strong>⭐ プロモーション：</strong> あなたのサービスを広く知ってもらい、新規クライアントを獲得する機会が増えます。</li>
+                        <li><strong>⭐ 活動や想いを届けられる場：</strong> お客様の笑顔と直接ふれあえる時間、新しいご縁や仲間とのつながりをご用意しています。</li>
+                    </ul>
+                </div>
+                
+                <!-- 募集項目 -->
+                <div class="bg-white p-8 rounded-lg shadow-lg mb-12 border border-purple-200">
+                    <h3 class="section-subtitle">募集項目</h3>
+                    <p class="text-gray-700 mb-4">お申し込みフォームの４つのカテゴリーのうちどれか１つにチェックをお願いいたします。</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="text-xl font-semibold text-purple-800 mb-2">① 占い・スピリチュアル</h4>
+                            <p class="text-gray-600">霊視鑑定, ヒーリング, チャネリング, 各種カードセッション, 統計学, その他セラピーなど</p>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-semibold text-purple-800 mb-2">② ボディケア・美容</h4>
+                            <p class="text-gray-600">フットケア, ハンドケア, 整体, エステ, メイクアップなど</p>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-semibold text-purple-800 mb-2">③ 物販</h4>
+                            <p class="text-gray-600">アクセサリー, ハンドメイド雑貨, 実演販売, 天然石など</p>
+                        </div>
+                        <div>
+                            <h4 class="text-xl font-semibold text-purple-800 mb-2">④ 飲食</h4>
+                            <p class="text-gray-600">お弁当, 焼き菓子, 茶葉など (※詳細は規約をご確認ください)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ブースと出展料 -->
+                <div class="bg-white p-8 rounded-lg shadow-lg mb-12 border border-purple-200">
+                    <h3 class="section-subtitle">ブースと出展料のご案内</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
+                        <!-- テーブルセッション（内側） -->
+                        <div class="border border-purple-200 p-6 rounded-lg bg-purple-50">
+                            <img src="https://placehold.co/400x250/E9D5FF/333333?text=Table+Session+(Inner)" alt="テーブルセッション内側" class="w-full h-48 object-cover rounded-md mb-4">
+                            <h4 class="text-xl font-bold text-purple-900 mb-2">テーブルセッション対面式（内側）</h4>
+                            <p class="text-gray-600 mb-4">(セッション＆物販ＯＫ)</p>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>1テーブルサイズ: 180×60cm</li>
+                                <li>半テーブルはシェアブース</li>
+                                <li>追加人数不可</li>
+                                <li>椅子に座ってのボディケア施術はこちら</li>
+                            </ul>
+                        </div>
+                        <!-- テーブルセッション（壁側） -->
+                        <div class="border border-purple-200 p-6 rounded-lg bg-purple-50">
+                            <img src="https://placehold.co/400x250/E9D5FF/333333?text=Table+Session+(Wall)" alt="テーブルセッション壁側" class="w-full h-48 object-cover rounded-md mb-4">
+                            <h4 class="text-xl font-bold text-purple-900 mb-2">テーブルセッション対面式（壁側）</h4>
+                            <p class="text-gray-600 mb-4">(セッション＆物販ＯＫ)</p>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>1テーブルサイズ: 180×60cm</li>
+                                <li>半テーブルはシェアブース</li>
+                                <li>1テーブルにつき1名追加可 (＋1,000円)</li>
+                                <li>椅子に座ってのボディケア施術はこちら</li>
+                            </ul>
+                        </div>
+                        <!-- ボディケアブース -->
+                        <div class="border border-purple-200 p-6 rounded-lg bg-purple-50">
+                            <img src="https://placehold.co/400x250/E9D5FF/333333?text=Body+Care+Booth" alt="ボディケアブース" class="w-full h-48 object-cover rounded-md mb-4">
+                            <h4 class="text-xl font-bold text-purple-900 mb-2">ボディケアブース</h4>
+                            <p class="text-gray-600 mb-4">(ヨガマット・ベット各自持参)</p>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>ヨガマットサイズ: 1m×3m (追加不可)</li>
+                                <li>ベッドサイズ: 2m×3m (1名追加可)</li>
+                                <li>横になっての施術・セッション用</li>
+                            </ul>
+                        </div>
+                        <!-- 物販ブース -->
+                        <div class="border border-purple-200 p-6 rounded-lg bg-purple-50">
+                            <img src="https://placehold.co/400x250/E9D5FF/333333?text=Merchandise+Booth" alt="物販ブース" class="w-full h-48 object-cover rounded-md mb-4">
+                            <h4 class="text-xl font-bold text-purple-900 mb-2">物販ブース</h4>
+                            <p class="text-gray-600 mb-4">(セッション不可)</p>
+                            <ul class="list-disc list-inside text-gray-700 space-y-2">
+                                <li>1テーブルサイズ: 180×60cm</li>
+                                <li>追加人数不可</li>
+                                <li>飲食でのご出展はこちら</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 出展規約 アコーディオン -->
+                <div class="bg-white p-8 rounded-lg shadow-lg mb-12 border border-purple-200">
+                    <details class="group">
+                        <summary class="section-subtitle cursor-pointer list-none group-open:mb-6">
+                            【重要】出展規約・ご注意点 (クリックして開く)
+                        </summary>
+                        <div class="space-y-6 text-gray-700 leading-relaxed">
+                            <!-- 注意点とお願い -->
+                            <div>
+                                <h4 class="text-lg font-semibold text-purple-800 mb-3">【出展に関する注意点とお願い】</h4>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>体験型イベントになりますので各メニューの料金はイベント価格でお願いします。</li>
+                                    <li>料金は、はっきりお客様にわかるように提示してください。</li>
+                                    <li>記載された料金以外に料金が発生する時(延長など)にはお客様に確認をとってからにしてください。</li>
+                                    <li>お申込みは先着順とさせて頂きます。ブース場所の指定はできません。</li>
+                                    <li>出展者様についてはInstagram,HP,Facebook,などでご紹介させて頂きます。</li>
+                                    <li>会場の壁や柱などに釘、画鋲、テープなどの張り付けは禁止です。</li>
+                                    <li>床などを汚してしまった場合は各自でお掃除をお願い致します。</li>
+                                    <li>電源をご利用の方は延長コードをお持ちください。</li>
+                                    <li>火気厳禁のためお香・セージなどは焚かないようにお願いします。</li>
+                                    <li>ゴミは各自責任を持って お持ち帰り下さい。</li>
+                                    <li>終了後 使用した机・椅子などは片づけのご協力をお願い致します。</li>
+                                    <li>館内施設、及び備品を破損した場合は出展者様の実費負担となります。</li>
+                                    <li>施設内での怪我、盗難及び事故に関しましては一切の責任を負いかねます。</li>
+                                    <li>特定のサービスや商品に関する契約や勧誘はお断りをさせていただいております。</li>
+                                    <li>ご出展内容によっては、協会の主旨と合わないと判断された場合 お断りさせて頂く場合もございます。</li>
+                                    <li>お客様はもちろんのこと、出展者さまにも強引な勧誘などはされませんようによろしくお願いいたします。</li>
+                                    <li>お客様や出展者様に不快感を与える商法・宗教勧誘など禁止致します。当日そのような行為をされた場合は直ちに退場頂き、次回の出展はお断りさせて頂きます。</li>
+                                    <li>本イベントでは、出展者様とお客様の個別契約で成り立っており、主催者側はトラブルに一切関与いたしません。</li>
+                                    <li>一般的な常識ある行動をお願いします。お客様を最高の笑顔でお迎えください。</li>
+                                </ul>
+                            </div>
+                            
+                            <!-- 飲食の販売 -->
+                            <div>
+                                <h4 class="text-lg font-semibold text-purple-800 mb-3">● 飲食の販売について</h4>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>調理行為（盛り付け、カット、飲料を注ぐなど）は全て禁止です。</li>
+                                    <li>販売する商品は、事前に包装または瓶詰めされたものに限ります。</li>
+                                    <li>常温で保存できる商品のみ販売可能です。</li>
+                                    <li>試食や試飲を希望される場合は、事前に事務局までご連絡ください。</li>
+                                    <li>販売する商品は、所管の保健所から必要な営業許可を受けた施設で製造・包装されていること。</li>
+                                    <li>賞味期限や消費期限が1〜3日以内の、日持ちしない商品を販売する場合は、台東区の保健所に「営業届」の提出が必要です。</li>
+                                    <li>食品衛生責任者の資格を保持していること。</li>
+                                    <li>（その他、詳細は規約をご確認ください）</li>
+                                </ul>
+                            </div>
+
+                            <!-- 出展料の支払 -->
+                            <div>
+                                <h4 class="text-lg font-semibold text-purple-800 mb-3">【出展料の支払】</h4>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>お支払いは銀行振込みになります。（お申し込み後お知らせいたします。）</li>
+                                    <li>お申し込みをいただきましてから2週間以内にお振り込みをお願いいたします。</li>
+                                    <li>お振込み手数料は各自ご負担お願いいたします。</li>
+                                    <li>ご事情により遅れる場合は必ず入金予定日をご連絡ください。</li>
+                                    <li>イベントを1か月切ってからのお申し込みの場合は、3日以内のお振込みをお願いいたします。</li>
+                                    <li>金融機関の振込明細書または振込完了画面をもって領収書に代えさせていただきます。</li>
+                                </ul>
+                            </div>
+
+                            <!-- キャンセルについて -->
+                            <div>
+                                <h4 class="text-lg font-semibold text-purple-800 mb-3">【重要：キャンセルについて】</h4>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>開催日の1ヶ月前からは50％、２週間前からは100％発生致します。</li>
+                                    <li>1ヶ月以前対象の場合は、お振込手数料を引いた出展料をお返しいたします。</li>
+                                    <li>ご連絡無き場合・期日までに入金がいただけない場合は出展のキャンセルとみなし、出展料の100%のキャンセル料をご請求いたします。</li>
+                                </ul>
+                            </div>
+                            
+                            <!-- 懇親会 -->
+                            <div>
+                                <h4 class="text-lg font-semibold text-purple-800 mb-3">【懇親会について】</h4>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>お席とお料理予約の関係上4日前より100％のキャンセル料が発生致します。</li>
+                                </ul>
+                            </div>
+                            
+                            <!-- スタンプラリー -->
+                            <div>
+                                <h4 class="text-lg font-semibold text-purple-800 mb-3">☆スタンプラリーのご提供について☆</h4>
+                                <ul class="list-disc list-inside space-y-2">
+                                    <li>景品の提供をしてくださる方は当日朝、受付横でお渡し下さい。</li>
+                                    <li>割引券や無料券はNGとさせて頂きます。物品のご提供をご協力頂けますと助かります。</li>
+                                    <li>テーブルNo.や出展名(セラピスト名)などの入った名刺やチラシなど入れていただけますと助かります。</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <!-- 申込方法 -->
+                <div id="exhibit-apply" class="bg-white p-8 rounded-lg shadow-xl text-center mb-12 border-2 border-purple-300 scroll-mt-24">
+                    <h3 class="section-subtitle text-center mb-6">お申し込み方法</h3>
+                    <p class="text-lg text-gray-700 mb-6">
+                        上記の出展規約をご確認、ご了承いただいた方は、下記のボタンよりLINE公式にご登録の上、お申し込みください。
+                    </p>
+                    <a href="https://lin.ee/Brjh9IO" target="_blank" rel="noopener noreferrer" class="inline-block bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600 text-white text-xl font-bold py-4 px-10 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
+                        LINE公式より出展を申し込む
+                    </a>
+                    <p class="text-gray-600 mt-4">
+                        LINE公式にご登録後、メニューの「出展お申込」フォームよりお申込みいただき、<br>
+                        出展料のお振り込みを確認後、本契約とさせていただきます。
                     </p>
                 </div>
+
+                <!-- 出展者様専用ページへの導線 -->
+                <div class="text-center mt-12">
+                    <h3 class="text-xl font-semibold text-purple-800 mb-3">既に出展がお決まりの皆様へ</h3>
+                    <p class="text-gray-700 mb-4">
+                        ご出展誠にありがとうございます。<br>
+                        当日のマニュアルや提出書類は、下記の専用ページにてご案内しております。
+                    </p>
+                    <a href="#" class="text-lg font-semibold text-indigo-600 hover:text-indigo-800 underline">
+                        → 出展者様専用ページはこちら
+                    </a>
+                    <p class="text-sm text-gray-500 mt-2">（※現在はダミーリンクです。ここに専用ページのURLを設定します）</p>
+                </div>
             </div>
         </section>
 
-        <!-- イベント概要・スケジュール -->
-        <section id="event" class="bg-cyan-50 py-16">
-            <div class="container mx-auto px-6">
-                <h2 class="text-3xl font-bold text-center mb-12 text-cyan-800">第4回 ぶち癒しフェスタ in 東京</h2>
-                <div class="bg-white p-8 rounded-xl shadow-lg max-w-2xl mx-auto text-center">
-                    <p class="text-lg mb-2"><span class="font-bold">日時:</span> 2026年1月25日（日）11:00～17:00</p>
-                    <p class="text-lg mb-6"><span class="font-bold">場所:</span> 東京文具共和会館2階会議室</p>
-                    <p class="mb-8 font-bold text-2xl text-cyan-600">🌻 入場無料 🌻</p>
-
-                    <h3 class="text-2xl font-bold mt-12 mb-6 text-cyan-700">今後のスケジュール</h3>
-                    <ul class="list-none space-y-2 text-gray-600">
-                        <li>2026年 5月24日（日）</li>
-                        <li>2026年 9月19日（土）</li>
-                        <li>2027年 1月23日（土）</li>
+        <!-- ===== 6. お問い合わせ ===== -->
+        <section id="contact" class="py-20 bg-white">
+            <div class="container mx-auto px-6 max-w-3xl text-center">
+                <h2 class="section-title">お問い合わせ</h2>
+                <p class="text-lg text-gray-700 mb-8">
+                    イベントに関するご質問、メディア取材、その他のお問い合わせは、<br>
+                    下記のフォームよりお気軽にご連絡ください。
+                </p>
+                <a href="https://forms.gle/D9GSbSUQceKTSBf69" target="_blank" rel="noopener noreferrer" class="inline-block bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-xl font-bold py-4 px-10 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
+                    お問い合わせフォームを開く
+                </a>
+                
+                <div class="mt-16 text-left bg-purple-50 p-8 rounded-lg shadow-lg border border-purple-200 text-gray-700">
+                    <h3 class="text-2xl font-bold text-purple-900 mb-6 text-center">主催・運営</h3>
+                    <p class="text-lg mb-4"><strong>主催：</strong> アーキエンジェルハピネス協会</p>
+                    <p class="text-lg mb-2"><strong>顧問：</strong> 井上かんめい</p>
+                    <p class="text-lg mb-6"><strong>代表：</strong> マリアンヌ＊ミシェル</p>
+                    
+                    <h4 class="text-xl font-semibold text-purple-800 mb-3">【ぶち癒しフェスタin東京実行委員会】</h4>
+                    <ul class="list-disc list-inside space-y-1 mb-6">
+                        <li>アニマルコミュニケーター北川阿弥</li>
+                        <li>カラフルセラピストかず</li>
+                        <li>龍吟コンダクター 岩戸 光</li>
+                        <li>こころと身体を癒やす人 あこ</li>
+                        <li>ばやし｜一歩踏み出す、声で才能診断</li>
+                        <li>さなえ</li>
+                        <li>開運占い師 中山喜美子</li>
                     </ul>
-                    <p class="mt-4 text-sm">※場所: 東京都立産業貿易センター台東館</p>
+                    
+                    <p class="text-lg mb-6"><strong>協賛：</strong> （株）HAA</p>
+
+                    <h4 class="text-xl font-semibold text-purple-800 mb-3 text-center">各種SNS</h4>
+                    <div class="flex justify-center space-x-6">
+                        <a href="#" class="text-indigo-600 hover:text-indigo-800 font-semibold text-lg">Instagram</a>
+                        <a href="#" class="text-indigo-600 hover:text-indigo-800 font-semibold text-lg">Facebook</a>
+                    </div>
                 </div>
             </div>
         </section>
-        
-        <!-- Q&A -->
-        <section class="py-16">
-             <div class="container mx-auto px-6">
-                <h2 class="text-3xl font-bold text-center mb-12 text-cyan-800">Q&A（よくあるご質問）</h2>
-                <div class="max-w-2xl mx-auto space-y-6">
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="font-bold text-lg mb-2">Q. 入場料はいくらですか？</h3>
-                        <p class="text-gray-600">A. 入場は【無料】です。どなたでもお気軽にご来場いただけます。</p>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="font-bold text-lg mb-2">Q. 男性でも参加できますか？</h3>
-                        <p class="text-gray-600">A. もちろん大歓迎です！性別・年齢を問わずお楽しみいただけます。</p>
-                    </div>
-                    <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="font-bold text-lg mb-2">Q. 子ども連れでも大丈夫ですか？</h3>
-                        <p class="text-gray-600">A. はい、小さなお子さま連れでも安心してご来場いただけます。</p>
-                    </div>
-                </div>
-             </div>
-        </section>
-
-
     </main>
 
-    <!-- フッター -->
-    <footer id="contact" class="bg-gray-800 text-white pt-12 pb-8">
+    <!-- ===== フッター ===== -->
+    <footer class="bg-purple-900 text-purple-200 py-10">
         <div class="container mx-auto px-6 text-center">
-            <h2 class="text-2xl font-bold mb-6">お問い合わせ</h2>
-            <p class="mb-8">イベントに関するご質問はお気軽にご連絡ください。</p>
-            <a href="#" class="bg-cyan-500 text-white font-bold py-3 px-8 rounded-full hover:bg-cyan-600 transition duration-300">
-                お問い合わせはこちら
-            </a>
-            <div class="mt-12 border-t border-gray-700 pt-8">
-                <p class="mb-2">主催：アーキエンジェルハピネス協会</p>
-                <p class="text-sm text-gray-400">顧問：井上かんめい / 代表：マリアンヌ＊ミシェル</p>
-                <div class="flex justify-center space-x-6 mt-6">
-                    <!-- ここにSNSのリンクなどを追加できます -->
-                    <a href="https://www.instagram.com/buchi2024iyashifesta.in.tokyo?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==" class="text-gray-400 hover:text-white" target="_blank" rel="noopener noreferrer">Instagram</a>
-                    <a href="https://www.facebook.com/p/%E3%81%B6%E3%81%A1%E7%99%92%E3%81%97%E3%83%95%E3%82%A7%E3%82%B9%E3%82%BFin%E6%9D%B1%E4%BA%AC-61558057923078/" class="text-gray-400 hover:text-white" target="_blank" rel="noopener noreferrer">Facebook</a>
-                </div>
-                 <p class="text-xs text-gray-500 mt-8">&copy; 2025 ぶち癒しフェスタin東京. All Rights Reserved.</p>
-            </div>
+            <p>&copy; 2025 ぶち癒しフェスタ in 東京. All Rights Reserved.</p>
         </div>
     </footer>
 
+    <!-- ===== JavaScript ===== -->
     <script>
-        // モバイルメニューの表示・非表示を切り替えるスクリプト
-        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        // モバイルメニューの開閉
+        const hamburgerBtn = document.getElementById('hamburger-btn');
         const mobileMenu = document.getElementById('mobile-menu');
 
-        mobileMenuButton.addEventListener('click', () => {
-            mobileMenu.classList.toggle('hidden');
+        hamburgerBtn.addEventListener('click', () => {
+            mobileMenu.classList.toggle('open');
         });
 
-        // ナビゲーションリンクをクリックしたらメニューを閉じる
-        const navLinks = document.querySelectorAll('#mobile-menu a');
-        navLinks.forEach(link => {
+        // モバイルメニューのリンクをクリックしたらメニューを閉じる
+        const mobileMenuLinks = mobileMenu.querySelectorAll('a');
+        mobileMenuLinks.forEach(link => {
             link.addEventListener('click', () => {
-                mobileMenu.classList.add('hidden');
+                mobileMenu.classList.remove('open');
             });
         });
     </script>
