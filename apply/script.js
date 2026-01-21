@@ -633,8 +633,8 @@ function validateForm() {
     const photoInput = form.querySelector('[name="profileImage"]');
     if (!photoInput.files || photoInput.files.length === 0) {
         errors.push('ご自身の写真をアップロードしてください');
-    } else if (photoInput.files[0].size > 5 * 1024 * 1024) {
-        errors.push('画像ファイルのサイズは5MB以下にしてください');
+    } else if (photoInput.files[0].size > 8 * 1024 * 1024) {
+        errors.push('画像ファイルのサイズは8MB以下にしてください');
         photoInput.classList.add('border-red-500');
     }
 
@@ -909,8 +909,8 @@ function initFileSizeCheck() {
         }
 
         // サイズチェック
-        if (file.size > 5 * 1024 * 1024) {
-            alert('画像ファイルのサイズは5MB以下にしてください。\n現在のサイズ: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
+        if (file.size > 8 * 1024 * 1024) {
+            alert('画像ファイルのサイズは8MB以下にしてください。\n現在のサイズ: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
             e.target.value = ''; // 選択をクリア
         }
     });
