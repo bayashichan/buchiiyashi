@@ -42,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSnsInputs();
     initPostalCodeSearch();
     initEmailConfirmation();
+    initFileSizeCheck();
     updateEarlyBirdBanner();
     updateOptionsUI();
     calculatePrice();
@@ -632,6 +633,9 @@ function validateForm() {
     const photoInput = form.querySelector('[name="profileImage"]');
     if (!photoInput.files || photoInput.files.length === 0) {
         errors.push('ご自身の写真をアップロードしてください');
+    } else if (photoInput.files[0].size > 5 * 1024 * 1024) {
+        errors.push('画像ファイルのサイズは5MB以下にしてください');
+        photoInput.classList.add('border-red-500');
     }
 
     // 写真掲載可否
@@ -883,4 +887,22 @@ function initEmailConfirmation() {
 
     emailInput.addEventListener('input', checkMatch);
     emailConfirmInput.addEventListener('input', checkMatch);
+}
+
+// ========================================
+// ファイルサイズ即時チェック
+// ========================================
+function initFileSizeCheck() {
+    const photoInput = document.getElementById('profileImage');
+    if (!photoInput) return;
+
+    photoInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('画像ファイルのサイズは5MB以下にしてください。\n現在のサイズ: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
+            e.target.value = ''; // 選択をクリア
+        }
+    });
 }
