@@ -900,6 +900,15 @@ function initFileSizeCheck() {
         const file = e.target.files[0];
         if (!file) return;
 
+        // HEIC/HEIFチェック
+        const fileName = file.name.toLowerCase();
+        if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) {
+            alert('HEIC形式の画像はサポートされていません。\nJPGまたはPNG形式の画像を選択してください。\n\niPhoneの場合は「設定 > カメラ > フォーマット」を「互換性優先」にするか、スクリーンショットを撮ってそれをアップロードしてください。');
+            e.target.value = '';
+            return;
+        }
+
+        // サイズチェック
         if (file.size > 5 * 1024 * 1024) {
             alert('画像ファイルのサイズは5MB以下にしてください。\n現在のサイズ: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
             e.target.value = ''; // 選択をクリア
