@@ -40,6 +40,9 @@
   <!-- メインフォーム -->
   <main class="form-container max-w-2xl mx-auto px-4 py-6">
     <form id="applicationForm" novalidate>
+      <!-- LINE用户信息（LIFF用） -->
+      <input type="hidden" name="lineUserId" id="lineUserId">
+      <input type="hidden" name="lineDisplayName" id="lineDisplayName">
 
       <!-- セクション1: 基本情報 -->
       <section class="form-section p-6 mb-6">
@@ -405,6 +408,8 @@
   </div>
 
   <!-- Scripts -->
+  <!-- LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="config.js"></script>
   <script src="script.js"></script>
 </body>

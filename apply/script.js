@@ -46,7 +46,38 @@ document.addEventListener('DOMContentLoaded', () => {
     updateEarlyBirdBanner();
     updateOptionsUI();
     calculatePrice();
+
+    // LIFF初期化
+    initLiff();
 });
+
+// ========================================
+// LIFF (LINE Front-end Framework)
+// ========================================
+async function initLiff() {
+    // LIFF IDが設定されていない場合はスキップ（通常のブラウザ動作）
+    if (!CONFIG.liffId) return;
+
+    try {
+        await liff.init({ liffId: CONFIG.liffId });
+
+        // LINE内ブラウザ、または外部ブラウザでログイン済みの場合
+        if (liff.isLoggedIn()) {
+            const profile = await liff.getProfile();
+
+            // 隠しフィールドにセット
+            document.getElementById('lineUserId').value = profile.userId;
+            document.getElementById('lineDisplayName').value = profile.displayName;
+
+            console.log('LIFF initialized. User:', profile.displayName);
+        } else {
+            // 外部ブラウザで未ログインの場合は何もしない（強制ログインはさせない）
+            console.log('LIFF initialized but not logged in.');
+        }
+    } catch (err) {
+        console.error('LIFF initialization failed', err);
+    }
+}
 
 /**
  * 早割バナーの表示/非表示
@@ -739,6 +770,10 @@ async function submitForm() {
             }
         });
         formData.append('snsLinks', JSON.stringify(snsLinks));
+
+        // LIFFデータ
+        formData.append('lineUserId', document.getElementById('lineUserId').value);
+        formData.append('lineDisplayName', document.getElementById('lineDisplayName').value);
 
         // APIへ送信
         const response = await fetch(CONFIG.workerUrl, {

@@ -233,7 +233,8 @@ function saveToSpreadsheet(data, calculationResult) {
       'SNSリンク', '電源', '追加椅子', '追加スタッフ',
       'スタンプラリー景品', '景品内容', '会員',
       '懇親会', '懇親会人数', '二次会', '二次会人数',
-      '規約同意', '備考', '合計金額', 'プロフィール画像URL'
+      '規約同意', '備考', '合計金額', 'プロフィール画像URL',
+      'LINE User ID', 'LINE 表示名'
     ]);
   }
   
@@ -266,7 +267,10 @@ function saveToSpreadsheet(data, calculationResult) {
     data.agreeTerms ? '同意' : '',
     data.notes || '',
     calculationResult.totalFee,
-    data.profileImageUrl || ''
+    calculationResult.totalFee,
+    data.profileImageUrl || '',
+    data.lineUserId || '',
+    data.lineDisplayName || ''
   ]);
 }
 
@@ -314,7 +318,7 @@ function sendConfirmationEmail(data, isMember, calculationResult) {
     {
       htmlBody: htmlBody,
       replyTo: CONFIG.REPLY_TO_EMAIL,
-      name: 'ぶち癒やしフェスタin東京 事務局'
+      name: 'ぶち癒やしフェスタin東京事務局'
     }
   );
 }
@@ -332,13 +336,21 @@ function sendAdminNotification(data, calculationResult) {
 お名前: ${data.name}
 ふりがな: ${data.furigana}
 ご住所: ${data.address}
+ご住所: ${data.address}
 メール: ${data.email}
+LINE: ${data.lineDisplayName ? `${data.lineDisplayName} (IDあり)` : '未連携'}
 
 ■ 出展情報
 出展名: ${data.exhibitorName}
 カテゴリ: ${data.category}
 ブース: ${data.boothName}
+ブース: ${data.boothName}
 持ち込み物品: ${data.equipment || 'なし'}
+出展メニュー名:
+${data.menuName}
+自己紹介:
+${data.selfIntro}
+一言PR: ${data.shortPR}
 
 ■ カタログ掲載画像
 画像URL: ${data.profileImageUrl || '取得失敗'}
@@ -370,7 +382,9 @@ ${data.notes || 'なし'}
 申込日時: ${data.submittedAt}
   `.trim();
   
-  GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, body);
+  GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, body, {
+    name: 'ぶち癒やしフェスタin東京事務局'
+  });
 }
 
 // ========================================
