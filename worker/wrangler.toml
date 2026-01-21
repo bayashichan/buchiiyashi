@@ -1,0 +1,13 @@
+name = "buchiiyashi-festa-form"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# 環境変数（デプロイ時に設定）
+[vars]
+GAS_URL = "YOUR_GAS_WEB_APP_URL"
+R2_PUBLIC_URL = "YOUR_R2_PUBLIC_URL"
+
+# R2バケットバインディング
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "buchiiyashi-images"

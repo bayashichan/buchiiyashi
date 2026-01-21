@@ -1,0 +1,499 @@
+/**
+ * ぶち癒しフェスタ東京 カスタムスタイル
+ * Orange & Friendly テーマ
+ */
+
+/* ベースカラー変数 */
+:root {
+  --primary: #f97316;
+  --primary-dark: #ea580c;
+  --primary-light: #fb923c;
+  --accent: #fbbf24;
+  --bg-warm: #fff7ed;
+  --bg-cream: #fffbeb;
+  --text-dark: #1f2937;
+  --text-muted: #6b7280;
+  --success: #22c55e;
+  --error: #ef4444;
+  --warning: #f59e0b;
+}
+
+/* 全体レイアウト */
+body {
+  background: linear-gradient(135deg, var(--bg-warm) 0%, var(--bg-cream) 100%);
+  min-height: 100vh;
+  font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+}
+
+/* ヘッダー */
+.header-gradient {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+}
+
+/* フォームセクション */
+.form-section {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.3s ease;
+}
+
+.form-section:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.section-title {
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 1.125rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--primary-light);
+  margin-bottom: 1rem;
+}
+
+/* 入力フィールド */
+.input-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+
+.input-field::placeholder {
+  color: #9ca3af;
+}
+
+/* ラベル */
+.input-label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 0.5rem;
+}
+
+.input-label .required {
+  color: var(--error);
+  margin-left: 0.25rem;
+}
+
+/* アコーディオン（ブース選択） */
+.accordion-header {
+  background: linear-gradient(135deg, var(--bg-warm) 0%, white 100%);
+  border: 2px solid var(--primary-light);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.accordion-header:hover {
+  background: var(--bg-warm);
+  border-color: var(--primary);
+}
+
+.accordion-header.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.accordion-icon {
+  transition: transform 0.3s ease;
+}
+
+.accordion-header.active .accordion-icon {
+  transform: rotate(180deg);
+}
+
+.accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.accordion-content.open {
+  max-height: 500px;
+}
+
+/* ブース選択ラジオボタン */
+.booth-option {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.booth-option:hover {
+  border-color: var(--primary-light);
+  background: var(--bg-warm);
+}
+
+.booth-option.selected {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, var(--bg-warm) 0%, white 100%);
+}
+
+.booth-option input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--primary);
+}
+
+.booth-price {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.booth-price-early {
+  font-size: 0.75rem;
+  color: var(--success);
+}
+
+/* オプション入力 */
+.option-group {
+  background: var(--bg-warm);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 0.5rem 0;
+}
+
+.option-group.hidden {
+  display: none;
+}
+
+/* セッション禁止アラート */
+.session-warning {
+  background: #fef2f2;
+  border: 2px solid var(--error);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  color: var(--error);
+  display: none;
+}
+
+.session-warning.visible {
+  display: block;
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-5px);
+  }
+
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+/* 料金表示フッター（Sticky） */
+.price-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+  z-index: 50;
+}
+
+.total-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.price-breakdown {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* 送信ボタン */
+.submit-btn {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  font-weight: 700;
+  font-size: 1.125rem;
+  padding: 1rem 2rem;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px -1px rgba(249, 115, 22, 0.4);
+}
+
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 10px -1px rgba(249, 115, 22, 0.5);
+}
+
+.submit-btn:active {
+  transform: translateY(0);
+}
+
+.submit-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ローディング */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.loading-overlay.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid white;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 早割バッジ */
+.early-bird-badge {
+  background: linear-gradient(135deg, var(--success) 0%, #16a34a 100%);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  display: inline-block;
+}
+
+/* カテゴリ選択 */
+.category-btn {
+  padding: 0.75rem 1.5rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 9999px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.category-btn:hover {
+  border-color: var(--primary-light);
+}
+
+.category-btn.selected {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* テキストエリア */
+textarea.input-field {
+  resize: vertical;
+  min-height: 100px;
+}
+
+/* カウンター */
+.char-counter {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.char-counter.over {
+  color: var(--error);
+  font-weight: 700;
+}
+
+/* チェックボックス・ラジオ */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.checkbox-label input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--primary);
+}
+
+/* 数量入力 */
+.quantity-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.quantity-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 2px solid var(--primary);
+  border-radius: 0.5rem;
+  background: white;
+  color: var(--primary);
+  font-size: 1.25rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quantity-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.quantity-btn:disabled {
+  border-color: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.quantity-value {
+  width: 3rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* 懇親会セクション */
+.party-section {
+  background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%);
+  border: 2px solid var(--accent);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+/* 規約ボックス */
+.terms-box {
+  background: #f3f4f6;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+/* SNSバッジ */
+.sns-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #e5e7eb;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.sns-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 住所検索ボタン */
+.address-search-btn {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.address-search-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(249, 115, 22, 0.4);
+}
+
+.address-search-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.address-search-btn.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* レスポンシブ調整 */
+@media (max-width: 640px) {
+  .form-section {
+    border-radius: 0.75rem;
+    margin: 0.5rem;
+    padding: 1rem;
+  }
+
+  .price-footer {
+    padding: 0.75rem;
+  }
+
+  .total-price {
+    font-size: 1.25rem;
+  }
+
+  .submit-btn {
+    width: auto;
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+  }
+
+  .price-breakdown {
+    font-size: 0.75rem;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* フォーム下部のパディング（Sticky フッター対策）- 増加 */
+.form-container {
+  padding-bottom: 160px;
+}

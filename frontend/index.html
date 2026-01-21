@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>出展申し込みフォーム | ぶち癒しフェスタ東京</title>
+  <meta name="description" content="ぶち癒しフェスタ東京の出展者様向け申し込みフォームです。">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- ローディングオーバーレイ -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- ヘッダー -->
+  <header class="header-gradient text-white py-6 px-4 text-center">
+    <h1 class="text-2xl md:text-3xl font-bold mb-2">🌸 ぶち癒しフェスタ東京 🌸</h1>
+    <p class="text-lg opacity-90">出展申し込みフォーム</p>
+    <div id="earlyBirdBanner" class="mt-3">
+      <span class="early-bird-badge">🎉 早割期間中！5/31まで</span>
+    </div>
+  </header>
+
+  <!-- メインフォーム -->
+  <main class="form-container max-w-2xl mx-auto px-4 py-6">
+    <form id="applicationForm" novalidate>
+
+      <!-- セクション1: 基本情報 -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">📝 1. 基本情報</h2>
+
+        <div class="space-y-4">
+          <div>
+            <label class="input-label">お名前<span class="required">*</span></label>
+            <input type="text" name="name" class="input-field" placeholder="山田 花子" required>
+          </div>
+
+          <div>
+            <label class="input-label">ふりがな<span class="required">*</span></label>
+            <input type="text" name="furigana" class="input-field" placeholder="やまだ はなこ" required>
+          </div>
+
+          <div>
+            <label class="input-label">郵便番号<span class="required">*</span></label>
+            <div class="flex gap-2">
+              <input type="text" name="postalCode" id="postalCode" class="input-field w-32" placeholder="123-4567"
+                maxlength="8" required>
+              <button type="button" id="searchAddressBtn" class="address-search-btn" onclick="searchAddress()">
+                住所検索
+              </button>
+            </div>
+            <p id="postalCodeError" class="text-xs text-red-500 mt-1 hidden">郵便番号が見つかりません</p>
+          </div>
+
+          <div>
+            <label class="input-label">ご住所<span class="required">*</span></label>
+            <input type="text" name="address" id="addressInput" class="input-field" placeholder="東京都〇〇区〇〇1-2-3"
+              required>
+            <p class="text-xs text-gray-500 mt-1">※ 郵便番号入力後、番地以降を追記してください</p>
+          </div>
+
+          <div>
+            <label class="input-label">メールアドレス<span class="required">*</span></label>
+            <input type="email" name="email" id="emailInput" class="input-field" placeholder="example@email.com"
+              required>
+          </div>
+
+          <div>
+            <label class="input-label">メールアドレス（確認）<span class="required">*</span></label>
+            <input type="email" name="emailConfirm" id="emailConfirmInput" class="input-field"
+              placeholder="もう一度入力してください" required>
+            <p id="emailMatchError" class="text-xs text-red-500 mt-1 hidden">メールアドレスが一致しません</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- セクション2: 出展内容 -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">✨ 2. 出展内容</h2>
+
+        <div class="space-y-4">
+          <div>
+            <label class="input-label">出展名（セラピスト名／屋号）<span class="required">*</span></label>
+            <input type="text" name="exhibitorName" class="input-field" placeholder="ヒーリングサロン〇〇" required>
+          </div>
+
+          <!-- 出展カテゴリ -->
+          <div>
+            <label class="input-label">出展カテゴリ<span class="required">*</span></label>
+            <div id="categoryButtons" class="flex flex-wrap gap-2 mt-2">
+              <!-- カテゴリボタンはJSで生成 -->
+            </div>
+            <input type="hidden" name="category" id="categoryInput" required>
+          </div>
+
+          <!-- セッション禁止警告 -->
+          <div id="sessionWarning" class="session-warning">
+            ⚠️ <strong>ご注意</strong>: 選択されたブースでは「占い・スピリチュアル」「ボディケア・美容」のセッションを行うことができません。物販・飲食のみの出展となります。
+          </div>
+
+          <!-- ブース選択 -->
+          <div>
+            <label class="input-label">出展ブースタイプ<span class="required">*</span></label>
+            <div id="boothAccordion" class="space-y-2 mt-2">
+              <!-- ブースアコーディオンはJSで生成 -->
+            </div>
+            <input type="hidden" name="boothId" id="boothIdInput" required>
+          </div>
+
+          <!-- ボディケアブース用：持ち込み物品 -->
+          <div id="equipmentSection" class="option-group hidden">
+            <label class="input-label">ボディケアブース持ち込み物品</label>
+            <textarea name="equipment" class="input-field" rows="2" placeholder="施術ベッド、タオル、マッサージオイル など"></textarea>
+            <p class="text-xs text-gray-500 mt-1">※ ボディケアブースをご利用の方はご記入ください</p>
+          </div>
+
+          <div>
+            <label class="input-label">出展メニュー名<span class="required">*</span></label>
+            <textarea name="menuName" class="input-field" rows="3" maxlength="100" placeholder="タロット占い、オーラリーディング など"
+              required></textarea>
+            <div class="char-counter"><span id="menuNameCount">0</span>/100</div>
+          </div>
+
+          <div>
+            <label class="input-label">自己紹介<span class="required">*</span></label>
+            <textarea name="selfIntro" class="input-field" rows="5" maxlength="200"
+              placeholder="あなたのプロフィールやセラピストとしての経験をお書きください" required></textarea>
+            <div class="char-counter"><span id="selfIntroCount">0</span>/200</div>
+          </div>
+
+          <div>
+            <label class="input-label">一言PR<span class="required">*</span></label>
+            <input type="text" name="shortPR" class="input-field" maxlength="35" placeholder="心を解きほぐす癒しをお届けします♪"
+              required>
+            <div class="char-counter"><span id="shortPRCount">0</span>/35</div>
+          </div>
+
+          <div>
+            <label class="input-label">ご自身の写真（正方形）<span class="required">*</span></label>
+            <input type="file" name="profileImage" id="profileImage" accept="image/*" class="input-field" required>
+            <p class="text-xs text-gray-500 mt-1">※ JPG/PNG 形式、5MB以下、正方形推奨</p>
+          </div>
+
+          <div>
+            <label class="input-label">上記写真のSNS投稿への掲載<span class="required">*</span></label>
+            <div class="flex gap-4 mt-2">
+              <label class="checkbox-label">
+                <input type="radio" name="photoPermission" value="可" required> 可
+              </label>
+              <label class="checkbox-label">
+                <input type="radio" name="photoPermission" value="不可"> 不可
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- セクション3: SNSリンク -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">🔗 3. SNSリンク</h2>
+        <p class="text-sm text-gray-600 mb-4">URLを入力すると自動でSNS種別を判別します</p>
+
+        <div id="snsLinksContainer" class="space-y-3">
+          <div class="sns-link-row flex gap-2">
+            <span class="sns-badge" data-index="0">未入力</span>
+            <input type="url" name="snsLink1" class="input-field flex-1 sns-input" data-index="0"
+              placeholder="https://...">
+          </div>
+        </div>
+
+        <button type="button" id="addSnsBtn" class="mt-3 text-orange-500 font-medium hover:underline">
+          ＋ SNSリンクを追加
+        </button>
+      </section>
+
+      <!-- セクション4: オプション・備品 -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">⚙️ 4. オプション・備品</h2>
+
+        <!-- 電源 -->
+        <div id="optionPower" class="option-group">
+          <label class="input-label">コンセント使用（500円）</label>
+          <div class="flex gap-4 mt-2">
+            <label class="checkbox-label">
+              <input type="radio" name="usePower" value="1"> はい
+            </label>
+            <label class="checkbox-label">
+              <input type="radio" name="usePower" value="0" checked> いいえ
+            </label>
+          </div>
+        </div>
+
+        <!-- 追加椅子 -->
+        <div id="optionChairs" class="option-group hidden">
+          <label class="input-label">椅子の追加（@100円/脚）</label>
+          <div class="flex gap-4 mt-2">
+            <label class="checkbox-label">
+              <input type="radio" name="wantChairs" value="1" onchange="toggleChairsCount()"> はい
+            </label>
+            <label class="checkbox-label">
+              <input type="radio" name="wantChairs" value="0" checked onchange="toggleChairsCount()"> いいえ
+            </label>
+          </div>
+          <div id="chairsCountSection" class="mt-3 hidden">
+            <div class="quantity-input">
+              <button type="button" class="quantity-btn" onclick="adjustQuantity('chairs', -1)">−</button>
+              <span id="chairsValue" class="quantity-value">1</span>
+              <button type="button" class="quantity-btn" onclick="adjustQuantity('chairs', 1)">＋</button>
+              <span class="text-sm text-gray-500 ml-2">最大 <span id="chairsMax">0</span> 脚</span>
+            </div>
+          </div>
+          <input type="hidden" name="extraChairs" id="extraChairsInput" value="0">
+        </div>
+
+        <!-- 追加スタッフ -->
+        <div id="optionStaff" class="option-group hidden">
+          <label class="input-label">参加人数の追加（@1,000円/人）</label>
+          <div class="flex gap-4 mt-2">
+            <label class="checkbox-label">
+              <input type="radio" name="wantStaff" value="1" onchange="toggleStaffCount()"> はい
+            </label>
+            <label class="checkbox-label">
+              <input type="radio" name="wantStaff" value="0" checked onchange="toggleStaffCount()"> いいえ
+            </label>
+          </div>
+          <div id="staffCountSection" class="mt-3 hidden">
+            <div class="quantity-input">
+              <button type="button" class="quantity-btn" onclick="adjustQuantity('staff', -1)">−</button>
+              <span id="staffValue" class="quantity-value">1</span>
+              <button type="button" class="quantity-btn" onclick="adjustQuantity('staff', 1)">＋</button>
+              <span class="text-sm text-gray-500 ml-2">最大 <span id="staffMax">0</span> 名</span>
+            </div>
+          </div>
+          <input type="hidden" name="extraStaff" id="extraStaffInput" value="0">
+        </div>
+
+        <p id="noOptionsMessage" class="text-gray-500 text-sm mt-2">※ 選択されたブースでは追加オプションはありません</p>
+      </section>
+
+      <!-- セクション5: 企画・協会確認 -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">🎁 5. 企画・協会確認</h2>
+
+        <div class="space-y-4">
+          <div>
+            <label class="input-label">スタンプラリー景品提供</label>
+            <div class="flex gap-4 mt-2">
+              <label class="checkbox-label">
+                <input type="radio" name="stampRallyPrize" value="ある" onchange="togglePrizeInput()"> ある
+              </label>
+              <label class="checkbox-label">
+                <input type="radio" name="stampRallyPrize" value="ない" checked onchange="togglePrizeInput()"> ない
+              </label>
+            </div>
+            <div id="prizeInputSection" class="mt-3 hidden">
+              <input type="text" name="prizeContent" class="input-field" placeholder="景品内容を入力してください">
+            </div>
+          </div>
+
+          <div>
+            <label class="input-label">アーキエンジェルハピネス協会会員ですか？</label>
+            <div class="flex gap-4 mt-2">
+              <label class="checkbox-label">
+                <input type="radio" name="isMember" value="1"> はい
+              </label>
+              <label class="checkbox-label">
+                <input type="radio" name="isMember" value="0" checked> いいえ
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- セクション6: 懇親会・二次会 -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">🎉 6. 懇親会・二次会</h2>
+
+        <!-- 懇親会 -->
+        <div class="party-section mb-4">
+          <label class="input-label">懇親会の出欠（1名5,000円）</label>
+          <div class="flex gap-4 mt-2">
+            <label class="checkbox-label">
+              <input type="radio" name="partyAttend" value="出席" onchange="togglePartyCount()"> 出席
+            </label>
+            <label class="checkbox-label">
+              <input type="radio" name="partyAttend" value="欠席" checked onchange="togglePartyCount()"> 欠席
+            </label>
+          </div>
+
+          <div id="partyCountSection" class="mt-3 hidden">
+            <label class="input-label text-sm">参加人数</label>
+            <div class="quantity-input mt-2">
+              <button type="button" class="quantity-btn" onclick="adjustPartyCount('party', -1)">−</button>
+              <span id="partyValue" class="quantity-value">1</span>
+              <button type="button" class="quantity-btn" onclick="adjustPartyCount('party', 1)">＋</button>
+            </div>
+            <input type="hidden" name="partyCount" id="partyCountInput" value="0">
+          </div>
+        </div>
+
+        <!-- 二次会 -->
+        <div class="party-section">
+          <label class="input-label">二次会の出欠<span class="text-xs text-gray-500 ml-2">※費用は現場徴収</span></label>
+          <div class="flex gap-4 mt-2">
+            <label class="checkbox-label">
+              <input type="radio" name="secondaryPartyAttend" value="出席" onchange="toggleSecondaryPartyCount()"> 出席
+            </label>
+            <label class="checkbox-label">
+              <input type="radio" name="secondaryPartyAttend" value="欠席" checked onchange="toggleSecondaryPartyCount()">
+              欠席
+            </label>
+          </div>
+
+          <div id="secondaryPartyCountSection" class="mt-3 hidden">
+            <label class="input-label text-sm">参加人数</label>
+            <div class="quantity-input mt-2">
+              <button type="button" class="quantity-btn" onclick="adjustPartyCount('secondary', -1)">−</button>
+              <span id="secondaryValue" class="quantity-value">1</span>
+              <button type="button" class="quantity-btn" onclick="adjustPartyCount('secondary', 1)">＋</button>
+            </div>
+            <input type="hidden" name="secondaryPartyCount" id="secondaryPartyCountInput" value="0">
+          </div>
+        </div>
+      </section>
+
+      <!-- セクション7: 規約・その他 -->
+      <section class="form-section p-6 mb-6">
+        <h2 class="section-title">📋 7. 規約・その他</h2>
+
+        <div class="space-y-4">
+          <div class="terms-box">
+            <label class="checkbox-label">
+              <input type="checkbox" name="agreeTerms" required>
+              <span><a href="#" class="text-orange-500 underline"
+                  onclick="showTerms(); return false;">出展規約</a>に同意します<span class="required">*</span></span>
+            </label>
+          </div>
+
+          <div>
+            <label class="input-label">質問・備考欄</label>
+            <textarea name="notes" class="input-field" rows="3" placeholder="ご質問やご要望がありましたらご記入ください"></textarea>
+          </div>
+        </div>
+      </section>
+
+    </form>
+  </main>
+
+  <!-- Sticky フッター（料金表示） -->
+  <footer class="price-footer">
+    <div class="max-w-2xl mx-auto flex items-center justify-between">
+      <div>
+        <div class="price-breakdown" id="priceBreakdown">ブースを選択してください</div>
+        <div class="total-price">合計: <span id="totalPrice">¥0</span></div>
+      </div>
+      <button type="button" id="submitBtn" class="submit-btn" onclick="submitForm()">
+        申し込む
+      </button>
+    </div>
+  </footer>
+
+  <!-- 完了モーダル -->
+  <div id="completeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-2xl p-8 max-w-md mx-4 text-center">
+      <div class="text-6xl mb-4">🎊</div>
+      <h2 class="text-2xl font-bold text-orange-500 mb-4">お申し込みありがとうございます！</h2>
+      <p class="text-gray-600 mb-6">
+        ご登録いただいたメールアドレスに確認メールをお送りしました。<br>
+        内容をご確認ください。
+      </p>
+      <button onclick="location.reload()" class="submit-btn">閉じる</button>
+    </div>
+  </div>
+
+  <!-- 規約モーダル -->
+  <div id="termsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white rounded-2xl p-6 max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
+      <h2 class="text-xl font-bold text-orange-500 mb-4">出展規約</h2>
+      <div class="text-sm text-gray-700 space-y-3">
+        <p>1. 出展者は、イベント当日の運営ルールに従ってください。</p>
+        <p>2. 出展料のお振込みは、お申し込み後1週間以内にお願いいたします。</p>
+        <p>3. キャンセルの場合は、開催日の1ヶ月前から50%、2週間前から100%のキャンセル料が発生します。</p>
+        <p>4. 出展内容は事前にご申告いただいた内容に限ります。</p>
+        <p>5. 他の出展者やお客様に迷惑となる行為は禁止です。</p>
+      </div>
+      <button onclick="hideTerms()" class="submit-btn mt-6 w-full">閉じる</button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="config.js"></script>
+  <script src="script.js"></script>
+</body>
+
+</html>

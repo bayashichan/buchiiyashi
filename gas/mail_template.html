@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <style>
+        body {
+            font-family: 'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        h2,
+        h3 {
+            color: #2c3e50;
+        }
+
+        .section-title {
+            background-color: #3498db;
+            color: #ffffff;
+            padding: 12px;
+            font-size: 1.2em;
+            margin: 20px 0 15px 0;
+            border-radius: 4px;
+        }
+
+        .price-title {
+            background-color: #e67e22;
+            color: #ffffff;
+            padding: 12px;
+            font-size: 1.2em;
+            margin: 20px 0 15px 0;
+            border-radius: 4px;
+        }
+
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .info-table th,
+        .info-table td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: left;
+        }
+
+        .info-table th {
+            background-color: #f2f2f2;
+            width: 30%;
+        }
+
+        .price-table {
+            width: 100%;
+            max-width: 450px;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .price-table td {
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+
+        .price-table .item {
+            text-align: left;
+        }
+
+        .price-table .price {
+            text-align: right;
+        }
+
+        .total-row {
+            font-weight: bold;
+            background-color: #f2f2f2;
+        }
+
+        .error-note {
+            border: 2px solid #c0392b;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 8px;
+            background-color: #fff5f5;
+        }
+
+        .important-note {
+            border: 2px solid #f39c12;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 8px;
+            background-color: #fef9e7;
+        }
+
+        .member-note {
+            border: 2px solid #27ae60;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+            background-color: #f0fff4;
+            color: #27ae60;
+            font-weight: bold;
+        }
+
+        .secondary-note {
+            border: 2px solid #9b59b6;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+            background-color: #f9f4fc;
+            color: #8e44ad;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 0.9em;
+            color: #777;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h3>
+            <?= formData['お名前'] ?> 様
+        </h3>
+        <p>この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。</p>
+        <p>以下の内容でお申し込みを受け付けました。</p>
+
+        <h3 class="section-title">■ お申し込み内容</h3>
+        <table class="info-table">
+            <tr>
+                <th>お名前</th>
+                <td>
+                    <?= formData['お名前'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>ふりがな</th>
+                <td>
+                    <?= formData['ふりがな'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>ご住所</th>
+                <td>
+                    <?= formData['ご住所'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>メールアドレス</th>
+                <td>
+                    <?= formData['メールアドレス'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>出展名</th>
+                <td>
+                    <?= formData['出展名（セラピスト名／屋号）'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>出展カテゴリ</th>
+                <td>
+                    <?= formData['出展カテゴリ'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>出展ブース</th>
+                <td>
+                    <?= formData['出展ブース'] ?>
+                </td>
+            </tr>
+            <? if (formData['持ち込み物品']) { ?>
+            <tr>
+                <th>持ち込み物品</th>
+                <td>
+                    <?= formData['持ち込み物品'] ?>
+                </td>
+            </tr>
+            <? } ?>
+            <tr>
+                <th>出展メニュー名</th>
+                <td>
+                    <?= formData['出展メニュー名']?.replace(/\n/g, '<br>') ?>
+                </td>
+            </tr>
+            <tr>
+                <th>自己紹介</th>
+                <td>
+                    <?= formData['自己紹介']?.replace(/\n/g, '<br>') ?>
+                </td>
+            </tr>
+            <tr>
+                <th>一言PR</th>
+                <td>
+                    <?= formData['一言PR'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>写真掲載許可</th>
+                <td>
+                    <?= formData['写真掲載許可'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>SNSリンク</th>
+                <td>
+                    <?= formData['SNSリンク']?.replace(/\n/g, '<br>') || '未入力' ?>
+                </td>
+            </tr>
+            <tr>
+                <th>オプション（参加人数追加）</th>
+                <td>
+                    <?= formData['追加スタッフ'] ? formData['追加スタッフ'] + '名' : 'なし' ?>
+                </td>
+            </tr>
+            <tr>
+                <th>オプション（椅子追加）</th>
+                <td>
+                    <?= formData['追加椅子'] ? formData['追加椅子'] + '脚' : 'なし' ?>
+                </td>
+            </tr>
+            <tr>
+                <th>オプション（コンセント）</th>
+                <td>
+                    <?= formData['コンセント使用'] || 'なし' ?>
+                </td>
+            </tr>
+            <tr>
+                <th>スタンプラリー景品</th>
+                <td>
+                    <?= formData['スタンプラリー景品'] ?>
+                    <?= formData['景品内容'] ? `（${formData['景品内容']}）` : '' ?>
+                </td>
+            </tr>
+            <tr>
+                <th>懇親会</th>
+                <td>
+                    <?= formData['懇親会の出欠'] ?>
+                    <?= (formData['懇親会の出欠'] === '出席' ? `(${formData['懇親会参加人数']}名)` : '') ?>
+                </td>
+            </tr>
+            <tr>
+                <th>二次会</th>
+                <td>
+                    <?= formData['二次会の出欠'] ?>
+                    <?= (formData['二次会の出欠'] === '出席' ? `(${formData['二次会参加人数']}名)` : '') ?>
+                </td>
+            </tr>
+            <? if (formData['備考']) { ?>
+            <tr>
+                <th>備考</th>
+                <td>
+                    <?= formData['備考']?.replace(/\n/g, '<br>') ?>
+                </td>
+            </tr>
+            <? } ?>
+        </table>
+
+        <h3 class="price-title">■ 料金内訳</h3>
+
+        <? if (isMember) { ?>
+        <div class="member-note">
+            アーキエンジェルハピネス協会会員様確認が取れましたので、<br>
+            会員様特別割引（-2,000円）を適用いたしました。
+        </div>
+        <? } ?>
+
+        <? if (calculationResult.hasInvalidOption) { ?>
+        <div class="error-note">
+            <strong>【ご確認ください】</strong><br>
+            ご選択いただいたオプション内容に、選択されたブースでは追加できない項目が含まれておりました。<br>
+            システム側で正しい上限値に基づいて再計算を行っておりますが、ご不明な点がございましたら事務局までお問い合わせください。
+        </div>
+        <? } ?>
+
+        <table class="price-table">
+            <? calculationResult.breakdown.forEach(item => { ?>
+            <tr>
+                <td class="item">
+                    <?= item.item ?>
+                </td>
+                <td class="price" style="<?= item.price < 0 ? 'color: #e74c3c; font-weight: bold;' : '' ?>">
+                    <?= item.price.toLocaleString() ?> 円
+                </td>
+            </tr>
+            <? }) ?>
+            <tr class="total-row">
+                <td class="item">お振込金額合計</td>
+                <td class="price">
+                    <?= calculationResult.totalFee.toLocaleString() ?> 円
+                </td>
+            </tr>
+        </table>
+
+        <? if (formData['二次会の出欠'] === '出席') { ?>
+        <div class="secondary-note">
+            <strong>【二次会について】</strong><br>
+            二次会（
+            <?= formData['二次会参加人数'] ?>名）にご参加いただきありがとうございます。<br>
+            二次会費用は当日現場にて直接徴収させていただきます。
+        </div>
+        <? } ?>
+
+        <div class="important-note">
+            <h4>【出展料振り込みについて】</h4>
+            <p>上記「お振込金額合計」の金額を、お申し込み後<strong>1週間以内</strong>に下記口座にお振り込みください。<br>
+                イベント開催日の一ヶ月前を切ってからのお申し込みの場合は、お申し込み後<strong>3日以内</strong>のお振り込みをお願い致します。</p>
+            <ul>
+                <li>ご入金確認をもって、正式な出展確定とさせていただきます。</li>
+                <li>お振込み名義がお申込者名と異なる場合は、事前に事務局 (
+                    <?= CONFIG.REPLY_TO_EMAIL ?>) までご連絡をお願いいたします。
+                </li>
+            </ul>
+            <p style="background-color: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                <strong>▼ お振込先</strong><br>
+                銀行名： 横浜銀行<br>
+                支店名： 小田原支店 (店番号: 721)<br>
+                口座種別： 普通預金<br>
+                口座番号： 1750130<br>
+                口座名義： 北川 阿弥（キタガワ アミ）
+            </p>
+        </div>
+
+        <h4>【キャンセルポリシー】</h4>
+        <ul>
+            <li>開催日の1ヶ月前からのキャンセル：出展料の50％</li>
+            <li>開催日の2週間前からのキャンセル：出展料の100％</li>
+            <li>上記以前のキャンセル：振込手数料を差し引いた全額を返金いたします。</li>
+        </ul>
+        <p>※キャンセルの場合は、必ず事務局 (
+            <?= CONFIG.REPLY_TO_EMAIL ?>) までご連絡ください。
+        </p>
+
+        <h4>【イベントに関するご案内】</h4>
+        <p>☆ 出展者情報（セラピスト名・一言PR・出展内容）の変更について</p>
+        <ul>
+            <li>ご変更がある場合は、お申し込みから<strong>1週間以内</strong>にご連絡をお願い致します。</li>
+            <li>変更を含めた最終締め切りは、<strong>イベント開催日の3週間前</strong>となります。</li>
+            <li>締切日を過ぎますと、当日配布資料への反映や変更ができない場合がございますのでご了承ください。</li>
+        </ul>
+
+        <div class="footer">
+            <p>ご不明な点がございましたら、本メールアドレスまでお気軽にお問い合わせください。<br>（お問い合わせの際は、お名前と出展名をお知らせください。）</p>
+            <p>
+                --------------------<br>
+                ぶち癒やしフェスタin東京 事務局<br>
+                Email:
+                <?= CONFIG.REPLY_TO_EMAIL ?><br>
+                Web: <a
+                    href="https://sites.google.com/view/buchiiyashi">https://sites.google.com/view/buchiiyashi</a><br>
+                --------------------
+            </p>
+        </div>
+    </div>
+</body>
+
+</html>
