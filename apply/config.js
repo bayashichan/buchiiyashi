@@ -28,7 +28,7 @@ const CONFIG = {
 
   // ■ システム設定
   workerUrl: "https://buchiiyashi-festa-form.buchiiyashi-festa.workers.dev",
-  liffId: "", // LIFF IDを設定してください（例: 1657000000-xxxxxxxxx）
+  liffId: "2008192225-T1E8T5yi", // LIFF IDを設定してください（例: 1657000000-xxxxxxxxx）
 
   // ■ ブース定義（完全版）
   // limits仕様: { maxStaff: 追加可能人数, maxChairs: 追加可能椅子数, allowPower: 電源可否 }
