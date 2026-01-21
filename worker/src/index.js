@@ -1,6 +1,6 @@
 /**
  * ぶち癒しフェスタ東京 Cloudflare Worker
- * フォームデータ中継・画像R2保存・GAS連携
+ * フォームデータ中継・画像Base64変換・GAS連携（Drive保存）
  */
 
 export default {
@@ -32,9 +32,11 @@ export default {
             // フォームデータを抽出
             for (const [key, value] of formData.entries()) {
                 if (key === 'profileImage' && value instanceof File && value.size > 0) {
-                    // 画像をR2に保存
-                    const imageUrl = await saveImageToR2(env, value);
-                    data['profileImageUrl'] = imageUrl;
+                    // 画像をBase64に変換してGASに送信
+                    const imageData = await convertImageToBase64(value);
+                    data['profileImageBase64'] = imageData.base64;
+                    data['profileImageMimeType'] = imageData.mimeType;
+                    data['profileImageName'] = imageData.fileName;
                 } else {
                     data[key] = value;
                 }
@@ -44,6 +46,13 @@ export default {
             data['submittedAt'] = new Date().toISOString();
 
             // GASへデータ送信
+            console.log('Sending data to GAS...');
+            if (data.profileImageBase64) {
+                console.log(`Image data present. Length: ${data.profileImageBase64.length}`);
+            } else {
+                console.log('No image data present.');
+            }
+
             const gasResponse = await fetch(env.GAS_URL, {
                 method: 'POST',
                 headers: {
@@ -52,11 +61,16 @@ export default {
                 body: JSON.stringify(data)
             });
 
+            console.log(`GAS response status: ${gasResponse.status}`);
+
             if (!gasResponse.ok) {
-                throw new Error('GAS request failed');
+                const errorText = await gasResponse.text();
+                console.error(`GAS request failed: ${gasResponse.status} ${errorText}`);
+                throw new Error(`GAS request failed: ${gasResponse.status}`);
             }
 
             const gasResult = await gasResponse.json();
+            console.log('GAS response JSON:', gasResult);
 
             return new Response(JSON.stringify({
                 success: true,
@@ -80,34 +94,38 @@ export default {
 };
 
 /**
- * 画像をR2に保存し、公開URLを返す
+ * 画像をBase64に変換
  */
-async function saveImageToR2(env, file) {
-    // ファイル名生成 (タイムスタンプ + ランダム文字列)
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    const extension = file.name.split('.').pop().toLowerCase();
-    const fileName = `profile_${timestamp}_${randomStr}.${extension}`;
-
-    // ファイルサイズチェック (5MB以下)
-    if (file.size > 5 * 1024 * 1024) {
-        throw new Error('Image file too large (max 5MB)');
+async function convertImageToBase64(file) {
+    // ファイルサイズチェック (8MB以下)
+    if (file.size > 8 * 1024 * 1024) {
+        throw new Error('Image file too large (max 8MB)');
     }
 
     // 許可された拡張子チェック
+    const extension = file.name.split('.').pop().toLowerCase();
     const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
     if (!allowedExtensions.includes(extension)) {
         throw new Error('Invalid image format');
     }
 
-    // R2に保存
-    const arrayBuffer = await file.arrayBuffer();
-    await env.R2_BUCKET.put(fileName, arrayBuffer, {
-        httpMetadata: {
-            contentType: file.type,
-        },
-    });
+    // ファイル名生成 (タイムスタンプ + ランダム文字列)
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    const fileName = `profile_${timestamp}_${randomStr}.${extension}`;
 
-    // 公開URL生成 (R2のカスタムドメインまたはパブリックバケット設定が必要)
-    return `${env.R2_PUBLIC_URL}/${fileName}`;
+    // Base64変換
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
+    return {
+        base64: base64,
+        mimeType: file.type,
+        fileName: fileName
+    };
 }

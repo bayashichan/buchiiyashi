@@ -1,6 +1,7 @@
 /**
  * ぶち癒しフェスタ東京 Google Apps Script
  * データ受信・金額計算・スプレッドシート保存・メール送信
+ * (Based on initial implementation by Claude, with image upload features)
  */
 
 // ========================================
@@ -8,12 +9,15 @@
 // ========================================
 const CONFIG = {
   // スプレッドシートID
-  SPREADSHEET_ID: 'YOUR_SPREADSHEET_ID',
+  SPREADSHEET_ID: '1iFQnMST_FOriiMRfPOZmkOTsBfS9ow55ploWXp1drkI',
   SHEET_NAME: '申込データ',
   
+  // Google Drive 画像保存フォルダID
+  DRIVE_FOLDER_ID: '12WmOIcUQPGxZEwl5jCoabLfeqmAdjQ4F',
+  
   // メール設定
-  ADMIN_EMAIL: 'admin@example.com',
-  REPLY_TO_EMAIL: 'info@buchiiyashifestatokyo.com',
+  ADMIN_EMAIL: 'buchi.iyashi.tokyo.info@gmail.com',
+  REPLY_TO_EMAIL: 'buchi.iyashi.tokyo.info@gmail.com',
   
   // 会員割引
   MEMBER_DISCOUNT: 2000,
@@ -52,6 +56,12 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     
+    // Base64画像をGoogle Driveに保存
+    if (data.profileImageBase64 && data.profileImageMimeType && data.profileImageName) {
+      const driveUrl = saveImageToDrive(data.profileImageBase64, data.profileImageMimeType, data.profileImageName);
+      data.profileImageUrl = driveUrl;
+    }
+    
     // 会員判定
     const isMember = data.isMember === '1';
     
@@ -80,43 +90,92 @@ function doPost(e) {
 }
 
 // ========================================
-// 料金計算（サーバーサイド、二次会は除外）
+// 画像をGoogle Driveに保存
+// ========================================
+function saveImageToDrive(base64Data, mimeType, fileName) {
+  try {
+    // Base64をBlobに変換
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
+    
+    // 保存先フォルダを取得
+    let folder;
+    try {
+      if (CONFIG.DRIVE_FOLDER_ID && CONFIG.DRIVE_FOLDER_ID !== 'YOUR_DRIVE_FOLDER_ID') {
+        folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+      }
+    } catch (e) {
+      console.warn('指定フォルダへのアクセスに失敗しました。代替フォルダを使用します。', e);
+    }
+
+    // 指定フォルダがない、またはアクセスできない場合は代替フォルダを使用
+    if (!folder) {
+      const folderName = 'ぶち癒しフェスタ申込画像_代替';
+      const folders = DriveApp.getFoldersByName(folderName);
+      if (folders.hasNext()) {
+        folder = folders.next();
+      } else {
+        folder = DriveApp.createFolder(folderName);
+      }
+    }
+    
+    // ファイルを保存
+    const file = folder.createFile(blob);
+    
+    // 公開リンク設定（誰でも閲覧可能）
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // 直接アクセス可能なURLを生成
+    const fileId = file.getId();
+    // プレビュー用URLではなく、表示用URLを使用
+    const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+    
+    return directUrl;
+    
+  } catch (error) {
+    console.error('Drive save error:', error);
+    // エラー内容を返す（デバッグ用）
+    return `Error: ${error.message}`;
+  }
+}
+
+// ========================================
+// 料金計算ロジック (Claude Original Logic)
 // ========================================
 function calculateFee(data, isMember) {
-  const booth = CONFIG.BOOTHS[data.boothId];
-  if (!booth) {
-    throw new Error('Invalid booth ID');
-  }
-  
-  const isEarlyBird = data.isEarlyBird === '1';
-  const breakdown = [];
   let totalFee = 0;
+  const breakdown = [];
   let hasInvalidOption = false;
   
-  // ブース料金
-  const boothPrice = isEarlyBird ? booth.earlyBird : booth.regular;
-  breakdown.push({ item: booth.name + (isEarlyBird ? '（早割）' : ''), price: boothPrice });
+  // ブース情報の取得・検証
+  const boothConfig = CONFIG.BOOTHS[data.boothId];
+  if (!boothConfig) {
+    throw new Error('Invalid booth ID selected');
+  }
+  
+  // ブース料金（早割判定）
+  const isEarlyBird = data.isEarlyBird === '1';
+  const boothPrice = isEarlyBird ? boothConfig.earlyBird : boothConfig.regular;
+  
+  breakdown.push({ item: boothConfig.name, price: boothPrice });
   totalFee += boothPrice;
   
-  // 追加スタッフ（上限チェック）
-  let extraStaff = parseInt(data.extraStaff) || 0;
-  if (extraStaff > booth.maxStaff) {
-    extraStaff = booth.maxStaff;
-    hasInvalidOption = true;
-  }
+  // オプション：追加スタッフ
+  const extraStaff = parseInt(data.extraStaff) || 0;
   if (extraStaff > 0) {
-    const staffCost = extraStaff * CONFIG.UNIT_PRICES.staff;
-    breakdown.push({ item: `追加スタッフ ${extraStaff}名`, price: staffCost });
-    totalFee += staffCost;
+    if (extraStaff > boothConfig.maxStaff) {
+      hasInvalidOption = true;
+    }
+    const staffFee = extraStaff * CONFIG.UNIT_PRICES.staff;
+    breakdown.push({ item: `追加スタッフ ${extraStaff}名`, price: staffFee });
+    totalFee += staffFee;
   }
   
-  // 追加椅子（上限チェック）
-  let extraChairs = parseInt(data.extraChairs) || 0;
-  if (extraChairs > booth.maxChairs) {
-    extraChairs = booth.maxChairs;
-    hasInvalidOption = true;
-  }
+  // オプション：追加椅子
+  const extraChairs = parseInt(data.extraChairs) || 0;
   if (extraChairs > 0) {
+    if (extraChairs > boothConfig.maxChairs) {
+      hasInvalidOption = true;
+    }
     const chairsCost = extraChairs * CONFIG.UNIT_PRICES.chair;
     breakdown.push({ item: `追加椅子 ${extraChairs}脚`, price: chairsCost });
     totalFee += chairsCost;
@@ -150,23 +209,7 @@ function calculateFee(data, isMember) {
 }
 
 // ========================================
-// SNSリンクをフォーマット
-// ========================================
-function formatSnsLinks(snsLinksJson) {
-  if (!snsLinksJson) return '未入力';
-  
-  try {
-    const links = JSON.parse(snsLinksJson);
-    if (!Array.isArray(links) || links.length === 0) return '未入力';
-    
-    return links.map(link => `${link.type}: ${link.url}`).join('\n');
-  } catch (e) {
-    return snsLinksJson;
-  }
-}
-
-// ========================================
-// スプレッドシート保存
+// スプレッドシート保存 (Claude Original Order)
 // ========================================
 function saveToSpreadsheet(data, calculationResult) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
@@ -192,7 +235,7 @@ function saveToSpreadsheet(data, calculationResult) {
     data.submittedAt,
     data.name,
     data.furigana,
-    data.address,
+    data.address, // フロントエンドからの住所そのもの
     data.email,
     data.exhibitorName,
     data.category,
@@ -224,7 +267,6 @@ function saveToSpreadsheet(data, calculationResult) {
 // 確認メール送信
 // ========================================
 function sendConfirmationEmail(data, isMember, calculationResult) {
-  // フォームデータをテンプレート用に変換
   const formData = {
     'お名前': data.name,
     'ふりがな': data.furigana,
@@ -241,17 +283,16 @@ function sendConfirmationEmail(data, isMember, calculationResult) {
     'SNSリンク': formatSnsLinks(data.snsLinks),
     '追加スタッフ': data.extraStaff,
     '追加椅子': data.extraChairs,
-    'コンセント使用': data.usePower === '1' ? '使用する' : null,
+    'コンセント使用': data.usePower === '1' ? 'あり' : '',
     'スタンプラリー景品': data.stampRallyPrize,
     '景品内容': data.prizeContent,
-    '懇親会の出欠': data.partyAttend || '欠席',
+    '懇親会の出欠': data.partyAttend,
     '懇親会参加人数': data.partyCount,
-    '二次会の出欠': data.secondaryPartyAttend || '欠席',
+    '二次会の出欠': data.secondaryPartyAttend,
     '二次会参加人数': data.secondaryPartyCount,
     '備考': data.notes
   };
   
-  // HTMLテンプレートを取得
   const template = HtmlService.createTemplateFromFile('mail_template');
   template.formData = formData;
   template.isMember = isMember;
@@ -260,10 +301,9 @@ function sendConfirmationEmail(data, isMember, calculationResult) {
   
   const htmlBody = template.evaluate().getContent();
   
-  // メール送信
   GmailApp.sendEmail(data.email, 
     '【ぶち癒やしフェスタin東京】出展お申し込み受付完了', 
-    '', // プレーンテキスト本文（HTML優先）
+    '',
     {
       htmlBody: htmlBody,
       replyTo: CONFIG.REPLY_TO_EMAIL,
@@ -293,6 +333,10 @@ function sendAdminNotification(data, calculationResult) {
 ブース: ${data.boothName}
 持ち込み物品: ${data.equipment || 'なし'}
 
+■ カタログ掲載画像
+画像URL: ${data.profileImageUrl || '取得失敗'}
+(画像データ受信: ${data.profileImageBase64 ? 'あり' : 'なし'})
+
 ■ オプション
 追加スタッフ: ${data.extraStaff || 0}名
 追加椅子: ${data.extraChairs || 0}脚
@@ -320,6 +364,19 @@ ${data.notes || 'なし'}
   `.trim();
   
   GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, body);
+}
+
+// ========================================
+// ユーティリティ
+// ========================================
+function formatSnsLinks(snsJson) {
+  try {
+    const links = JSON.parse(snsJson);
+    if (!Array.isArray(links) || links.length === 0) return 'なし';
+    return links.map(l => `${l.type}: ${l.url}`).join('\n');
+  } catch (e) {
+    return '（形式エラー）';
+  }
 }
 
 // ========================================
