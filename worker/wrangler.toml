@@ -4,8 +4,8 @@ compatibility_date = "2024-01-01"
 
 # 環境変数（デプロイ時に設定）
 [vars]
-GAS_URL = "YOUR_GAS_WEB_APP_URL"
-R2_PUBLIC_URL = "YOUR_R2_PUBLIC_URL"
+GAS_URL = "https://script.google.com/macros/s/AKfycbzjoA1ClbXURgas8tnlqtLy668rfMPQf7wX_ft_8Vo86pNeOFmXBI0kORblgRxdydwN/exec"
+R2_PUBLIC_URL = "https://pub-6f861e123523d4086e2cc5a9943e6c12.r2.dev"
 
 # R2バケットバインディング
 [[r2_buckets]]

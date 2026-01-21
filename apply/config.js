@@ -27,7 +27,7 @@ const CONFIG = {
   ],
 
   // ■ システム設定
-  workerUrl: "YOUR_CLOUDFLARE_WORKER_URL", // デプロイ後に書き換え
+  workerUrl: "https://buchiiyashi-festa-form.buchiiyashi-festa.workers.dev",
 
   // ■ ブース定義（完全版）
   // limits仕様: { maxStaff: 追加可能人数, maxChairs: 追加可能椅子数, allowPower: 電源可否 }
