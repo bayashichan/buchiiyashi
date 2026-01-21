@@ -58,7 +58,14 @@ function doPost(e) {
     
     // Base64画像をGoogle Driveに保存
     if (data.profileImageBase64 && data.profileImageMimeType && data.profileImageName) {
-      const driveUrl = saveImageToDrive(data.profileImageBase64, data.profileImageMimeType, data.profileImageName);
+      // ファイル名をカスタム生成: yyyyMMdd_HHmm_出展名.拡張子
+      const dateStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd_HHmm');
+      const ext = data.profileImageName.split('.').pop();
+      // 出展名からファイル名に使えない文字を除去
+      const safeName = (data.exhibitorName || 'unknown').replace(/[\\/:*?"<>|]/g, '_');
+      const newFileName = `${dateStr}_${safeName}.${ext}`;
+      
+      const driveUrl = saveImageToDrive(data.profileImageBase64, data.profileImageMimeType, newFileName);
       data.profileImageUrl = driveUrl;
     }
     

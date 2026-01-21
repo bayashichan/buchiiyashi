@@ -4,7 +4,7 @@
  */
 const CONFIG = {
   // ■ スケジュール設定
-  earlyBirdDeadline: "2026-05-31 23:59:59",
+  earlyBirdDeadline: "2025-10-31 23:59:59",
 
   // ■ 会員特典（ステルス適用：メール通知時に減額）
   memberDiscount: 2000,
