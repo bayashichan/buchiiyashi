@@ -3,7 +3,7 @@
  */
 
 // API Base URL (Worker)
-const API_BASE = 'https://buchiiyashi-festa-form.buchiiyashi-festa.workers.dev';
+const API_BASE = 'https://buchiiyashi-festa-form.wakaossan2001.workers.dev';
 
 // 状態管理
 let config = null;
