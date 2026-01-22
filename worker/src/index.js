@@ -26,19 +26,25 @@ export default {
         }
 
         try {
-            const formData = await request.formData();
-            const data = {};
 
-            // フォームデータを抽出
-            for (const [key, value] of formData.entries()) {
-                if (key === 'profileImage' && value instanceof File && value.size > 0) {
-                    // 画像をBase64に変換してGASに送信
-                    const imageData = await convertImageToBase64(value);
-                    data['profileImageBase64'] = imageData.base64;
-                    data['profileImageMimeType'] = imageData.mimeType;
-                    data['profileImageName'] = imageData.fileName;
-                } else {
-                    data[key] = value;
+            const contentType = request.headers.get('content-type') || '';
+            let data = {};
+
+            if (contentType.includes('application/json')) {
+                data = await request.json();
+            } else {
+                const formData = await request.formData();
+                // フォームデータを抽出
+                for (const [key, value] of formData.entries()) {
+                    if (key === 'profileImage' && value instanceof File && value.size > 0) {
+                        // 画像をBase64に変換してGASに送信
+                        const imageData = await convertImageToBase64(value);
+                        data['profileImageBase64'] = imageData.base64;
+                        data['profileImageMimeType'] = imageData.mimeType;
+                        data['profileImageName'] = imageData.fileName;
+                    } else {
+                        data[key] = value;
+                    }
                 }
             }
 

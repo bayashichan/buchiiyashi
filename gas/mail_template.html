@@ -193,13 +193,13 @@
             <tr>
                 <th>出展メニュー名</th>
                 <td>
-                    <?= formData['出展メニュー名']?.replace(/\n/g, '<br>') ?>
+                    <?= formData['出展メニュー名']?.replace(/\r?\n/g, '<br>') ?>
                 </td>
             </tr>
             <tr>
                 <th>自己紹介</th>
                 <td>
-                    <?= formData['自己紹介']?.replace(/\n/g, '<br>') ?>
+                    <?= formData['自己紹介']?.replace(/\r?\n/g, '<br>') ?>
                 </td>
             </tr>
             <tr>
@@ -356,7 +356,7 @@
         <div
             style="margin: 30px 0; padding: 20px; background: linear-gradient(135deg, #06C755 0%, #00B900 100%); border-radius: 12px; text-align: center;">
             <p style="color: #fff; font-size: 1.1em; margin-bottom: 15px; font-weight: bold;">
-                📱 出展者様向け情報をLINEでお届けします！
+                出展者様向け情報をLINEでお届けします！
             </p>
             <p style="color: #fff; font-size: 0.9em; margin-bottom: 15px;">
                 イベント準備の最新情報、重要なお知らせをいち早くお届け。<br>
@@ -364,7 +364,7 @@
             </p>
             <a href="https://lin.ee/uqhsDx3"
                 style="display: inline-block; background-color: #fff; color: #06C755; font-weight: bold; padding: 12px 30px; border-radius: 30px; text-decoration: none; font-size: 1em;">
-                ✨ 公式LINE登録はこちら ✨
+                ▼ 公式LINE登録はこちら ▼
             </a>
         </div>
 

@@ -35,7 +35,57 @@ const SNS_PATTERNS = [
 // ========================================
 // 初期化
 // ========================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // 1. 設定の読み込み (動的)
+    try {
+        const configParams = { action: 'getConfig' };
+        const response = await fetch(CONFIG.workerUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(configParams)
+        });
+
+        if (response.ok) {
+            const dynamicConfig = await response.json();
+
+            // 既存のCONFIGにマージ
+            // 1. トップレベルプロパティ
+            if (dynamicConfig.earlyBirdDeadline) CONFIG.earlyBirdDeadline = dynamicConfig.earlyBirdDeadline;
+            if (dynamicConfig.memberDiscount) CONFIG.memberDiscount = dynamicConfig.memberDiscount;
+            if (dynamicConfig.liffId) CONFIG.liffId = dynamicConfig.liffId;
+
+            // 2. UnitPrices
+            if (dynamicConfig.unitPrices) {
+                CONFIG.unitPrices = { ...CONFIG.unitPrices, ...dynamicConfig.unitPrices }; // 下位互換+UnitPricesのキー名は小文字始まりに注意（configConfig.jsはunitPrices/UNIT_PRICESどちら？）
+                // config.jsは unitPrices: { chair: ... } なのでOK
+            }
+
+            // 3. Booths (IDでマッチングして更新)
+            if (dynamicConfig.booths && Array.isArray(dynamicConfig.booths)) {
+                // 配列を再構築
+                const newBooths = CONFIG.booths.map(defBooth => {
+                    const dynBooth = dynamicConfig.booths.find(b => b.id === defBooth.id);
+                    if (dynBooth) {
+                        // 定義にあるブース：価格やSoldOut情報を上書き
+                        return {
+                            ...defBooth,
+                            prices: dynBooth.prices || defBooth.prices,
+                            limits: dynBooth.limits || defBooth.limits,
+                            soldOut: dynBooth.soldOut
+                        };
+                    }
+                    return defBooth;
+                });
+                CONFIG.booths = newBooths;
+            }
+
+            console.log('Dynamic Config loaded:', CONFIG);
+        }
+    } catch (e) {
+        console.warn('Failed to load dynamic config, using default.', e);
+    }
+
+    // 2. 通常の初期化
     initCategories();
     initBoothAccordion();
     initCharCounters();
@@ -157,6 +207,7 @@ function initBoothAccordion() {
         booths.forEach(booth => {
             const earlyPrice = booth.prices.earlyBird;
             const regularPrice = booth.prices.regular;
+            const isSoldOut = booth.soldOut; // 満枠フラグ
 
             // 通常価格と早割価格が同じ場合は通常価格を併記しない
             let priceDisplay;
@@ -170,11 +221,20 @@ function initBoothAccordion() {
                 priceDisplay = `¥${regularPrice.toLocaleString()}`;
             }
 
+            // 満枠表示
+            if (isSoldOut) {
+                priceDisplay = `<span class="text-red-500 font-bold">SOLD OUT</span>`;
+            }
+
             const option = document.createElement('label');
-            option.className = 'booth-option';
+            option.className = `booth-option ${isSoldOut ? 'opacity-50 cursor-not-allowed' : ''}`;
+            const radioHtml = isSoldOut
+                ? `<input type="radio" name="boothRadio" value="${booth.id}" disabled>`
+                : `<input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">`;
+
             option.innerHTML = `
-        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
-        <span class="ml-2 flex-1">${booth.name}</span>
+        ${radioHtml}
+        <span class="ml-2 flex-1">${isSoldOut ? '【満枠】' : ''}${booth.name}</span>
         <span class="booth-price">${priceDisplay}</span>
       `;
             content.appendChild(option);

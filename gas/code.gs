@@ -56,6 +56,29 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     
+    // アクション分岐
+    if (data.action === 'getConfig') {
+      return handleGetConfig();
+    }
+    if (data.action === 'saveConfig') {
+      return handleSaveConfig(data.payload);
+    }
+    
+    // 通常の申し込み処理 (action指定なし、またはaction='submit')
+    return handleApplicationSubmit(data);
+    
+  } catch (error) {
+    console.error('doPost error:', error);
+    return ContentService
+      .createTextOutput(JSON.stringify({ success: false, error: error.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ========================================
+// 申し込み処理 (元の処理を関数化)
+// ========================================
+function handleApplicationSubmit(data) {
     // Base64画像をGoogle Driveに保存
     if (data.profileImageBase64 && data.profileImageMimeType && data.profileImageName) {
       // ファイル名をカスタム生成: yyyyMMdd_HHmm_出展名.拡張子
@@ -72,7 +95,7 @@ function doPost(e) {
     // 会員判定
     const isMember = data.isMember === '1';
     
-    // 金額再計算（サーバーサイドで正確に計算、二次会は除外）
+    // 金額再計算（Dynamic Configを使用）
     const calculationResult = calculateFee(data, isMember);
     
     // スプレッドシートに保存
@@ -85,15 +108,12 @@ function doPost(e) {
     sendAdminNotification(data, calculationResult);
     
     return ContentService
-      .createTextOutput(JSON.stringify({ success: true }))
+      .createTextOutput(JSON.stringify({ 
+        success: true, 
+        message: 'Processing complete',
+        totalFee: calculationResult.totalFee
+      }))
       .setMimeType(ContentService.MimeType.JSON);
-      
-  } catch (error) {
-    console.error('doPost error:', error);
-    return ContentService
-      .createTextOutput(JSON.stringify({ success: false, error: error.message }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
 }
 
 // ========================================
@@ -148,71 +168,36 @@ function saveImageToDrive(base64Data, mimeType, fileName) {
 // ========================================
 // 料金計算ロジック (Claude Original Logic)
 // ========================================
-function calculateFee(data, isMember) {
-  let totalFee = 0;
-  const breakdown = [];
-  let hasInvalidOption = false;
-  
-  // ブース情報の取得・検証
-  const boothConfig = CONFIG.BOOTHS[data.boothId];
-  if (!boothConfig) {
-    throw new Error('Invalid booth ID selected');
-  }
-  
-  // ブース料金（早割判定）
-  const isEarlyBird = data.isEarlyBird === '1';
-  const boothPrice = isEarlyBird ? boothConfig.earlyBird : boothConfig.regular;
-  
-  breakdown.push({ item: boothConfig.name, price: boothPrice });
-  totalFee += boothPrice;
-  
-  // オプション：追加スタッフ
-  const extraStaff = parseInt(data.extraStaff) || 0;
-  if (extraStaff > 0) {
-    if (extraStaff > boothConfig.maxStaff) {
-      hasInvalidOption = true;
-    }
-    const staffFee = extraStaff * CONFIG.UNIT_PRICES.staff;
-    breakdown.push({ item: `追加スタッフ ${extraStaff}名`, price: staffFee });
-    totalFee += staffFee;
-  }
-  
-  // オプション：追加椅子
-  const extraChairs = parseInt(data.extraChairs) || 0;
-  if (extraChairs > 0) {
-    if (extraChairs > boothConfig.maxChairs) {
-      hasInvalidOption = true;
-    }
-    const chairsCost = extraChairs * CONFIG.UNIT_PRICES.chair;
-    breakdown.push({ item: `追加椅子 ${extraChairs}脚`, price: chairsCost });
-    totalFee += chairsCost;
-  }
-  
-  // 電源
-  if (data.usePower === '1') {
-    breakdown.push({ item: '電源使用', price: CONFIG.UNIT_PRICES.power });
-    totalFee += CONFIG.UNIT_PRICES.power;
-  }
-  
-  // 懇親会（二次会は現場徴収のため除外）
-  const partyCount = parseInt(data.partyCount) || 0;
-  if (partyCount > 0) {
-    const partyCost = partyCount * CONFIG.UNIT_PRICES.party;
-    breakdown.push({ item: `懇親会 ${partyCount}名`, price: partyCost });
-    totalFee += partyCost;
-  }
-  
-  // 会員割引（ステルス適用）
-  if (isMember) {
-    breakdown.push({ item: '会員割引', price: -CONFIG.MEMBER_DISCOUNT });
-    totalFee -= CONFIG.MEMBER_DISCOUNT;
-  }
-  
-  return {
-    breakdown: breakdown,
-    totalFee: totalFee,
-    hasInvalidOption: hasInvalidOption
+// ========================================
+// 料金計算 (ラッパー：Configを使用)
+// ========================================
+function calculateFee(data, isMember, config) {
+  // configが渡されていない場合は都度読み込む
+  if (!config) config = getConfig();
+   
+  // 整形 (デフォルト値はCONFIGから、もしくは適当な初期値)
+  const unitPrices = {
+    chair: Number((config.unitPrices && config.unitPrices.chair) || CONFIG.UNIT_PRICES.chair),
+    power: Number((config.unitPrices && config.unitPrices.power) || CONFIG.UNIT_PRICES.power),
+    staff: Number((config.unitPrices && config.unitPrices.staff) || CONFIG.UNIT_PRICES.staff),
+    party: Number((config.unitPrices && config.unitPrices.party) || CONFIG.UNIT_PRICES.party),
+    secondaryParty: Number((config.unitPrices && config.unitPrices.secondaryParty) || 3000)
   };
+  
+  const memberDiscount = Number(config.memberDiscount !== undefined ? config.memberDiscount : CONFIG.MEMBER_DISCOUNT);
+  
+  // 日付変換
+  let earlyBirdDeadline;
+  if (config.earlyBirdDeadline) {
+      earlyBirdDeadline = new Date(config.earlyBirdDeadline);
+  } else {
+      earlyBirdDeadline = new Date(CONFIG.earlyBirdDeadline || "2025-10-31 23:59:59");
+  }
+
+  // ロジック実行
+  const result = _calculateFeesLogic(data, isMember, config, unitPrices, memberDiscount, earlyBirdDeadline);
+  
+  return result;
 }
 
 // ========================================
@@ -445,4 +430,211 @@ function testDoPost() {
   
   const result = doPost(testData);
   console.log(result.getContent());
+}
+
+// ========================================
+// 設定管理機能
+// ========================================
+
+// 設定シート名
+const SHEET_CONFIG_GLOBAL = 'Config_Global';
+const SHEET_CONFIG_BOOTHS = 'Config_Booths';
+
+// 設定取得
+function handleGetConfig() {
+  const config = getConfig();
+  return ContentService.createTextOutput(JSON.stringify(config))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// 設定保存
+function handleSaveConfig(newConfig) {
+  saveConfigToSheet(newConfig);
+  return ContentService.createTextOutput(JSON.stringify({ success: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// シートから設定を読み込む（なければデフォルト作成）
+function getConfig() {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  ensureConfigSheets(ss);
+  
+  // 1. グローバル設定
+  const globalSheet = ss.getSheetByName(SHEET_CONFIG_GLOBAL);
+  const globalData = globalSheet.getDataRange().getValues();
+  const globalConfig = {};
+  globalData.forEach(row => {
+    if (row[0]) globalConfig[row[0]] = row[1];
+  });
+  
+  // 2. ブース設定
+  const boothSheet = ss.getSheetByName(SHEET_CONFIG_BOOTHS);
+  const boothData = boothSheet.getDataRange().getValues();
+  
+  if (boothData.length < 2) {
+      return { ...globalConfig, booths: [] };
+  }
+
+  const headers = boothData[0];
+  const booths = [];
+  
+  for (let i = 1; i < boothData.length; i++) {
+    const row = boothData[i];
+    const booth = {};
+    headers.forEach((header, index) => {
+      booth[header] = row[index];
+    });
+    if (booth.limits) {
+        try { booth.limits = JSON.parse(booth.limits); } catch(e) {}
+    }
+    if (booth.prices) {
+        try { booth.prices = JSON.parse(booth.prices); } catch(e) {}
+    }
+    booths.push(booth);
+  }
+  
+  return {
+    ...globalConfig,
+    booths: booths
+  };
+}
+
+// シートに設定を保存
+function saveConfigToSheet(config) {
+  const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+  ensureConfigSheets(ss);
+  
+  // 1. グローバル設定更新
+  const globalSheet = ss.getSheetByName(SHEET_CONFIG_GLOBAL);
+  globalSheet.clear();
+  const globalRows = [];
+  
+  globalRows.push(['Key', 'Value', 'Description']);
+  globalRows.push(['earlyBirdDeadline', config.earlyBirdDeadline, '早割期限']);
+  globalRows.push(['memberDiscount', config.memberDiscount, '会員割引額']);
+  globalRows.push(['liffId', config.liffId, 'LIFF ID']);
+  
+  if (config.unitPrices) {
+      globalRows.push(['unitPrices_chair', config.unitPrices.chair, '追加椅子単価']);
+      globalRows.push(['unitPrices_power', config.unitPrices.power, '電源使用料']);
+      globalRows.push(['unitPrices_staff', config.unitPrices.staff, '追加スタッフ単価']);
+      globalRows.push(['unitPrices_party', config.unitPrices.party, '懇親会費']);
+      globalRows.push(['unitPrices_secondaryParty', config.unitPrices.secondaryParty, '二次会費']);
+  }
+  
+  globalSheet.getRange(1, 1, globalRows.length, 3).setValues(globalRows);
+
+  // 2. ブース設定更新
+  const boothSheet = ss.getSheetByName(SHEET_CONFIG_BOOTHS);
+  boothSheet.clear();
+  
+  if (config.booths && config.booths.length > 0) {
+    const headerRow = ['id', 'name', 'location', 'prices', 'limits', 'soldOut', 'prohibitSession'];
+    const boothRows = [headerRow];
+    
+    config.booths.forEach(b => {
+      boothRows.push([
+        b.id,
+        b.name,
+        b.location,
+        JSON.stringify(b.prices),
+        JSON.stringify(b.limits),
+        b.soldOut ? true : false,
+        b.prohibitSession ? true : false
+      ]);
+    });
+    
+    boothSheet.getRange(1, 1, boothRows.length, headerRow.length).setValues(boothRows);
+  }
+}
+
+// 設定用シート初期化
+function ensureConfigSheets(ss) {
+  if (!ss.getSheetByName(SHEET_CONFIG_GLOBAL)) {
+    ss.insertSheet(SHEET_CONFIG_GLOBAL);
+  }
+  if (!ss.getSheetByName(SHEET_CONFIG_BOOTHS)) {
+    ss.insertSheet(SHEET_CONFIG_BOOTHS);
+  }
+}
+
+// Configを使った料金計算ロジック（分離）
+function _calculateFeesLogic(data, isMember, config, unitPrices, memberDiscount, earlyBirdDeadline) {
+  let total = 0;
+  const items = [];
+  let hasInvalidOption = false;
+
+  // ブース特定
+  let booth = null;
+  if (config.booths) {
+      booth = config.booths.find(b => b.id === data.boothId);
+  }
+  
+  if (!booth) {
+      // Configに見つからない場合はデフォルトCONFIG.BOOTHSから検索（後方互換）
+      const boothConfig = CONFIG.BOOTHS[data.boothId];
+      if (boothConfig) {
+          booth = {
+              name: boothConfig.name,
+              prices: { regular: boothConfig.regular, earlyBird: boothConfig.earlyBird },
+              limits: { maxStaff: boothConfig.maxStaff, maxChairs: boothConfig.maxChairs }
+          };
+      } else {
+          return { totalFee: 0, breakdown: [], hasInvalidOption: true };
+      }
+  }
+
+  // 早割判定（サーバー時刻ベース）
+  const now = new Date();
+  const isEarlyBird = now <= earlyBirdDeadline;
+  const boothPrice = isEarlyBird ? booth.prices.earlyBird : booth.prices.regular;
+
+  total += boothPrice;
+  items.push({ item: booth.name, price: boothPrice, note: isEarlyBird ? '(早割)' : '' });
+
+  // オプション: 電源
+  if (data.usePower === '1') {
+    total += unitPrices.power;
+    items.push({ item: '電源使用', price: unitPrices.power });
+  }
+
+  // オプション: 追加椅子
+  const chairs = parseInt(data.extraChairs || 0);
+  if (chairs > 0) {
+    if (booth.limits && chairs > booth.limits.maxChairs) hasInvalidOption = true;
+    const chairsFee = chairs * unitPrices.chair;
+    total += chairsFee;
+    items.push({ item: `追加椅子 ${chairs}脚`, price: chairsFee });
+  }
+
+  // オプション: 追加スタッフ
+  const staff = parseInt(data.extraStaff || 0);
+  if (staff > 0) {
+    if (booth.limits && staff > booth.limits.maxStaff) hasInvalidOption = true;
+    const staffFee = staff * unitPrices.staff;
+    total += staffFee;
+    items.push({ item: `追加スタッフ ${staff}名`, price: staffFee });
+  }
+
+  // オプション: 懇親会
+  const partyCount = parseInt(data.partyCount || 0);
+  if (partyCount > 0) {
+    const partyFee = partyCount * unitPrices.party;
+    total += partyFee;
+    items.push({ item: `懇親会 ${partyCount}名`, price: partyFee });
+  }
+
+  // 会員割引
+  if (isMember) {
+    total -= memberDiscount;
+    items.push({ item: '会員割引', price: -memberDiscount });
+  }
+  
+  if (total < 0) total = 0;
+
+  return {
+    breakdown: items, // format difference from original, check references
+    totalFee: total,
+    hasInvalidOption: hasInvalidOption
+  };
 }
