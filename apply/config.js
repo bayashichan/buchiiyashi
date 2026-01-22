@@ -27,7 +27,7 @@ let CONFIG = {
   ],
 
   // ■ システム設定
-  workerUrl: "https://buchiiyashi-festa-form.buchiiyashi-festa.workers.dev",
+  workerUrl: "https://buchiiyashi-festa-form.wakaossan2001.workers.dev",
   liffId: "2008192225-T1E8T5yi", // LIFF IDを設定してください（例: 1657000000-xxxxxxxxx）
 
   // ■ ブース定義（完全版）
