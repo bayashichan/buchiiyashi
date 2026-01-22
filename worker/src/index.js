@@ -93,10 +93,10 @@ function verifyAuth(request, env) {
     return { success: false };
 }
 
-// 設定取得（GitHubからconfig.js読み込み）
+// 設定取得（GitHubからconfig.json読み込み）
 async function getConfig(env, corsHeaders) {
     const response = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.js`,
+        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.json`,
         {
             headers: {
                 'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
@@ -110,10 +110,8 @@ async function getConfig(env, corsHeaders) {
         throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    const configJs = await response.text();
-
-    // config.jsからCONFIGオブジェクトを抽出してJSONに変換
-    const config = parseConfigJs(configJs);
+    const configJson = await response.text();
+    const config = JSON.parse(configJson);
 
     return new Response(JSON.stringify(config), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -122,40 +120,70 @@ async function getConfig(env, corsHeaders) {
 
 // config.jsをパース
 function parseConfigJs(jsContent) {
-    // const CONFIG = { ... }; を抽出
-    const match = jsContent.match(/const CONFIG\s*=\s*(\{[\s\S]*?\n\};)/);
-    if (!match) {
-        throw new Error('Could not parse config.js');
+    // 最初に全てのコメントを削除
+    let cleaned = jsContent
+        .replace(/\/\*[\s\S]*?\*\//g, '')  // ブロックコメント削除
+        .replace(/\/\/.*$/gm, '');          // 行コメント削除
+
+    // const/let CONFIG = { から最後の }; までを抽出
+    const startMatch = cleaned.match(/(const|let)\s+CONFIG\s*=\s*\{/);
+    if (!startMatch) {
+        throw new Error('Could not find CONFIG declaration');
     }
 
-    // JavaScriptオブジェクトをJSONに変換（コメントを除去）
-    let objStr = match[1];
-    objStr = objStr.replace(/\/\/.*$/gm, ''); // 行コメント除去
-    objStr = objStr.replace(/\/\*[\s\S]*?\*\//g, ''); // ブロックコメント除去
-    objStr = objStr.replace(/,(\s*[}\]])/g, '$1'); // trailing comma除去
+    const startIndex = startMatch.index + startMatch[0].length - 1; // '{' の位置
 
-    // キーをダブルクォートで囲む
-    objStr = objStr.replace(/(\s)(\w+)(\s*:)/g, '$1"$2"$3');
+    // 括弧のバランスを追跡して終端を見つける
+    let depth = 0;
+    let endIndex = -1;
+    for (let i = startIndex; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') depth++;
+        else if (cleaned[i] === '}') {
+            depth--;
+            if (depth === 0) {
+                endIndex = i;
+                break;
+            }
+        }
+    }
 
-    // シングルクォートをダブルクォートに
+    if (endIndex === -1) {
+        throw new Error('Could not find end of CONFIG object');
+    }
+
+    let objStr = cleaned.substring(startIndex, endIndex + 1);
+
+    // シングルクォートをダブルクォートに（キー処理より先に）
     objStr = objStr.replace(/'/g, '"');
 
-    // 末尾のセミコロン除去
-    objStr = objStr.replace(/;\s*$/, '');
+    // trailing comma除去（複数回）
+    objStr = objStr.replace(/,(\s*[}\]])/g, '$1');
+    objStr = objStr.replace(/,(\s*[}\]])/g, '$1');
+
+    // キーをダブルクォートで囲む（改行があるうちに処理）
+    // パターン: {の後、,の後、改行の後にあるキー
+    objStr = objStr.replace(/([\{\[,\n]\s*)([a-zA-Z_][a-zA-Z0-9_]*)(\s*:)/g, '$1"$2"$3');
+
+    // 改行をスペースに変換
+    objStr = objStr.replace(/[\r\n]+/g, ' ');
+
+    // 複数のスペースを1つに
+    objStr = objStr.replace(/\s+/g, ' ');
 
     try {
         return JSON.parse(objStr);
     } catch (e) {
-        console.error('JSON parse error:', e, objStr.slice(0, 500));
-        throw new Error('Failed to parse config as JSON');
+        console.error('JSON parse error:', e.message);
+        console.error('Object string (first 1000 chars):', objStr.slice(0, 1000));
+        throw new Error('Failed to parse config as JSON: ' + e.message);
     }
 }
 
-// 設定更新（GitHubにconfig.jsを保存）
+// 設定更新（GitHubにconfig.jsonを保存）
 async function updateConfig(env, newConfig, corsHeaders) {
     // まず現在のファイル情報を取得（sha必要）
     const fileInfoResponse = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.js`,
+        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.json`,
         {
             headers: {
                 'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
@@ -171,13 +199,13 @@ async function updateConfig(env, newConfig, corsHeaders) {
 
     const fileInfo = await fileInfoResponse.json();
 
-    // config.jsを生成
-    const newConfigJs = generateConfigJs(newConfig);
-    const encodedContent = btoa(unescape(encodeURIComponent(newConfigJs)));
+    // config.jsonを生成（整形して保存）
+    const newConfigJson = JSON.stringify(newConfig, null, 2);
+    const encodedContent = btoa(unescape(encodeURIComponent(newConfigJson)));
 
     // GitHubに保存
     const updateResponse = await fetch(
-        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.js`,
+        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.json`,
         {
             method: 'PUT',
             headers: {
