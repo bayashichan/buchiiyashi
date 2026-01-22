@@ -1,5 +1,5 @@
 {
-  "earlyBirdDeadline": "2025-10-31 23:59:59",
+  "earlyBirdDeadline": "2025-10-31 23:59:00",
   "memberDiscount": 2000,
   "unitPrices": {
     "chair": 100,
@@ -21,105 +21,217 @@
       "id": "inner_half",
       "name": "内側半テーブル（標準1名）",
       "location": "内側",
-      "prices": { "regular": 8000, "earlyBird": 7500 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 8000,
+        "earlyBird": 7500
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": false
     },
     {
       "id": "inner_1",
       "name": "内側1テーブル（標準2名）",
       "location": "内側",
-      "prices": { "regular": 15000, "earlyBird": 14000 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 15000,
+        "earlyBird": 14000
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "inner_2",
       "name": "内側2テーブル（標準4名）",
       "location": "内側",
-      "prices": { "regular": 26000, "earlyBird": 26000 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 26000,
+        "earlyBird": 26000
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "inner_prod_half",
       "name": "内側物販半テーブル（標準1名）",
       "location": "内側・物販",
       "prohibitSession": true,
-      "prices": { "regular": 7000, "earlyBird": 6500 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 7000,
+        "earlyBird": 6500
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": false
     },
     {
       "id": "inner_prod_1",
       "name": "内側物販1テーブル（標準2名）",
       "location": "内側・物販",
       "prohibitSession": true,
-      "prices": { "regular": 13000, "earlyBird": 12000 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 13000,
+        "earlyBird": 12000
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "inner_prod_2",
       "name": "内側物販2テーブル（標準4名）",
       "location": "内側・物販",
       "prohibitSession": true,
-      "prices": { "regular": 23000, "earlyBird": 23000 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 23000,
+        "earlyBird": 23000
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "wall_half",
       "name": "壁側半テーブル（標準1名）",
       "location": "壁側",
-      "prices": { "regular": 9000, "earlyBird": 8500 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 9000,
+        "earlyBird": 8500
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": false
     },
     {
       "id": "wall_1",
       "name": "壁側1テーブル（標準2名）",
       "location": "壁側",
-      "prices": { "regular": 17000, "earlyBird": 16000 },
-      "limits": { "maxStaff": 1, "maxChairs": 1, "allowPower": true }
+      "prices": {
+        "regular": 17000,
+        "earlyBird": 16000
+      },
+      "limits": {
+        "maxStaff": 1,
+        "maxChairs": 1,
+        "allowPower": true
+      },
+      "soldOut": false
     },
     {
       "id": "wall_2",
       "name": "壁側2テーブル（標準4名）",
       "location": "壁側",
-      "prices": { "regular": 30000, "earlyBird": 30000 },
-      "limits": { "maxStaff": 2, "maxChairs": 2, "allowPower": true }
+      "prices": {
+        "regular": 30000,
+        "earlyBird": 30000
+      },
+      "limits": {
+        "maxStaff": 2,
+        "maxChairs": 2,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "wall_prod_half",
       "name": "壁側物販半テーブル（標準1名）",
       "location": "壁側・物販",
       "prohibitSession": true,
-      "prices": { "regular": 9000, "earlyBird": 8500 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 9000,
+        "earlyBird": 8500
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": false
     },
     {
       "id": "wall_prod_1",
       "name": "壁側物販1テーブル（標準2名）",
       "location": "壁側・物販",
       "prohibitSession": true,
-      "prices": { "regular": 17000, "earlyBird": 16000 },
-      "limits": { "maxStaff": 1, "maxChairs": 1, "allowPower": true }
+      "prices": {
+        "regular": 17000,
+        "earlyBird": 16000
+      },
+      "limits": {
+        "maxStaff": 1,
+        "maxChairs": 1,
+        "allowPower": true
+      },
+      "soldOut": false
     },
     {
       "id": "wall_prod_2",
       "name": "壁側物販2テーブル（標準4名）",
       "location": "壁側・物販",
       "prohibitSession": true,
-      "prices": { "regular": 30000, "earlyBird": 30000 },
-      "limits": { "maxStaff": 2, "maxChairs": 2, "allowPower": true }
+      "prices": {
+        "regular": 30000,
+        "earlyBird": 30000
+      },
+      "limits": {
+        "maxStaff": 2,
+        "maxChairs": 2,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "body_small",
       "name": "ボディケアブース小（標準1名）",
       "location": "ボディケア",
-      "prices": { "regular": 15000, "earlyBird": 14500 },
-      "limits": { "maxStaff": 0, "maxChairs": 0, "allowPower": true }
+      "prices": {
+        "regular": 15000,
+        "earlyBird": 14500
+      },
+      "limits": {
+        "maxStaff": 0,
+        "maxChairs": 0,
+        "allowPower": true
+      },
+      "soldOut": true
     },
     {
       "id": "body_large",
       "name": "ボディケアブース大（標準2名）",
       "location": "ボディケア",
-      "prices": { "regular": 20000, "earlyBird": 19000 },
-      "limits": { "maxStaff": 1, "maxChairs": 1, "allowPower": true }
+      "prices": {
+        "regular": 20000,
+        "earlyBird": 19000
+      },
+      "limits": {
+        "maxStaff": 1,
+        "maxChairs": 1,
+        "allowPower": true
+      },
+      "soldOut": true
     }
   ]
 }
