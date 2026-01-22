@@ -172,12 +172,22 @@ function initBoothAccordion() {
             }
 
             const option = document.createElement('label');
-            option.className = 'booth-option';
-            option.innerHTML = `
+            option.className = 'booth-option' + (booth.soldOut ? ' sold-out' : '');
+
+            if (booth.soldOut) {
+                // 満枠の場合は選択不可
+                option.innerHTML = `
+        <input type="radio" name="boothRadio" value="${booth.id}" disabled>
+        <span class="ml-2 flex-1">${booth.name}</span>
+        <span class="sold-out-badge">満枠</span>
+      `;
+            } else {
+                option.innerHTML = `
         <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
         <span class="ml-2 flex-1">${booth.name}</span>
         <span class="booth-price">${priceDisplay}</span>
       `;
+            }
             content.appendChild(option);
         });
 
