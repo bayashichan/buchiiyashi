@@ -44,6 +44,7 @@ window.addEventListener('configLoaded', () => {
     initPostalCodeSearch();
     initEmailConfirmation();
     initFileSizeCheck();
+    initRepeaterSearch(); // 追加
     updateEarlyBirdBanner();
     updateOptionsUI();
     calculatePrice();
@@ -202,6 +203,9 @@ function initBoothAccordion() {
     });
 }
 
+// ========================================
+// ブース選択処理
+// ========================================
 function selectBooth(boothId) {
     selectedBooth = CONFIG.booths.find(b => b.id === boothId);
     document.getElementById('boothIdInput').value = boothId;
@@ -673,11 +677,16 @@ function validateForm() {
 
     // 写真
     const photoInput = form.querySelector('[name="profileImage"]');
-    if (!photoInput.files || photoInput.files.length === 0) {
-        errors.push('ご自身の写真をアップロードしてください');
-    } else if (photoInput.files[0].size > 8 * 1024 * 1024) {
-        errors.push('画像ファイルのサイズは8MB以下にしてください');
-        photoInput.classList.add('border-red-500');
+    // 写真再利用の場合はチェックを緩和
+    const usePrevious = form.querySelector('[name="usePreviousPhoto"]')?.checked;
+
+    if (!usePrevious) {
+        if (!photoInput.files || photoInput.files.length === 0) {
+            errors.push('ご自身の写真をアップロードしてください');
+        } else if (photoInput.files[0].size > 8 * 1024 * 1024) {
+            errors.push('画像ファイルのサイズは8MB以下にしてください');
+            photoInput.classList.add('border-red-500');
+        }
     }
 
     // 写真掲載可否
@@ -781,6 +790,24 @@ async function submitForm() {
             }
         });
         formData.append('snsLinks', JSON.stringify(snsLinks));
+
+        // スプレッドシートID設定
+        if (CONFIG.currentSpreadsheetId) {
+            formData.append('currentSpreadsheetId', CONFIG.currentSpreadsheetId);
+        }
+        if (CONFIG.databaseSpreadsheetId) {
+            formData.append('databaseSpreadsheetId', CONFIG.databaseSpreadsheetId);
+        }
+
+        // 画像処理 (Base64変換)
+        const photoInput = form.querySelector('[name="profileImage"]');
+        if (photoInput.files && photoInput.files.length > 0) {
+            const file = photoInput.files[0];
+            const base64Data = await convertFileToBase64(file);
+            formData.append('profileImageBase64', base64Data.base64);
+            formData.append('profileImageMimeType', base64Data.mimeType);
+            formData.append('profileImageName', base64Data.name);
+        }
 
         // LIFFデータ
         formData.append('lineUserId', document.getElementById('lineUserId').value);
@@ -959,5 +986,190 @@ function initFileSizeCheck() {
             alert('画像ファイルのサイズは8MB以下にしてください。\n現在のサイズ: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
             e.target.value = ''; // 選択をクリア
         }
+    });
+}
+
+// ========================================
+// リピーター検索機能
+// ========================================
+function initRepeaterSearch() {
+    const toggleBtn = document.getElementById('toggleRepeaterSearchBtn');
+    const searchArea = document.getElementById('repeaterSearchArea');
+    const searchBtn = document.getElementById('searchRepeaterBtn');
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            searchArea.classList.toggle('hidden');
+        });
+    }
+
+    if (searchBtn) {
+        searchBtn.addEventListener('click', async () => {
+            const name = document.getElementById('repeaterName').value;
+            const email = document.getElementById('repeaterEmail').value;
+            const statusEl = document.getElementById('repeaterSearchStatus');
+
+            if (!name || !email) {
+                statusEl.textContent = '❌ お名前とメールアドレスを入力してください';
+                statusEl.className = 'mt-2 text-sm font-medium text-red-600';
+                return;
+            }
+
+            statusEl.textContent = '🔍 検索中...';
+            statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
+            searchBtn.disabled = true;
+
+            try {
+                // GAS APIを呼び出す（Worker経由）
+                // URLパラメータとして送信
+                const url = new URL(`${CONFIG.workerUrl}/api/repeater`);
+                url.searchParams.append('action', 'check_repeater');
+                url.searchParams.append('name', name);
+                url.searchParams.append('email', email);
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.found && result.data) {
+                    fillFormWithData(result.data);
+                    statusEl.textContent = '✅ データが見つかりました！自動入力しました。';
+                    statusEl.className = 'mt-2 text-sm font-medium text-green-600';
+
+                    // 検索エリアを閉じる（少し待ってから）
+                    setTimeout(() => {
+                        searchArea.classList.add('hidden');
+                    }, 2000);
+                } else {
+                    statusEl.textContent = '⚠️ データが見つかりませんでした。入力内容を確認するか、新規に入力してください。';
+                    statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
+                }
+
+            } catch (error) {
+                console.error('Repeater search error:', error);
+                statusEl.textContent = '❌ エラーが発生しました。通信環境を確認してください。';
+                statusEl.className = 'mt-2 text-sm font-medium text-red-600';
+            } finally {
+                searchBtn.disabled = false;
+            }
+        });
+    }
+}
+
+// 取得したデータでフォームを埋める
+function fillFormWithData(data) {
+    console.log('Filling form with:', data);
+
+    // 基本情報
+    if (data.name) document.getElementById('nameInput').value = data.name;
+    if (data.furigana) document.querySelector('input[name="furigana"]').value = data.furigana;
+    if (data.address) document.getElementById('addressInput').value = data.address;
+    if (data.email) {
+        document.getElementById('emailInput').value = data.email;
+        document.getElementById('emailConfirmInput').value = data.email;
+    }
+    // 電話番号（新規追加項目）
+    if (data.phone) document.querySelector('input[name="phoneNumber"]').value = data.phone;
+    // 郵便番号（新規追加項目）
+    if (data.postalCode) document.getElementById('postalCode').value = data.postalCode;
+
+    // 出展内容
+    if (data.exhibitorName) document.querySelector('input[name="exhibitorName"]').value = data.exhibitorName;
+    if (data.menuName) document.querySelector('textarea[name="menuName"]').value = data.menuName;
+    if (data.selfIntro) document.querySelector('textarea[name="selfIntro"]').value = data.selfIntro;
+    if (data.shortPR) document.querySelector('input[name="shortPR"]').value = data.shortPR;
+
+    // 写真再利用
+    if (data.profileImageUrl) {
+        const reuseOption = document.getElementById('reusePhotoOption');
+        const prevImg = document.getElementById('prevPhotoImg');
+        const hiddenUrl = document.getElementById('profileImageUrl');
+
+        if (reuseOption && prevImg && hiddenUrl) {
+            reuseOption.classList.remove('hidden');
+            prevImg.src = data.profileImageUrl;
+            hiddenUrl.value = data.profileImageUrl; // URLをセットしておくが、checkboxがONになるまで有効ではない
+
+            // 自動的に「前回の写真を使用する」をONにするかはお好みだが、
+            // ユーザーに選択させる方が安全（古い写真を使いたくない場合もある）
+        }
+    }
+
+    // SNSリンク統合
+    // 既存の入力欄をクリア
+    const container = document.getElementById('snsLinksContainer');
+    container.innerHTML = '';
+    snsLinkCount = 0;
+
+    // 過去データのSNS各項目をチェックして追加
+    const snsList = [];
+    if (data.sns) {
+        if (data.sns.hp) snsList.push(data.sns.hp);
+        if (data.sns.blog) snsList.push(data.sns.blog);
+        if (data.sns.fb) snsList.push(data.sns.fb);
+        if (data.sns.insta) snsList.push(data.sns.insta);
+        if (data.sns.line) snsList.push(data.sns.line);
+        if (data.sns.other) snsList.push(data.sns.other);
+    }
+
+    if (snsList.length > 0) {
+        snsList.forEach(url => {
+            if (url && url.trim() !== '') {
+                addSnsLinkInput(url);
+            }
+        });
+    } else {
+        // 空でも1つ作っておく
+        addSnsLinkInput();
+    }
+
+    // 文字数カウント更新
+    document.querySelectorAll('textarea, input[type="text"]').forEach(input => {
+        input.dispatchEvent(new Event('input'));
+    });
+}
+
+// 写真再利用トグル
+function togglePhotoUpload() {
+    const checkbox = document.getElementById('usePreviousPhoto');
+    const fileInput = document.getElementById('profileImage');
+    const preview = document.getElementById('previousPhotoPreview');
+    const requiredTag = document.getElementById('photoRequiredTag');
+    const hiddenUrl = document.getElementById('profileImageUrl');
+
+    if (checkbox.checked) {
+        // 前回写真を使用
+        fileInput.disabled = true;
+        fileInput.required = false;
+        fileInput.value = ''; // ファイル選択解除
+        preview.classList.remove('hidden');
+        requiredTag.style.display = 'none';
+
+        // 隠しフィールドにURLがセットされているはず
+        if (!hiddenUrl.value && document.getElementById('prevPhotoImg').src) {
+            hiddenUrl.value = document.getElementById('prevPhotoImg').src;
+        }
+    } else {
+        // 新規アップロード
+        fileInput.disabled = false;
+        fileInput.required = true;
+        preview.classList.add('hidden');
+        requiredTag.style.display = 'inline';
+        // URLはクリアしなくてよい（送信時にcheckboxを見て判定するなら）
+    }
+}
+
+// ========================================
+// ユーティリティ
+// ========================================
+function convertFileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve({
+            base64: reader.result.split(',')[1], // "data:*/*;base64," を除去
+            mimeType: file.type,
+            name: file.name
+        });
+        reader.onerror = error => reject(error);
     });
 }

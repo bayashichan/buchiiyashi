@@ -21,6 +21,10 @@ export default {
         }
 
         // ルーティング
+        if (url.pathname === '/api/repeater') {
+            return handleRepeaterSearch(request, env, corsHeaders);
+        }
+
         if (url.pathname.startsWith('/api/admin')) {
             return handleAdminAPI(request, env, corsHeaders, url);
         }
@@ -58,6 +62,12 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
         // POST /api/admin/deploy-gas - GASデプロイ
         if (url.pathname === '/api/admin/deploy-gas' && request.method === 'POST') {
             return await deployGas(env, corsHeaders);
+        }
+
+        // POST /api/admin/create-spreadsheet - 新規スプレッドシート作成
+        if (url.pathname === '/api/admin/create-spreadsheet' && request.method === 'POST') {
+            const body = await request.json();
+            return await createSpreadsheet(env, body, corsHeaders);
         }
 
         return new Response(JSON.stringify({ error: 'Not found' }), {
@@ -425,6 +435,49 @@ async function signJwt(header, payload, privateKeyPem) {
     return `${unsignedToken}.${signatureB64}`;
 }
 
+// Googleスプレッドシート作成
+async function createSpreadsheet(env, body, corsHeaders) {
+    try {
+        const { name } = body;
+        if (!name) {
+            return new Response(JSON.stringify({ error: 'Spreadsheet name is required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const accessToken = await getGoogleAccessToken(env);
+
+        console.log(`Sending create spreadsheet request to GAS for: ${name}`);
+        const gasResponse = await fetch(env.GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'create_spreadsheet',
+                name: name,
+                accessToken: accessToken // GAS側での権限拡張が必要な場合に備えてトークンも渡すが、GAS単体で動くなら不要かも
+            })
+        });
+
+        if (!gasResponse.ok) {
+            const errorText = await gasResponse.text();
+            throw new Error(`GAS request failed: ${gasResponse.status} ${errorText}`);
+        }
+
+        const result = await gasResponse.json();
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+    } catch (error) {
+        console.error('Create spreadsheet error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
 // ========================================
 // フォーム送信処理（既存）
 // ========================================
@@ -440,6 +493,29 @@ async function handleFormSubmission(request, env, corsHeaders) {
     try {
         const formData = await request.formData();
         const data = {};
+
+        // 設定ファイルからSpreadsheet IDを取得
+        let currentSpreadsheetId = null;
+        let databaseSpreadsheetId = null;
+
+        try {
+            // GitHubからconfig.jsonを取得するのは高負荷なので避ける
+            // クライアント(Front)から送られてくるconfig値を信用するか、
+            // もしくは運用でカバー（Envに入れるなど）
+            // 今回は、あえてGithubへの問い合わせはせず、FormDataに含まれていることを期待するか、
+            // Admin APIと同じロジックで取得するか。
+            // 妥協案: フロントエンドの config.js に含まれているであろう値を送ってもらうように
+            // 呼び出し元の apply/script.js を修正する。
+            // ここでは FormData に `currentSpreadsheetId` と `databaseSpreadsheetId` が含まれていると仮定して処理する。
+            if (formData.has('currentSpreadsheetId')) {
+                currentSpreadsheetId = formData.get('currentSpreadsheetId');
+            }
+            if (formData.has('databaseSpreadsheetId')) {
+                databaseSpreadsheetId = formData.get('databaseSpreadsheetId');
+            }
+        } catch (e) {
+            console.error('Failed to parse spreadsheet IDs', e);
+        }
 
         // フォームデータを抽出
         for (const [key, value] of formData.entries()) {
@@ -539,4 +615,49 @@ async function convertImageToBase64(file) {
         mimeType: file.type,
         fileName: fileName
     };
+}
+
+// ========================================
+// リピーター検索処理
+// ========================================
+async function handleRepeaterSearch(request, env, corsHeaders) {
+    try {
+        const url = new URL(request.url);
+        const searchParams = url.searchParams;
+
+        // GASへ転送
+        // env.GAS_URL は Web App URL
+        const gasUrl = new URL(env.GAS_URL);
+
+        // クエリパラメータをコピー
+        for (const [key, value] of searchParams) {
+            gasUrl.searchParams.append(key, value);
+        }
+
+        // GASへのリクエスト
+        const response = await fetch(gasUrl.toString(), {
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Cloudflare-Worker'
+            },
+            redirect: 'follow'
+        });
+
+        // レスポンス取得
+        const data = await response.text();
+
+        // JSONとして返す
+        return new Response(data, {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json'
+            }
+        });
+    } catch (error) {
+        console.error('Repeater search error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
 }

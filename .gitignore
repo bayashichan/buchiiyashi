@@ -1,0 +1,6 @@
+buchiiyashi-e5a6d42ec36f.json
+node_modules/
+.DS_Store
+*.log
+.clasp.json
+.wrangler/

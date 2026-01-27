@@ -27,15 +27,48 @@
         </header>
 
         <nav class="tabs">
-            <button class="tab active" data-tab="pricing">💰 料金設定</button>
+            <button class="tab active" data-tab="basic">📝 基本設定</button>
+            <button class="tab" data-tab="pricing">💰 料金設定</button>
             <button class="tab" data-tab="booths">🪑 ブース設定</button>
             <button class="tab" data-tab="availability">📊 満枠設定</button>
             <button class="tab" data-tab="deploy">🚀 デプロイ</button>
         </nav>
 
         <main>
+            <!-- 基本設定タブ -->
+            <section id="tab-basic" class="tab-content active">
+                <h2>基本設定</h2>
+
+                <div class="form-group">
+                    <label>イベント名</label>
+                    <input type="text" id="eventName" placeholder="例: 第4回ぶち癒しフェスタin東京">
+                    <p class="hint">フォームのタイトルなどはサイト作成時に固定されている場合がありますが、内部管理用に設定します。</p>
+                </div>
+
+                <div class="form-group">
+                    <label>現在のデータ保存先 (スプレッドシートID)</label>
+                    <div class="flex-row">
+                        <input type="text" id="currentSpreadsheetId" placeholder="スプレッドシートID">
+                        <a id="openSpreadsheetBtn" href="#" target="_blank" class="btn-secondary small">開く</a>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>📄 新しい開催回用のスプレッドシートを作成</h3>
+                    <p>イベント名を元に、新しいスプレッドシートを作成してIDを自動設定します。</p>
+                    <button id="createSpreadsheetBtn" class="btn-primary">新規スプレッドシートを作成</button>
+                    <div id="createSpreadsheetStatus" class="status"></div>
+                </div>
+
+                <div class="form-group mt-4">
+                    <label>マスターデータベースID (全履歴)</label>
+                    <input type="text" id="databaseSpreadsheetId" readonly class="readonly">
+                    <p class="hint">※ここは変更できません。全ての履歴がここに保存されます。</p>
+                </div>
+            </section>
+
             <!-- 料金設定タブ -->
-            <section id="tab-pricing" class="tab-content active">
+            <section id="tab-pricing" class="tab-content hidden">
                 <h2>料金設定</h2>
                 <div class="form-group">
                     <label>早割締切日時</label>

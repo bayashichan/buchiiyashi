@@ -40,7 +40,72 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
     document.getElementById('deployGasBtn').addEventListener('click', deployGas);
     document.getElementById('saveAllBtn').addEventListener('click', saveConfig);
+
+    // スプレッドシート作成
+    document.getElementById('createSpreadsheetBtn').addEventListener('click', createSpreadsheet);
 });
+
+// ========================================
+// スプレッドシート作成
+// ========================================
+async function createSpreadsheet() {
+    const eventName = document.getElementById('eventName').value;
+    if (!eventName) {
+        alert('イベント名を入力してください');
+        return;
+    }
+
+    if (!confirm(`「${eventName}」の名前で新しいスプレッドシートを作成しますか？\n\n※管理者としてGASを実行します。`)) {
+        return;
+    }
+
+    const statusEl = document.getElementById('createSpreadsheetStatus');
+    statusEl.className = 'status loading';
+    statusEl.textContent = '作成中... (約10-20秒かかります)';
+    document.getElementById('createSpreadsheetBtn').disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/create-spreadsheet`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name: eventName })
+        });
+
+        if (response.status === 401) {
+            handleLogout();
+            return;
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            statusEl.className = 'status success';
+            statusEl.textContent = `✅ 作成完了！\nID: ${result.spreadsheetId}\nURL: ${result.spreadsheetUrl}`;
+
+            // 自動入力
+            document.getElementById('currentSpreadsheetId').value = result.spreadsheetId;
+            const openBtn = document.getElementById('openSpreadsheetBtn');
+            openBtn.href = result.spreadsheetUrl;
+            openBtn.style.display = 'inline-flex';
+
+            // 設定も保存するか確認
+            if (confirm('作成されたスプレッドシートIDを設定に反映して保存しますか？')) {
+                saveConfig();
+            }
+        } else {
+            throw new Error(result.error || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Create spreadsheet error:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ エラー: ${error.message}`;
+    } finally {
+        document.getElementById('createSpreadsheetBtn').disabled = false;
+    }
+}
 
 // ========================================
 // 認証
@@ -145,6 +210,25 @@ function renderConfig() {
 
     // 満枠設定
     renderAvailability();
+
+    // 基本設定
+    renderBasicSettings();
+}
+
+function renderBasicSettings() {
+    if (!config) return;
+
+    document.getElementById('eventName').value = config.eventName || '';
+    document.getElementById('currentSpreadsheetId').value = config.currentSpreadsheetId || '';
+    document.getElementById('databaseSpreadsheetId').value = config.databaseSpreadsheetId || '';
+
+    const openBtn = document.getElementById('openSpreadsheetBtn');
+    if (config.currentSpreadsheetId) {
+        openBtn.href = `https://docs.google.com/spreadsheets/d/${config.currentSpreadsheetId}/edit`;
+        openBtn.style.display = 'inline-flex';
+    } else {
+        openBtn.style.display = 'none';
+    }
 }
 
 function renderBooths() {
@@ -242,6 +326,8 @@ async function saveConfig() {
         if (result.success) {
             statusEl.className = 'status success';
             statusEl.textContent = '✅ 保存完了！サイトに反映されました。';
+            // 再描画して状態を同期
+            renderBasicSettings();
         } else {
             throw new Error(result.error || 'Unknown error');
         }
@@ -255,6 +341,12 @@ async function saveConfig() {
 }
 
 function collectConfigFromUI() {
+    // 基本設定
+    config.eventName = document.getElementById('eventName').value;
+    config.currentSpreadsheetId = document.getElementById('currentSpreadsheetId').value;
+    // databaseSpreadsheetId は readonly なのでそのまま（もしくは hidden があればそこから）
+    // 現状 config オブジェクトはメモリ上にあるので変更なければそのまま維持される
+
     // 早割締切
     const deadline = document.getElementById('earlyBirdDeadline').value;
     if (deadline) {
