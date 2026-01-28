@@ -598,11 +598,22 @@ function sendConfirmationEmail(data, calculationResult) {
     '二次会参加人数': data.secondaryPartyCount || 0,
     '備考': data.notes || ''
   };
+  };
   
+  // 料金内訳の表示用リスト作成
+  const breakdownList = [
+    { item: '出展ブース料', price: calculationResult.breakdown.booth },
+    { item: '追加スタッフ (×' + (data.extraStaff || 0) + ')', price: calculationResult.breakdown.staff },
+    { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
+    { item: '電源使用料', price: calculationResult.breakdown.power },
+    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party }
+  ].filter(item => item.price > 0);
+
   // HTMLテンプレートを読み込み
   const template = HtmlService.createTemplateFromFile('mail_template');
   template.formData = formData;
   template.calculationResult = calculationResult;
+  template.breakdownList = breakdownList; // 追加
   template.isMember = isMember;
   template.CONFIG = CONFIG;
   
