@@ -1124,11 +1124,17 @@ function fillFormWithData(data) {
             reuseOption.classList.remove('hidden');
 
             // Google DriveのURLを表示可能な形式に変換
+            // Google DriveのURLを表示可能な形式に変換
             // 形式: https://lh3.googleusercontent.com/d/FILE_ID
             let displayUrl = data.profileImageUrl;
-            const fileIdMatch = displayUrl.match(/\/d\/([^\/]+)/);
+            console.log('Original Profile Image URL:', displayUrl); // デバッグ用
+
+            // ID抽出（/d/ID または id=ID）
+            const fileIdMatch = displayUrl.match(/(?:\/d\/|id=)([\w-]+)/);
             if (fileIdMatch && fileIdMatch[1]) {
-                displayUrl = `https://lh3.googleusercontent.com/d/${fileIdMatch[1]}`;
+                const fileId = fileIdMatch[1];
+                displayUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+                console.log('Converted Preview URL:', displayUrl); // デバッグ用
             }
 
             prevImg.src = displayUrl;
