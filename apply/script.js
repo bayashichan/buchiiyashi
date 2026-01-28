@@ -1066,6 +1066,7 @@ function initRepeaterSearch() {
                 const result = await response.json();
 
                 if (result.found && result.data) {
+                    console.log('Repeater data:', result.data); // デバッグログ
                     fillFormWithData(result.data);
                     statusEl.textContent = '✅ データが見つかりました！自動入力しました。';
                     statusEl.className = 'mt-2 text-sm font-medium text-green-600';
