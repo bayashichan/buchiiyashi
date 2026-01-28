@@ -198,7 +198,18 @@ function doPost(e) {
     lock.waitLock(30000); // 30秒ロック
     
     // データ解析
-    const params = e.parameter;
+    let params = e.parameter || {};
+    
+    // JSONリクエストの場合はパースしてマージ
+    if (e.postData && e.postData.contents) {
+      try {
+        const jsonParams = JSON.parse(e.postData.contents);
+        params = { ...params, ...jsonParams };
+      } catch (err) {
+        // JSONパースエラー時は無視（通常のparamsのみ使用）
+        console.warn('JSON parse error:', err);
+      }
+    }
     
     // スプレッドシート作成アクション
     if (params.action === 'create_spreadsheet') {
