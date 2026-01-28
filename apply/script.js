@@ -45,6 +45,7 @@ window.addEventListener('configLoaded', () => {
     initEmailConfirmation();
     initFileSizeCheck();
     initRepeaterSearch(); // 追加
+    updateHeaderInfo(); // 追加
     updateEarlyBirdBanner();
     updateOptionsUI();
     calculatePrice();
@@ -91,6 +92,37 @@ function updateEarlyBirdBanner() {
 
     if (now > deadline) {
         banner.style.display = 'none';
+    }
+}
+
+
+
+/**
+ * 開催日時・場所の表示
+ */
+function updateHeaderInfo() {
+    const container = document.getElementById('eventInfoContainer');
+    const dateEl = document.getElementById('headerEventDateDisplay');
+    const locationEl = document.getElementById('headerEventLocationDisplay');
+
+    if (CONFIG.eventDate || CONFIG.eventLocation) {
+        container.classList.remove('hidden');
+
+        if (CONFIG.eventDate) {
+            dateEl.textContent = CONFIG.eventDate;
+            dateEl.classList.remove('hidden');
+        } else {
+            dateEl.classList.add('hidden');
+        }
+
+        if (CONFIG.eventLocation) {
+            locationEl.textContent = CONFIG.eventLocation;
+            locationEl.classList.remove('hidden');
+        } else {
+            locationEl.classList.add('hidden');
+        }
+    } else {
+        container.classList.add('hidden');
     }
 }
 

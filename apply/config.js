@@ -27,6 +27,9 @@ async function loadConfig() {
 // デフォルト設定（フォールバック用）
 function getDefaultConfig() {
   return {
+    eventName: "第5回ぶち癒しフェスタin東京",
+    eventDate: "",
+    eventLocation: "",
     earlyBirdDeadline: "2025-10-31 23:59:59",
     memberDiscount: 2000,
     unitPrices: {

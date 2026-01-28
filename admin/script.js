@@ -219,6 +219,8 @@ function renderBasicSettings() {
     if (!config) return;
 
     document.getElementById('eventName').value = config.eventName || '';
+    document.getElementById('eventDate').value = config.eventDate || '';
+    document.getElementById('eventLocation').value = config.eventLocation || '';
     document.getElementById('currentSpreadsheetId').value = config.currentSpreadsheetId || '';
     document.getElementById('databaseSpreadsheetId').value = config.databaseSpreadsheetId || '';
 
@@ -343,6 +345,8 @@ async function saveConfig() {
 function collectConfigFromUI() {
     // 基本設定
     config.eventName = document.getElementById('eventName').value;
+    config.eventDate = document.getElementById('eventDate').value;
+    config.eventLocation = document.getElementById('eventLocation').value;
     config.currentSpreadsheetId = document.getElementById('currentSpreadsheetId').value;
     // databaseSpreadsheetId は readonly なのでそのまま（もしくは hidden があればそこから）
     // 現状 config オブジェクトはメモリ上にあるので変更なければそのまま維持される
