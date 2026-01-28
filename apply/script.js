@@ -613,6 +613,37 @@ function removeSnsRow(btn) {
     document.getElementById('addSnsBtn').style.display = 'block';
 }
 
+// SNSリンク入力欄を追加（リピーター検索用）
+function addSnsLinkInput(url = '') {
+    const container = document.getElementById('snsLinksContainer');
+    const addBtn = document.getElementById('addSnsBtn');
+
+    if (snsLinkCount >= 6) return; // 最大6つ
+
+    snsLinkCount++;
+    const row = document.createElement('div');
+    row.className = 'sns-link-row flex gap-2';
+    row.innerHTML = `
+      <span class="sns-badge" data-index="${snsLinkCount - 1}">未入力</span>
+      <input type="url" name="snsLink${snsLinkCount}" class="input-field flex-1 sns-input" data-index="${snsLinkCount - 1}" placeholder="https://..." value="${url}">
+      <button type="button" class="text-red-500 hover:text-red-700 px-2" onclick="removeSnsRow(this)">✕</button>
+    `;
+    container.appendChild(row);
+
+    // 入力欄にイベントリスナー
+    const input = row.querySelector('.sns-input');
+    input.addEventListener('input', handleSnsInput);
+
+    // 既存の値があれば、バッジを更新
+    if (url) {
+        input.dispatchEvent(new Event('input'));
+    }
+
+    if (snsLinkCount >= 6) {
+        addBtn.style.display = 'none';
+    }
+}
+
 // ========================================
 // 文字数カウンター
 // ========================================
