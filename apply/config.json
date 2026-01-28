@@ -48,7 +48,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "inner_2",
@@ -63,7 +63,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "inner_prod_half",
@@ -95,7 +95,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "inner_prod_2",
@@ -111,7 +111,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "wall_half",
@@ -156,7 +156,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "wall_prod_half",
@@ -204,7 +204,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "body_small",
@@ -219,7 +219,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "body_large",
@@ -234,7 +234,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     }
   ],
   "eventDate": "2026年5月24日　10:30~16:30",
