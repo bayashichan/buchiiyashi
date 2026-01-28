@@ -798,6 +798,10 @@ async function submitForm() {
         if (CONFIG.databaseSpreadsheetId) {
             formData.append('databaseSpreadsheetId', CONFIG.databaseSpreadsheetId);
         }
+        // イベント名（マスターDBの「開催回」列用）
+        if (CONFIG.eventName) {
+            formData.append('eventName', CONFIG.eventName);
+        }
 
         // 画像処理 (Base64変換)
         const photoInput = form.querySelector('[name="profileImage"]');
