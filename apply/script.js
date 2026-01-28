@@ -1254,11 +1254,46 @@ function convertFileToBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = () => resolve({
-            base64: reader.result.split(',')[1], // "data:*/*;base64," を除去
-            mimeType: file.type,
-            name: file.name
-        });
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // 最大サイズ設定 (1200px)
+                const MAX_SIZE = 1200;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_SIZE) {
+                        height *= MAX_SIZE / width;
+                        width = MAX_SIZE;
+                    }
+                } else {
+                    if (height > MAX_SIZE) {
+                        width *= MAX_SIZE / height;
+                        height = MAX_SIZE;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // JPEG形式、品質0.8で圧縮してBase64取得
+                // 元がPNGでもJPEG変換して容量削減
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+                resolve({
+                    base64: compressedDataUrl.split(',')[1],
+                    mimeType: 'image/jpeg',
+                    name: file.name.replace(/\.[^/.]+$/, "") + ".jpg" // 拡張子をjpgに変更
+                });
+            };
+            img.onerror = (error) => reject(error);
+        };
         reader.onerror = error => reject(error);
     });
 }
