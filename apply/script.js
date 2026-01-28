@@ -1121,8 +1121,25 @@ function fillFormWithData(data) {
 
         if (reuseOption && prevImg && hiddenUrl) {
             reuseOption.classList.remove('hidden');
-            prevImg.src = data.profileImageUrl;
-            hiddenUrl.value = data.profileImageUrl; // URLをセットしておくが、checkboxがONになるまで有効ではない
+
+            // Google DriveのURLを表示可能な形式に変換
+            let displayUrl = data.profileImageUrl;
+            // パターン1: https://drive.google.com/open?id=FILE_ID
+            // パターン2: https://drive.google.com/file/d/FILE_ID/view
+            // パターン3: 既にthumbnail形式の場合はそのまま
+            const fileIdMatch = displayUrl.match(/(?:id=|\/d\/)([\w-]+)/);
+            if (fileIdMatch && fileIdMatch[1]) {
+                displayUrl = `https://drive.google.com/thumbnail?id=${fileIdMatch[1]}&sz=w200`;
+            }
+
+            prevImg.src = displayUrl;
+            prevImg.onerror = function () {
+                // 画像読み込みエラー時の代替表示
+                this.style.display = 'none';
+                this.parentElement.insertAdjacentHTML('beforeend',
+                    '<p class="text-sm text-gray-500">（プレビュー表示できません。前回の写真は使用可能です）</p>');
+            };
+            hiddenUrl.value = data.profileImageUrl; // 元のURLを保持
 
             // 自動的に「前回の写真を使用する」をONにするかはお好みだが、
             // ユーザーに選択させる方が安全（古い写真を使いたくない場合もある）
