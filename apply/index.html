@@ -47,7 +47,8 @@
       <!-- リピーター検索（過去出展者） -->
       <section class="form-section p-6 mb-6 bg-orange-50 border-2 border-orange-200">
         <h2 class="section-title text-orange-600">🔄 過去に出展されたことがある方</h2>
-        <p class="text-sm text-gray-700 mb-4">以前と同じお名前・メールアドレスを入力して検索すると、前回の申込内容を自動入力できます。</p>
+        <p class="text-sm text-gray-700 mb-4">以前と同じ<strong>氏名（本名）</strong>・メールアドレスを入力して検索すると、前回の申込内容を自動入力できます。<br><span
+            class="text-orange-600">※出展名ではなく、本名で検索してください</span></p>
 
         <div class="flex gap-4 items-end flex-wrap">
           <button type="button" id="toggleRepeaterSearchBtn"
@@ -64,7 +65,8 @@
         <div id="repeaterSearchArea" class="hidden mt-4 pt-4 border-t border-orange-200">
           <div class="grid gap-4 mb-4 md:grid-cols-2">
             <div>
-              <label class="block mb-2 text-sm font-medium text-gray-900">お名前</label>
+              <label class="block mb-2 text-sm font-medium text-gray-900">氏名（本名）<span
+                  class="text-xs text-orange-600">※出展名ではありません</span></label>
               <input type="text" id="repeaterName"
                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
                 placeholder="山田 花子">
