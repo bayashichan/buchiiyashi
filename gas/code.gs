@@ -260,7 +260,9 @@ function doPost(e) {
        profileImageUrl = saveImageToDrive(
          params.profileImageBase64,
          params.profileImageMimeType,
-         params.profileImageName
+         params.profileImageName,
+         params.eventName,
+         params.name
        );
     }
     
@@ -297,17 +299,38 @@ function doPost(e) {
 }
 
 // Google Driveに画像保存
-function saveImageToDrive(base64Data, mimeType, fileName) {
+function saveImageToDrive(base64Data, mimeType, fileName, eventName, applicantName) {
   try {
-    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    
+    // イベント名フォルダの取得または作成
+    let targetFolder;
+    if (eventName) {
+      const folders = rootFolder.getFoldersByName(eventName);
+      if (folders.hasNext()) {
+        targetFolder = folders.next();
+      } else {
+        targetFolder = rootFolder.createFolder(eventName);
+      }
+    } else {
+      targetFolder = rootFolder; // イベント名がない場合はルートに保存
+    }
+
     const decodedBlob = Utilities.base64Decode(base64Data);
-    const blob = Utilities.newBlob(decodedBlob, mimeType, fileName);
     
-    // タイムスタンプを付与して重複回避
-    const timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyyMMdd_HHmmss');
-    blob.setName(`${timestamp}_${fileName}`);
+    // ファイル名を「氏名.拡張子」または「氏名_元ファイル名」に変更
+    let newFileName = fileName;
+    if (applicantName) {
+      // 拡張子を取得
+      const ext = fileName.includes('.') ? fileName.split('.').pop() : 'jpg';
+      newFileName = `${applicantName}.${ext}`;
+    }
+
+    // Blob作成
+    const blob = Utilities.newBlob(decodedBlob, mimeType, newFileName);
     
-    const file = folder.createFile(blob);
+    // 保存
+    const file = targetFolder.createFile(blob);
     
     // 公開設定（リンクを知っている人全員）
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
