@@ -316,7 +316,8 @@ function saveImageToDrive(base64Data, mimeType, fileName) {
     
   } catch (e) {
     console.error('Image save error:', e);
-    throw new Error('画像の保存に失敗しました: ' + e.message);
+    const errorDetail = (e.stack || e.toString());
+    throw new Error('画像の保存に失敗しました。詳細: ' + e.message + ' (' + errorDetail + ')');
   }
 }
 
