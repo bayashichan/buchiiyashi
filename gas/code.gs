@@ -136,6 +136,7 @@ function searchRepeater(name, email) {
         found: true,
         data: {
           name: row[idx.name],
+          email: row[idx.email], // メールアドレスを追加
           furigana: idx.furigana > -1 ? row[idx.furigana] : '',
           phone: idx.phone > -1 ? row[idx.phone] : '',
           postalCode: idx.zip > -1 ? row[idx.zip] : '',
@@ -154,27 +155,37 @@ function searchRepeater(name, email) {
   return { found: false };
 }
 
-// SNSリンク文字列（"Type: URL\nType: URL"）をパース
+// SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
 function parseSnsLinks(str) {
   const result = { hp: '', blog: '', fb: '', insta: '', line: '', other: '' };
   if (!str || str === 'なし' || str === '（形式エラー）') return result;
   
   const lines = str.split('\n');
   lines.forEach(line => {
-    // "Type: URL" 形式
+    line = line.trim();
+    if (!line) return;
+
+    // "Type: URL" 形式かチェック
     const parts = line.split(': ');
-    if (parts.length >= 2) {
+    if (parts.length >= 2 && !line.startsWith('http')) {
       const type = parts[0];
-      const url = parts.slice(1).join(': '); // URLにコロンが含まれる可能性考慮
+      const url = parts.slice(1).join(': ');
       
-      if (type === 'HP' || type === 'Linktree' || type === 'lit.link') result.hp = url; // HP欄にまとめて入れる
+      if (type === 'HP' || type === 'Linktree' || type === 'lit.link') result.hp = url;
       else if (type === 'ブログ' || type === 'Ameblo') result.blog = url;
       else if (type === 'Facebook') result.fb = url;
       else if (type === 'Instagram') result.insta = url;
       else if (type === '公式LINE') result.line = url;
-      else if (type === 'X(Twitter)' || type === 'TikTok' || type === 'YouTube') result.other = url; // その他欄
-      // ※フロントエンドの SNS_PATTERNS と完全一致させるのが理想だが、
-      // ここでは主要なものをマッピングし、残りはその他やHPに入れる運用とする
+      else result.other = url;
+    } else {
+      // "Type: " 形式でない場合（URLのみの場合）、ドメインで判定
+      const url = line;
+      if (url.includes('instagram.com')) result.insta = url;
+      else if (url.includes('facebook.com')) result.fb = url;
+      else if (url.includes('ameblo.jp')) result.blog = url;
+      else if (url.includes('lin.ee') || url.includes('line.me')) result.line = url;
+      else if (url.includes('youtube.com') || url.includes('tiktok.com') || url.includes('twitter.com') || url.includes('x.com')) result.other = url;
+      else result.hp = url; // その他はHP枠へ
     }
   });
   return result;
