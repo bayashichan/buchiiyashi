@@ -203,15 +203,27 @@ async function updateConfig(env, newConfig, corsHeaders) {
         }
     );
 
-    if (!fileInfoResponse.ok) {
+    let sha = null;
+    if (fileInfoResponse.ok) {
+        const fileInfo = await fileInfoResponse.json();
+        sha = fileInfo.sha;
+    } else if (fileInfoResponse.status !== 404) {
+        // 404以外はエラー
         throw new Error(`GitHub API error: ${fileInfoResponse.status}`);
     }
-
-    const fileInfo = await fileInfoResponse.json();
 
     // config.jsonを生成（整形して保存）
     const newConfigJson = JSON.stringify(newConfig, null, 2);
     const encodedContent = btoa(unescape(encodeURIComponent(newConfigJson)));
+
+    // APIリクエストボディ
+    const requestBody = {
+        message: '管理画面から設定更新',
+        content: encodedContent
+    };
+    if (sha) {
+        requestBody.sha = sha;
+    }
 
     // GitHubに保存
     const updateResponse = await fetch(
@@ -224,11 +236,7 @@ async function updateConfig(env, newConfig, corsHeaders) {
                 'Content-Type': 'application/json',
                 'User-Agent': 'BuchiiyashiFesta-Admin'
             },
-            body: JSON.stringify({
-                message: '管理画面から設定更新',
-                content: encodedContent,
-                sha: fileInfo.sha
-            })
+            body: JSON.stringify(requestBody)
         }
     );
 
