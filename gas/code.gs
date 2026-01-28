@@ -114,46 +114,77 @@ function searchRepeater(name, email) {
     // 合計金額、備考・質問は返さない
   };
   
-  // 照合用正規化関数（スペース除去）
+  // 列インデックスを特定
+  const idx = {
+    eventName: headers.indexOf('開催回'), // 追加
+    submittedAt: headers.indexOf('申込日時'), // 追加（タイムスタンプ）
+    name: headers.indexOf('氏名'),
+    email: headers.indexOf('メールアドレス'),
+    furigana: headers.indexOf('フリガナ'),
+    phone: headers.indexOf('電話番号'),
+    zip: headers.indexOf('郵便番号'),
+    address: headers.indexOf('住所'),
+    exhibitorName: headers.indexOf('出展名'),
+    menuName: headers.indexOf('出展メニュー'),
+    selfIntro: headers.indexOf('自己紹介'),
+    shortPR: headers.indexOf('一言PR'),
+    photoUrl: headers.indexOf('プロフィール写真'),
+    equipment: headers.indexOf('ボディーブース持ち込み物品'),
+    category: headers.indexOf('出展ブース'), // 出展カテゴリではなくブース種別かも？要確認
+    // ヘッダー名が '出展ブース' なのでこれを使うが、Config上のカテゴリIDが必要ならマッピングが必要
+    // ここでは単純に文字列として返す
+    sns: headers.indexOf('SNS')
+  };
+  
+  // 照合用正規化関数
   const normalize = (str) => String(str).replace(/[\s\u3000]/g, '').toLowerCase();
-  const targetName = normalize(name);
   const targetEmail = normalize(email);
   
+  const matches = [];
+
   // 新しい順に検索（後ろから）
-  for (let i = data.length - 1; i > 0; i--) {
+  for (let i = data.length - 1; i >= 0; i--) {
     const row = data[i];
-    const rowName = normalize(row[idx.name]);
     const rowEmail = normalize(row[idx.email]);
     
-    if (rowName === targetName && rowEmail === targetEmail) {
-      // ヒット！データを返す
-      
-      // SNSリンク文字列をパース
-      const snsStr = idx.snsLinks > -1 ? row[idx.snsLinks] : '';
-      const snsParsed = parseSnsLinks(snsStr);
-      
-      return {
-        found: true,
-        data: {
-          name: row[idx.name],
-          email: row[idx.email], // メールアドレスを追加
-          furigana: idx.furigana > -1 ? row[idx.furigana] : '',
-          phone: idx.phone > -1 ? row[idx.phone] : '',
-          postalCode: idx.zip > -1 ? row[idx.zip] : '',
-          address: idx.address > -1 ? row[idx.address] : '',
-          exhibitorName: idx.exhibitorName > -1 ? row[idx.exhibitorName] : '',
-          menuName: idx.menuName > -1 ? row[idx.menuName] : '',
-          selfIntro: idx.selfIntro > -1 ? row[idx.selfIntro] : '',
-          shortPR: idx.shortPR > -1 ? row[idx.shortPR] : '',
-          profileImageUrl: idx.photoUrl > -1 ? row[idx.photoUrl] : '',
-          sns: snsParsed
-        }
-      };
+    if (rowEmail === targetEmail) {
+      matches.push({
+        eventName: idx.eventName > -1 ? row[idx.eventName] : '',
+        submittedAt: idx.submittedAt > -1 ? Utilities.formatDate(new Date(row[idx.submittedAt]), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm') : '',
+        name: row[idx.name],
+        email: row[idx.email],
+        exhibitorName: row[idx.exhibitorName],
+        // 必要なフィールドを抽出
+        category: '', // カテゴリは保存されていない模様（ブース名のみ？）-> addHeaderRowを見る限り '出展ブース' はあるが '出展カテゴリ' がない？
+        // addHeaderRow: '出展名', '出展ブース', '出展メニュー' ...
+        // フォームデータには category があるが、保存時に saveToMasterSpreadsheet で保存していないかも？
+        // 確認：saveToMasterSpreadsheet では data.boothName を '出展ブース' 列に入れている。
+        // data.category は保存されていない？ -> saveToEventSpreadsheetでも保存されていない。
+        // リピーター検索でカテゴリを復元するのは難しいかも。
+        // とりあえずブース名を入れておく
+        boothName: row[idx.exhibitorName], // idx.category は '出展ブース' 列（idx定義修正必要）
+        
+        menuName: row[idx.menuName],
+        selfIntro: row[idx.selfIntro],
+        shortPR: row[idx.shortPR],
+        equipment: idx.equipment > -1 ? row[idx.equipment] : '',
+        snsLinks: parseSnsLinks(row[idx.sns]),
+        photoUrl: row[idx.photoUrl]
+      });
     }
   }
   
-  return { found: false };
-}
+  if (matches.length > 0) {
+    return {
+      found: true,
+      count: matches.length,
+      list: matches
+    };
+  } else {
+    return { found: false };
+  }
+} // searchRepeater end
+
 
 // SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
 function parseSnsLinks(str) {

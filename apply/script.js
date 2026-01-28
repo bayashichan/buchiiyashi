@@ -1097,16 +1097,26 @@ function initRepeaterSearch() {
                 const response = await fetch(url);
                 const result = await response.json();
 
-                if (result.found && result.data) {
-                    console.log('Repeater data:', result.data); // デバッグログ
-                    fillFormWithData(result.data);
-                    statusEl.textContent = '✅ データが見つかりました！自動入力しました。';
-                    statusEl.className = 'mt-2 text-sm font-medium text-green-600';
+                if (result.found) {
+                    if (result.list && result.list.length > 1) {
+                        // 複数件ヒット -> モーダル表示
+                        console.log('Multiple repeater data found:', result.list);
+                        statusEl.textContent = '🔍 複数の履歴が見つかりました。使用するデータを選択してください。';
+                        statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
+                        showRepeaterSelectionModal(result.list, statusEl, searchArea);
+                    } else {
+                        // 1件のみ、または旧形式 -> 直接反映
+                        const data = result.list ? result.list[0] : result.data;
+                        console.log('Repeater data:', data);
+                        fillFormWithData(data);
+                        statusEl.textContent = '✅ データが見つかりました！自動入力しました。';
+                        statusEl.className = 'mt-2 text-sm font-medium text-green-600';
 
-                    // 検索エリアを閉じる（少し待ってから）
-                    setTimeout(() => {
-                        searchArea.classList.add('hidden');
-                    }, 2000);
+                        // 検索エリアを閉じる（少し待ってから）
+                        setTimeout(() => {
+                            searchArea.classList.add('hidden');
+                        }, 2000);
+                    }
                 } else {
                     statusEl.textContent = '⚠️ データが見つかりませんでした。入力内容を確認するか、新規に入力してください。';
                     statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
@@ -1122,6 +1132,67 @@ function initRepeaterSearch() {
         });
     }
 }
+
+// リピーター選択モーダル表示
+function showRepeaterSelectionModal(list, statusEl, searchArea) {
+    const modal = document.getElementById('repeaterSelectModal');
+    const listContainer = document.getElementById('repeaterList');
+    const closeBtn = document.getElementById('closeRepeaterModalBtn');
+
+    if (!modal || !listContainer) return;
+
+    listContainer.innerHTML = ''; // クリア
+
+    list.forEach((data, index) => {
+        const item = document.createElement('div');
+        item.className = 'border border-gray-200 rounded-lg p-4 hover:bg-orange-50 transition-colors cursor-pointer flex justify-between items-center';
+        item.innerHTML = `
+            <div>
+                <p class="font-bold text-gray-800">${data.eventName || '開催回不明'}</p>
+                <p class="text-sm text-gray-500">${data.submittedAt || '日時不明'} 申込</p>
+                <p class="text-sm text-gray-600 mt-1">出展名: ${data.exhibitorName}</p>
+            </div>
+            <button type="button" class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600">
+                選択
+            </button>
+        `;
+
+        // 選択時の動作
+        item.addEventListener('click', () => {
+            fillFormWithData(data);
+            modal.classList.add('hidden');
+
+            // ステータス更新
+            if (statusEl) {
+                statusEl.textContent = '✅ データを選択しました！自動入力しました。';
+                statusEl.className = 'mt-2 text-sm font-medium text-green-600';
+            }
+
+            // 検索エリアを閉じる
+            if (searchArea) {
+                setTimeout(() => {
+                    searchArea.classList.add('hidden');
+                }, 1500);
+            }
+        });
+
+        listContainer.appendChild(item);
+    });
+
+    // キャンセルボタン
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            modal.classList.add('hidden');
+            if (statusEl) {
+                statusEl.textContent = '⚠️ 選択がキャンセルされました。';
+                statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
+            }
+        };
+    }
+
+    modal.classList.remove('hidden');
+}
+
 
 // 取得したデータでフォームを埋める
 function fillFormWithData(data) {
