@@ -1123,13 +1123,11 @@ function fillFormWithData(data) {
             reuseOption.classList.remove('hidden');
 
             // Google DriveのURLを表示可能な形式に変換
+            // 形式: https://lh3.googleusercontent.com/d/FILE_ID
             let displayUrl = data.profileImageUrl;
-            // パターン1: https://drive.google.com/open?id=FILE_ID
-            // パターン2: https://drive.google.com/file/d/FILE_ID/view
-            // パターン3: 既にthumbnail形式の場合はそのまま
-            const fileIdMatch = displayUrl.match(/(?:id=|\/d\/)([\w-]+)/);
+            const fileIdMatch = displayUrl.match(/\/d\/([^\/]+)/);
             if (fileIdMatch && fileIdMatch[1]) {
-                displayUrl = `https://drive.google.com/thumbnail?id=${fileIdMatch[1]}&sz=w200`;
+                displayUrl = `https://lh3.googleusercontent.com/d/${fileIdMatch[1]}`;
             }
 
             prevImg.src = displayUrl;
