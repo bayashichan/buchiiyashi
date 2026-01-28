@@ -598,7 +598,7 @@ function sendConfirmationEmail(data, calculationResult) {
     '二次会参加人数': data.secondaryPartyCount || 0,
     '備考': data.notes || ''
   };
-  };
+
   
   // 料金内訳の表示用リスト作成
   const breakdownList = [
