@@ -97,23 +97,7 @@ function searchRepeater(name, email) {
 
   const headers = data[0]; // ヘッダー行
   
-  // 列インデックスを特定（マスターシートのヘッダー名に合わせる）
-  const idx = {
-    name: headers.indexOf('氏名'),
-    email: headers.indexOf('メールアドレス'),
-    furigana: headers.indexOf('フリガナ'),
-    phone: headers.indexOf('電話番号'),
-    zip: headers.indexOf('郵便番号'),
-    address: headers.indexOf('住所'),
-    exhibitorName: headers.indexOf('出展名'),
-    menuName: headers.indexOf('出展メニュー'),
-    selfIntro: headers.indexOf('自己紹介'),
-    shortPR: headers.indexOf('一言PR'),
-    photoUrl: headers.indexOf('プロフィール写真'),
-    snsLinks: headers.indexOf('SNS')
-    // 合計金額、備考・質問は返さない
-  };
-  
+
   // 列インデックスを特定
   const idx = {
     eventName: headers.indexOf('開催回'), // 追加
