@@ -354,55 +354,103 @@ function saveToSingleSpreadsheet(spreadsheetId, data, calculationResult) {
        addHeaderRow(sheet);
     }
     
-    // データ行追加
+    // SNSリンクを個別カラムに分解
+    const snsData = parseSnsLinks(data.snsLinks);
+    
+    // 参加人数（基本1名 + 追加スタッフ）
+    const totalStaff = 1 + (parseInt(data.extraStaff) || 0);
+    
+    // データ行追加（マスターシートの列順に合わせる）
     sheet.appendRow([
-      data.submittedAt,
-      data.name,
-      data.furigana,
-      data.phoneNumber || '',
-      data.postalCode || '',
-      data.address,
-      data.email,
-      data.exhibitorName,
-      data.category,
-      data.boothName,
-      data.equipment || '',
-      data.menuName,
-      data.selfIntro,
-      data.shortPR,
-      data.photoPermission,
-      formatSnsLinks(data.snsLinks),
-      data.usePower === '1' ? 'あり' : 'なし',
-      data.extraChairs || 0,
-      data.extraStaff || 0,
-      data.stampRallyPrize || 'ない',
-      data.prizeContent || '',
-      data.isMember === '1' ? 'はい' : 'いいえ',
-      data.partyAttend || '欠席',
-      data.partyCount || 0,
-      data.secondaryPartyAttend || '欠席',
-      data.secondaryPartyCount || 0,
-      data.agreeTerms ? '同意' : '',
-      data.notes || '',
-      calculationResult.totalFee,
-      data.profileImageUrl || '',
-      data.lineUserId || '',
-      data.lineDisplayName || ''
+      '',                                          // 元ファイル名（空欄）
+      data.submittedAt,                            // 申込日時
+      data.name,                                   // 氏名
+      data.furigana,                               // フリガナ
+      data.email,                                  // メールアドレス
+      data.phoneNumber || '',                      // 電話番号
+      data.exhibitorName,                          // 出展名
+      data.boothName,                              // 出展ブース
+      data.menuName,                               // 出展メニュー
+      data.equipment || '',                        // 持ち込み物品
+      data.shortPR,                                // 一言PR
+      data.selfIntro,                              // 自己紹介
+      snsData.hp || '',                            // HP
+      snsData.blog || '',                          // ブログ
+      snsData.facebook || '',                      // Facebook
+      snsData.instagram || '',                     // Instagram
+      snsData.line || '',                          // 公式LINE
+      snsData.other || '',                         // その他SNS
+      data.photoPermission,                        // 写真掲載可否
+      data.profileImageUrl || '',                  // プロフィール写真
+      totalStaff,                                  // 参加人数
+      data.usePower === '1' ? 'あり' : 'なし',    // コンセント
+      data.extraChairs || 0,                       // 椅子追加
+      data.partyAttend || '欠席',                  // 懇親会
+      data.partyCount || 0,                        // 懇親会人数
+      data.secondaryPartyAttend || '欠席',         // 二次会
+      data.secondaryPartyCount || 0,               // 二次会人数
+      data.isMember === '1' ? 'はい' : 'いいえ',  // 協会会員
+      data.stampRallyPrize || 'ない',              // 景品提供
+      data.prizeContent || '',                     // 景品内容
+      data.postalCode || '',                       // 郵便番号  
+      data.address,                                // 住所
+      data.notes || '',                            // 備考・質問
+      '',                                          // スタッフメモ（空欄）
+      calculationResult.totalFee,                  // 合計金額
+      '',                                          // 入金確認（空欄）
+      ''                                           // 入金日（空欄）
     ]);
   } catch (e) {
     console.error(`Failed to save to spreadsheet ${spreadsheetId}:`, e);
-    // エラーはログに出すが、処理は継続（片方失敗でももう片方に書き込めるように）
-    // ただし、両方失敗した場合は呼び出し元で検知できないため、メール通知などでカバーが必要かも
   }
+}
+
+// SNSリンクをパースして種類別に分ける
+function parseSnsLinks(snsLinksJson) {
+  const result = { hp: '', blog: '', facebook: '', instagram: '', line: '', other: '' };
+  
+  if (!snsLinksJson) return result;
+  
+  try {
+    const links = JSON.parse(snsLinksJson);
+    const otherLinks = [];
+    
+    links.forEach(link => {
+      const type = (link.type || '').toLowerCase();
+      const url = link.url || '';
+      
+      if (type.includes('instagram')) {
+        result.instagram = result.instagram ? result.instagram + '\n' + url : url;
+      } else if (type.includes('facebook')) {
+        result.facebook = result.facebook ? result.facebook + '\n' + url : url;
+      } else if (type.includes('line') || type.includes('公式line')) {
+        result.line = result.line ? result.line + '\n' + url : url;
+      } else if (type.includes('ameblo') || type.includes('ブログ') || type.includes('blog')) {
+        result.blog = result.blog ? result.blog + '\n' + url : url;
+      } else if (type === 'hp' || type.includes('ホームページ')) {
+        result.hp = result.hp ? result.hp + '\n' + url : url;
+      } else {
+        otherLinks.push(url);
+      }
+    });
+    
+    result.other = otherLinks.join('\n');
+  } catch (e) {
+    console.error('Failed to parse SNS links:', e);
+  }
+  
+  return result;
 }
 
 function addHeaderRow(sheet) {
   sheet.appendRow([
-    '申込日時', 'お名前', 'ふりがな', '電話番号', '郵便番号', 'ご住所', 'メールアドレス',
-    '出展名', 'カテゴリ', 'ブースタイプ', '持ち込み物品', 'メニュー名', '自己紹介', '一言PR',
-    '写真掲載', 'SNSリンク', '電源', '追加スタッフ', '追加椅子', 
-    '景品提供', '景品内容', '会員', '懇親会', '人数', '二次会', '人数',
-    '規約同意', '備考', '合計金額', 'プロフィール画像URL', 'LINE UserID', 'LINE DisplayName'
+    '元ファイル名', '申込日時', '氏名', 'フリガナ', 'メールアドレス', '電話番号',
+    '出展名', '出展ブース', '出展メニュー', '持ち込み物品', '一言PR', '自己紹介',
+    'HP', 'ブログ', 'Facebook', 'Instagram', '公式LINE', 'その他SNS',
+    '写真掲載可否', 'プロフィール写真', '参加人数', 'コンセント', '椅子追加',
+    '懇親会', '懇親会人数', '二次会', '二次会人数', '協会会員',
+    '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
+    'スタッフメモ', '合計金額', '入金確認', '入金日'
   ]);
 }
 
