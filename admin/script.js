@@ -578,6 +578,63 @@ function getTemplateId(imageType) {
     }
 }
 
+// テンプレートスライド新規作成
+async function createSlideTemplate(templateType) {
+    const typeNames = {
+        'earlySns': '早期SNS用',
+        'lateSns': '後期SNS用',
+        'venue': '会場掲示用'
+    };
+
+    const confirmed = confirm(`「${typeNames[templateType]}」のテンプレートスライドを新規作成しますか？`);
+    if (!confirmed) return;
+
+    showLoading();
+    const statusDiv = document.getElementById('slideCreationStatus');
+    statusDiv.innerHTML = 'スライドを作成中...';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/create-slide-template`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ templateType })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // IDを入力欄に設定
+            const inputId = templateType === 'earlySns' ? 'templateEarlySns'
+                : templateType === 'lateSns' ? 'templateLateSns'
+                    : 'templateVenue';
+            document.getElementById(inputId).value = result.presentationId;
+
+            // 開くリンクを表示
+            const linkId = templateType === 'earlySns' ? 'openEarlySns'
+                : templateType === 'lateSns' ? 'openLateSns'
+                    : 'openVenue';
+            const link = document.getElementById(linkId);
+            link.href = result.presentationUrl;
+            link.style.display = 'inline-block';
+
+            statusDiv.innerHTML = `✅ 作成完了！Googleスライドを開いて背景やレイアウトを調整してください。`;
+
+            // スライドを開く
+            window.open(result.presentationUrl, '_blank');
+        } else {
+            statusDiv.innerHTML = `❌ エラー: ${result.error}`;
+        }
+    } catch (error) {
+        console.error('Create slide template error:', error);
+        statusDiv.innerHTML = `❌ エラー: ${error.message}`;
+    } finally {
+        hideLoading();
+    }
+}
+
 // 生成された画像を表示
 function renderGeneratedImages(results) {
     const container = document.getElementById('generatedImages');

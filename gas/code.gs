@@ -398,6 +398,20 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
+    // スライドテンプレート作成アクション
+    if (params.action === 'create_slide_template') {
+      const { templateType } = params;
+      if (!templateType) {
+        throw new Error('templateType is required');
+      }
+      
+      const result = createSlideTemplatePresentation(templateType);
+      
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
     // 画像アップロード処理
     let profileImageUrl = params.profileImageUrl || ''; // 既存のURLがあればそれを使用
     
@@ -937,6 +951,98 @@ function testDoPost() {
   
   const result = doPost(testData);
   console.log(result.getContent());
+}
+
+// ========================================
+// スライドテンプレート新規作成
+// ========================================
+
+/**
+ * 指定されたタイプのスライドテンプレートを新規作成
+ * @param {string} templateType - 'earlySns', 'lateSns', 'venue'
+ * @returns {Object} 作成結果
+ */
+function createSlideTemplatePresentation(templateType) {
+  try {
+    const typeConfig = {
+      'earlySns': {
+        name: 'SNS用テンプレート（早期）',
+        placeholders: ['{{プロフィール画像}}', '{{出展名}}', '{{メニュー}}']
+      },
+      'lateSns': {
+        name: 'SNS用テンプレート（後期）',
+        placeholders: ['{{プロフィール画像}}', '{{出展名}}', '{{メニュー}}', '{{座席番号}}']
+      },
+      'venue': {
+        name: '会場掲示用テンプレート',
+        placeholders: ['{{プロフィール画像}}', '{{出展名}}', '{{メニュー}}', '{{座席番号}}', '{{一言PR}}']
+      }
+    };
+    
+    const config = typeConfig[templateType];
+    if (!config) {
+      throw new Error('無効なテンプレートタイプです: ' + templateType);
+    }
+    
+    // 新しいプレゼンテーション作成
+    const presentation = SlidesApp.create(config.name);
+    const presentationId = presentation.getId();
+    
+    // 最初のスライドを取得（空白スライド）
+    let slide = presentation.getSlides()[0];
+    if (!slide) {
+      slide = presentation.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+    }
+    
+    // プレースホルダーテキストボックスを配置
+    const slideWidth = presentation.getPageWidth();
+    const slideHeight = presentation.getPageHeight();
+    
+    // プロフィール画像プレースホルダー（左上）
+    const imageBox = slide.insertTextBox('{{プロフィール画像}}', 30, 30, 200, 200);
+    imageBox.getText().getTextStyle().setFontSize(14).setBold(true);
+    imageBox.setContentAlignment(SlidesApp.ContentAlignment.MIDDLE);
+    
+    // テキストプレースホルダーを縦に配置
+    let yPos = 30;
+    for (const placeholder of config.placeholders) {
+      if (placeholder === '{{プロフィール画像}}') continue; // 画像は別処理
+      
+      const textBox = slide.insertTextBox(placeholder, 260, yPos, 400, 50);
+      textBox.getText().getTextStyle().setFontSize(18);
+      yPos += 60;
+    }
+    
+    // 説明コメントを追加
+    const commentBox = slide.insertTextBox(
+      '【編集方法】\n' +
+      '1. 背景画像やデザインを自由に設定\n' +
+      '2. プレースホルダー（{{...}}）の位置やスタイルを調整\n' +
+      '3. {{プロフィール画像}}は実際の画像に置換されます',
+      30, slideHeight - 150, slideWidth - 60, 120
+    );
+    commentBox.getText().getTextStyle().setFontSize(11).setForegroundColor('#888888');
+    
+    presentation.saveAndClose();
+    
+    // プレゼンテーションの共有設定（編集者として自分のみ、閲覧はリンク共有）
+    const file = DriveApp.getFileById(presentationId);
+    // デフォルトで自分のみ編集可能
+    
+    return {
+      success: true,
+      presentationId: presentationId,
+      presentationUrl: `https://docs.google.com/presentation/d/${presentationId}/edit`,
+      message: `${config.name}を作成しました`
+    };
+    
+  } catch (error) {
+    console.error('createSlideTemplatePresentation error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 }
 
 // ========================================

@@ -88,6 +88,12 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
             return await generateBatchImages(env, body, corsHeaders);
         }
 
+        // POST /api/admin/create-slide-template - スライドテンプレート作成
+        if (url.pathname === '/api/admin/create-slide-template' && request.method === 'POST') {
+            const body = await request.json();
+            return await createSlideTemplate(env, body, corsHeaders);
+        }
+
         return new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -602,6 +608,40 @@ async function generateBatchImages(env, body, corsHeaders) {
         });
     } catch (error) {
         console.error('Generate batch images error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// スライドテンプレート作成
+async function createSlideTemplate(env, body, corsHeaders) {
+    try {
+        const { templateType } = body;
+
+        if (!templateType) {
+            return new Response(JSON.stringify({ error: 'templateType is required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const response = await fetch(env.GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'create_slide_template',
+                templateType
+            })
+        });
+
+        const result = await response.json();
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Create slide template error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

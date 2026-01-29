@@ -135,21 +135,41 @@
 
                     <div class="form-group">
                         <label>早期SNS用テンプレートID</label>
-                        <input type="text" id="templateEarlySns" placeholder="GoogleスライドのID">
+                        <div class="flex-row">
+                            <input type="text" id="templateEarlySns" placeholder="GoogleスライドのID">
+                            <button type="button" class="btn-secondary small"
+                                onclick="createSlideTemplate('earlySns')">📄 新規作成</button>
+                            <a id="openEarlySns" href="#" target="_blank" class="btn-secondary small"
+                                style="display:none">開く</a>
+                        </div>
                         <p class="hint">含む情報: プロフィール画像、出展名、メニュー</p>
                     </div>
 
                     <div class="form-group">
                         <label>後期SNS用テンプレートID</label>
-                        <input type="text" id="templateLateSns" placeholder="GoogleスライドのID">
+                        <div class="flex-row">
+                            <input type="text" id="templateLateSns" placeholder="GoogleスライドのID">
+                            <button type="button" class="btn-secondary small"
+                                onclick="createSlideTemplate('lateSns')">📄 新規作成</button>
+                            <a id="openLateSns" href="#" target="_blank" class="btn-secondary small"
+                                style="display:none">開く</a>
+                        </div>
                         <p class="hint">含む情報: 早期SNS + 座席番号</p>
                     </div>
 
                     <div class="form-group">
                         <label>会場掲示用テンプレートID</label>
-                        <input type="text" id="templateVenue" placeholder="GoogleスライドのID">
+                        <div class="flex-row">
+                            <input type="text" id="templateVenue" placeholder="GoogleスライドのID">
+                            <button type="button" class="btn-secondary small" onclick="createSlideTemplate('venue')">📄
+                                新規作成</button>
+                            <a id="openVenue" href="#" target="_blank" class="btn-secondary small"
+                                style="display:none">開く</a>
+                        </div>
                         <p class="hint">含む情報: プロフィール画像、出展名、座席番号、メニュー、一言PR</p>
                     </div>
+
+                    <div id="slideCreationStatus" class="status mt-3"></div>
                 </div>
 
                 <div class="card mt-4">
@@ -191,7 +211,8 @@
                 <div class="card">
                     <h3>テンプレート設定</h3>
                     <p class="hint">プレースホルダー: <code>{{出展名}}</code>, <code>{{メニュー}}</code>, <code>{{一言PR}}</code>,
-                        <code>{{SNSアカウント}}</code>, <code>{{SNSリンク一覧}}</code></p>
+                        <code>{{SNSアカウント}}</code>, <code>{{SNSリンク一覧}}</code>
+                    </p>
 
                     <div class="form-group">
                         <label>Instagram用テンプレート</label>
