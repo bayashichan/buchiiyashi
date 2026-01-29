@@ -823,3 +823,44 @@ function testDoPost() {
   const result = doPost(testData);
   console.log(result.getContent());
 }
+
+/**
+ * ★診断用★ DriveApp動作確認テスト
+ * GASエディタから直接実行してください
+ * 「実行ログ」で結果を確認できます
+ */
+function testDriveAccess() {
+  console.log('=== DriveApp診断テスト開始 ===');
+  console.log('フォルダID: ' + CONFIG.DRIVE_FOLDER_ID);
+  
+  try {
+    // Step 1: フォルダ取得テスト
+    console.log('Step 1: フォルダ取得中...');
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    console.log('✅ フォルダ取得成功: ' + folder.getName());
+    
+    // Step 2: 権限確認
+    console.log('Step 2: 権限確認中...');
+    const access = folder.getSharingAccess();
+    const permission = folder.getSharingPermission();
+    console.log('共有設定: ' + access + ' / ' + permission);
+    
+    // Step 3: テストファイル作成
+    console.log('Step 3: テストファイル作成中...');
+    const testBlob = Utilities.newBlob('テストデータ', 'text/plain', 'test_' + Date.now() + '.txt');
+    const testFile = folder.createFile(testBlob);
+    console.log('✅ ファイル作成成功: ' + testFile.getName());
+    
+    // Step 4: テストファイル削除
+    testFile.setTrashed(true);
+    console.log('✅ テストファイル削除済み');
+    
+    console.log('=== 診断テスト完了: すべて正常 ===');
+    return '成功';
+    
+  } catch (e) {
+    console.error('❌ エラー発生: ' + e.message);
+    console.error('スタックトレース: ' + e.stack);
+    return 'エラー: ' + e.message;
+  }
+}
