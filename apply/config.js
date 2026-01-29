@@ -9,7 +9,7 @@ let CONFIG = null;
 // 設定を読み込む
 async function loadConfig() {
   try {
-    const response = await fetch('./config.json');
+    const response = await fetch(`./config.json?t=${new Date().getTime()}`);
     if (!response.ok) {
       throw new Error('Failed to load config.json');
     }
