@@ -486,7 +486,9 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       '',                                          // スタッフメモ（空欄）
       calculationResult.totalFee,                  // 合計金額
       '',                                          // 入金確認（空欄）
-      ''                                           // 入金日（空欄）
+      '',                                          // 入金日（空欄）
+      data.lineUserId || '',                       // LINE UserID
+      data.lineDisplayName || ''                   // LINE DisplayName
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -547,7 +549,9 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       '',                                          // スタッフメモ（空欄）
       calculationResult.totalFee,                  // 合計金額
       '',                                          // 入金確認（空欄）
-      ''                                           // 入金日（空欄）
+      '',                                          // 入金日（空欄）
+      data.lineUserId || '',                       // LINE UserID
+      data.lineDisplayName || ''                   // LINE DisplayName
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -562,7 +566,7 @@ function addHeaderRow(sheet) {
     'SNS', '写真掲載可否', 'プロフィール写真', '参加人数追加オプション', 'コンセント', '椅子追加',
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
-    'スタッフメモ', '合計金額', '入金確認', '入金日'
+    'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINE UserID', 'LINE DisplayName'
   ]);
 }
 
@@ -575,7 +579,7 @@ function addEventHeaderRow(sheet) {
     'SNS', '写真掲載可否', 'プロフィール写真', '参加人数追加オプション', 'コンセント', '椅子追加',
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
-    'スタッフメモ', '合計金額', '入金確認', '入金日'
+    'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINE UserID', 'LINE DisplayName'
   ]);
 }
 
