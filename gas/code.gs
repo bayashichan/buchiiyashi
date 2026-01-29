@@ -284,9 +284,10 @@ function doPost(e) {
     }
     
     // 画像アップロード処理
-    let profileImageUrl = '';
+    let profileImageUrl = params.profileImageUrl || ''; // 既存のURLがあればそれを使用
     
     if (params.profileImageBase64) {
+       // 新しい画像がアップロードされた場合は上書き
        profileImageUrl = saveImageToDrive(
          params.profileImageBase64,
          params.profileImageMimeType,
@@ -365,7 +366,8 @@ function saveImageToDrive(base64Data, mimeType, fileName, eventName, applicantNa
     // 公開設定（リンクを知っている人全員）
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     
-    return file.getUrl();
+    // 埋め込み用直リンクURLを返す
+    return `https://lh3.googleusercontent.com/d/${file.getId()}`;
     
   } catch (e) {
     console.error('Image save error:', e);

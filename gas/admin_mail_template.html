@@ -104,7 +104,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🌸 新規出展申込 🌸</h1>
+            <h1>新規出展申込</h1>
             <p style="margin: 5px 0 0;">
                 <?= data.submittedAt ?>
             </p>
@@ -113,7 +113,7 @@
         <div class="content">
             <!-- 申込者情報 -->
             <div class="section">
-                <div class="section-title">👤 申込者情報</div>
+                <div class="section-title">申込者情報</div>
                 <table class="info-table">
                     <tr>
                         <th>お名前</th>
@@ -168,7 +168,7 @@
 
             <!-- 出展情報 -->
             <div class="section">
-                <div class="section-title">🏪 出展情報</div>
+                <div class="section-title">出展情報</div>
                 <table class="info-table">
                     <tr>
                         <th>出展名</th>
@@ -225,7 +225,7 @@
 
             <!-- プロフィール写真 -->
             <div class="section">
-                <div class="section-title">📸 プロフィール写真</div>
+                <div class="section-title">プロフィール写真</div>
                 <? if (data.profileImageUrl) { ?>
                 <p>
                     <img src="<?= data.profileImageUrl ?>" alt="プロフィール写真" class="profile-image"><br>
@@ -238,7 +238,7 @@
 
             <!-- SNS -->
             <div class="section">
-                <div class="section-title">🔗 SNSリンク</div>
+                <div class="section-title">SNSリンク</div>
                 <p>
                     <?!= snsLinksFormatted.replace(/\n/g, '<br>') || 'なし' ?>
                 </p>
@@ -246,7 +246,7 @@
 
             <!-- オプション -->
             <div class="section">
-                <div class="section-title">⚙️ オプション</div>
+                <div class="section-title">オプション</div>
                 <table class="info-table">
                     <tr>
                         <th>追加スタッフ</th>
@@ -271,7 +271,7 @@
 
             <!-- 企画・協会 -->
             <div class="section">
-                <div class="section-title">🎁 企画・協会</div>
+                <div class="section-title">企画・協会</div>
                 <table class="info-table">
                     <tr>
                         <th>スタンプラリー景品</th>
@@ -285,7 +285,7 @@
 
             <!-- 懇親会・二次会 -->
             <div class="section">
-                <div class="section-title">🎉 懇親会・二次会</div>
+                <div class="section-title">懇親会・二次会</div>
                 <table class="info-table">
                     <tr>
                         <th>懇親会</th>
@@ -307,7 +307,7 @@
             <!-- 備考 -->
             <? if (data.notes) { ?>
             <div class="section">
-                <div class="section-title">📝 備考</div>
+                <div class="section-title">備考</div>
                 <p>
                     <?!= (data.notes || '').replace(/\r?\n/g, '<br>') ?>
                 </p>
