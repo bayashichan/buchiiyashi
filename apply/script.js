@@ -104,6 +104,14 @@ function updateHeaderInfo() {
     const container = document.getElementById('eventInfoContainer');
     const dateEl = document.getElementById('headerEventDateDisplay');
     const locationEl = document.getElementById('headerEventLocationDisplay');
+    const titleEl = document.getElementById('eventTitle');
+
+    // タイトル更新（eventNameが「第◯回」形式の場合はフルタイトルに変換）
+    if (titleEl && CONFIG.eventName) {
+        // 「第◯回」が含まれていればそれを使用、なければそのまま使用
+        const eventNumber = CONFIG.eventName.match(/第.+回/)?.[0] || CONFIG.eventName;
+        titleEl.textContent = `🌸 ${eventNumber}ぶち癒しフェスタin東京 🌸`;
+    }
 
     if (CONFIG.eventDate || CONFIG.eventLocation) {
         container.classList.remove('hidden');
@@ -1209,6 +1217,7 @@ function fillFormWithData(data) {
     // 出展カテゴリの復元
     if (data.category) {
         document.getElementById('categoryInput').value = data.category;
+        selectedCategory = data.category;  // グローバル変数も更新（バリデーション用）
         // カテゴリボタンの選択状態を更新
         const categoryButtons = document.querySelectorAll('#categoryButtons button');
         categoryButtons.forEach(btn => {
