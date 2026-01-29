@@ -1098,25 +1098,17 @@ function initRepeaterSearch() {
                 const result = await response.json();
 
                 if (result.found) {
-                    if (result.list && result.list.length > 1) {
-                        // 複数件ヒット -> モーダル表示
-                        console.log('Multiple repeater data found:', result.list);
-                        statusEl.textContent = '🔍 複数の履歴が見つかりました。使用するデータを選択してください。';
-                        statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
-                        showRepeaterSelectionModal(result.list, statusEl, searchArea);
-                    } else {
-                        // 1件のみ、または旧形式 -> 直接反映
-                        const data = result.list ? result.list[0] : result.data;
-                        console.log('Repeater data:', data);
-                        fillFormWithData(data);
-                        statusEl.textContent = '✅ データが見つかりました！自動入力しました。';
-                        statusEl.className = 'mt-2 text-sm font-medium text-green-600';
+                    // 結果がある場合は必ずモーダルで選択させる
+                    const dataList = result.list || [result.data];
+                    console.log('Repeater data found:', dataList);
 
-                        // 検索エリアを閉じる（少し待ってから）
-                        setTimeout(() => {
-                            searchArea.classList.add('hidden');
-                        }, 2000);
+                    if (dataList.length === 1) {
+                        statusEl.textContent = '🔍 過去のデータが見つかりました。使用する場合は選択してください。';
+                    } else {
+                        statusEl.textContent = '🔍 複数の履歴が見つかりました。使用するデータを選択してください。';
                     }
+                    statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
+                    showRepeaterSelectionModal(dataList, statusEl, searchArea);
                 } else {
                     statusEl.textContent = '⚠️ データが見つかりませんでした。入力内容を確認するか、新規に入力してください。';
                     statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
