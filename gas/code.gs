@@ -356,6 +356,8 @@ function saveImageToDrive(base64Data, mimeType, fileName, eventName, applicantNa
         targetFolder = folders.next();
       } else {
         targetFolder = rootFolder.createFolder(eventName);
+        // 新規作成したフォルダを「リンクを知っている全員が閲覧可」に設定
+        targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       }
     } else {
       targetFolder = rootFolder; // イベント名がない場合はルートに保存
