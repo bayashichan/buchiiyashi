@@ -447,8 +447,8 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
        addEventHeaderRow(sheet);
     }
     
-    // 参加人数（基本1名 + 追加スタッフ）
-    const totalStaff = 1 + (parseInt(data.extraStaff) || 0);
+    // 参加人数追加オプション（追加人数のみ、0〜2）
+    const additionalStaff = parseInt(data.extraStaff) || 0;
     
     // データ行追加（座席番号列を含む、元ファイル名なし）
     sheet.appendRow([
@@ -468,7 +468,7 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       formatSnsLinks(data.snsLinks),               // SNS
       data.photoPermission,                        // 写真掲載可否
       data.profileImageUrl || '',                  // プロフィール写真
-      totalStaff,                                  // 参加人数追加オプション
+      additionalStaff,                             // 参加人数追加オプション
       data.usePower === '1' ? 'あり' : 'なし',    // コンセント
       data.extraChairs || 0,                       // 椅子追加
       data.partyAttend || '欠席',                  // 懇親会出欠
@@ -508,8 +508,8 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
        addHeaderRow(sheet);
     }
     
-    // 参加人数（基本1名 + 追加スタッフ）
-    const totalStaff = 1 + (parseInt(data.extraStaff) || 0);
+    // 参加人数追加オプション（追加人数のみ、0〜2）
+    const additionalStaff = parseInt(data.extraStaff) || 0;
     
     // データ行追加（座席番号列なし、開催回あり）
     sheet.appendRow([
@@ -529,7 +529,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       formatSnsLinks(data.snsLinks),               // SNS
       data.photoPermission,                        // 写真掲載可否
       data.profileImageUrl || '',                  // プロフィール写真
-      totalStaff,                                  // 参加人数追加オプション
+      additionalStaff,                             // 参加人数追加オプション
       data.usePower === '1' ? 'あり' : 'なし',    // コンセント
       data.extraChairs || 0,                       // 椅子追加
       data.partyAttend || '欠席',                  // 懇親会出欠
@@ -577,10 +577,12 @@ function addEventHeaderRow(sheet) {
   ]);
 }
 
-// 管理者へメール通知
+// 管理者へメール通知（HTMLメール）
 function sendAdminEmail(data, calculationResult) {
   const subject = `【出展申込】${data.name}様 (${data.exhibitorName})`;
-  const body = `
+  
+  // テキスト版（HTMLが表示できないクライアント用）
+  const textBody = `
 新しい出展申込がありました。
 
 ■ 申込者情報
@@ -591,6 +593,7 @@ function sendAdminEmail(data, calculationResult) {
 ご住所: ${data.address}
 メールアドレス: ${data.email}
 LINE名: ${data.lineDisplayName || '-'}
+協会会員: ${data.isMember === '1' ? 'はい' : 'いいえ'}
 
 ■ 出展情報
 出展名: ${data.exhibitorName}
@@ -602,10 +605,10 @@ ${data.menuName}
 自己紹介:
 ${data.selfIntro}
 一言PR: ${data.shortPR}
+写真掲載許可: ${data.photoPermission}
 
 ■ カタログ掲載画像
 画像URL: ${data.profileImageUrl || '取得失敗'}
-(画像データ受信: ${data.profileImageBase64 ? 'あり' : 'なし'})
 
 ■ オプション
 追加スタッフ: ${data.extraStaff || 0}名
@@ -618,7 +621,6 @@ ${formatSnsLinks(data.snsLinks)}
 ■ 企画・協会
 スタンプラリー景品: ${data.stampRallyPrize || 'ない'}
 景品内容: ${data.prizeContent || '-'}
-会員: ${data.isMember === '1' ? 'はい' : 'いいえ'}
 
 ■ 懇親会・二次会
 懇親会: ${data.partyAttend || '欠席'} ${data.partyCount ? `(${data.partyCount}名)` : ''}
@@ -632,9 +634,18 @@ ${data.notes || 'なし'}
 
 申込日時: ${data.submittedAt}
   `.trim();
+
+  // HTMLテンプレートを読み込み
+  const template = HtmlService.createTemplateFromFile('admin_mail_template');
+  template.data = data;
+  template.calculationResult = calculationResult;
+  template.snsLinksFormatted = formatSnsLinks(data.snsLinks);
   
-  GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, body, {
-    name: 'ぶち癒やしフェスタin東京事務局'
+  const htmlBody = template.evaluate().getContent();
+  
+  GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, textBody, {
+    name: 'ぶち癒やしフェスタin東京事務局',
+    htmlBody: htmlBody
   });
 }
 
@@ -647,8 +658,11 @@ function sendConfirmationEmail(data, calculationResult) {
   const formData = {
     'お名前': data.name,
     'ふりがな': data.furigana,
+    '電話番号': data.phoneNumber || '',
+    '郵便番号': data.postalCode || '',
     'ご住所': data.address,
     'メールアドレス': data.email,
+    '協会会員': isMember ? 'はい' : 'いいえ',
     '出展名（セラピスト名／屋号）': data.exhibitorName,
     '出展カテゴリ': data.category,
     '出展ブース': data.boothName,
@@ -657,6 +671,7 @@ function sendConfirmationEmail(data, calculationResult) {
     '自己紹介': data.selfIntro,
     '一言PR': data.shortPR,
     '写真掲載許可': data.photoPermission,
+    'プロフィール写真URL': data.profileImageUrl || '',
     'SNSリンク': formatSnsLinks(data.snsLinks),
     '追加スタッフ': data.extraStaff || 0,
     '追加椅子': data.extraChairs || 0,

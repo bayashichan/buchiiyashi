@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: 'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #e91e63 0%, #ff5722 100%);
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            background-color: #3498db;
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+        }
+
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .info-table th,
+        .info-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .info-table th {
+            background-color: #f8f9fa;
+            width: 30%;
+            font-weight: 600;
+        }
+
+        .total-box {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .total-box .amount {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .profile-image {
+            max-width: 150px;
+            max-height: 150px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+
+        .footer {
+            background-color: #f8f9fa;
+            padding: 15px;
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌸 新規出展申込 🌸</h1>
+            <p style="margin: 5px 0 0;">
+                <?= data.submittedAt ?>
+            </p>
+        </div>
+
+        <div class="content">
+            <!-- 申込者情報 -->
+            <div class="section">
+                <div class="section-title">👤 申込者情報</div>
+                <table class="info-table">
+                    <tr>
+                        <th>お名前</th>
+                        <td>
+                            <?= data.name ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>ふりがな</th>
+                        <td>
+                            <?= data.furigana ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>電話番号</th>
+                        <td>
+                            <?= data.phoneNumber || '未入力' ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>郵便番号</th>
+                        <td>
+                            <?= data.postalCode || '未入力' ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>ご住所</th>
+                        <td>
+                            <?= data.address ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>メールアドレス</th>
+                        <td><a href="mailto:<?= data.email ?>">
+                                <?= data.email ?>
+                            </a></td>
+                    </tr>
+                    <tr>
+                        <th>LINE名</th>
+                        <td>
+                            <?= data.lineDisplayName || '未取得' ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>協会会員</th>
+                        <td>
+                            <?= data.isMember === '1' ? '✅ はい' : 'いいえ' ?>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- 出展情報 -->
+            <div class="section">
+                <div class="section-title">🏪 出展情報</div>
+                <table class="info-table">
+                    <tr>
+                        <th>出展名</th>
+                        <td>
+                            <?= data.exhibitorName ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>カテゴリ</th>
+                        <td>
+                            <?= data.category ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>ブース</th>
+                        <td>
+                            <?= data.boothName ?>
+                        </td>
+                    </tr>
+                    <? if (data.equipment) { ?>
+                    <tr>
+                        <th>持ち込み物品</th>
+                        <td>
+                            <?= data.equipment ?>
+                        </td>
+                    </tr>
+                    <? } ?>
+                    <tr>
+                        <th>出展メニュー</th>
+                        <td>
+                            <?!= (data.menuName || '').replace(/\r?\n/g, '<br>') ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>自己紹介</th>
+                        <td>
+                            <?!= (data.selfIntro || '').replace(/\r?\n/g, '<br>') ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>一言PR</th>
+                        <td>
+                            <?= data.shortPR ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>写真掲載許可</th>
+                        <td>
+                            <?= data.photoPermission ?>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- プロフィール写真 -->
+            <div class="section">
+                <div class="section-title">📸 プロフィール写真</div>
+                <? if (data.profileImageUrl) { ?>
+                <p>
+                    <img src="<?= data.profileImageUrl ?>" alt="プロフィール写真" class="profile-image"><br>
+                    <small><a href="<?= data.profileImageUrl ?>" target="_blank">画像URLを開く</a></small>
+                </p>
+                <? } else { ?>
+                <p>（画像なし）</p>
+                <? } ?>
+            </div>
+
+            <!-- SNS -->
+            <div class="section">
+                <div class="section-title">🔗 SNSリンク</div>
+                <p>
+                    <?!= snsLinksFormatted.replace(/\n/g, '<br>') || 'なし' ?>
+                </p>
+            </div>
+
+            <!-- オプション -->
+            <div class="section">
+                <div class="section-title">⚙️ オプション</div>
+                <table class="info-table">
+                    <tr>
+                        <th>追加スタッフ</th>
+                        <td>
+                            <?= data.extraStaff || 0 ?>名
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>追加椅子</th>
+                        <td>
+                            <?= data.extraChairs || 0 ?>脚
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>電源</th>
+                        <td>
+                            <?= data.usePower === '1' ? 'あり' : 'なし' ?>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- 企画・協会 -->
+            <div class="section">
+                <div class="section-title">🎁 企画・協会</div>
+                <table class="info-table">
+                    <tr>
+                        <th>スタンプラリー景品</th>
+                        <td>
+                            <?= data.stampRallyPrize || 'ない' ?>
+                            <?= data.prizeContent ? `（${data.prizeContent}）` : '' ?>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- 懇親会・二次会 -->
+            <div class="section">
+                <div class="section-title">🎉 懇親会・二次会</div>
+                <table class="info-table">
+                    <tr>
+                        <th>懇親会</th>
+                        <td>
+                            <?= data.partyAttend || '欠席' ?>
+                            <?= data.partyCount ? `(${data.partyCount}名)` : '' ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>二次会</th>
+                        <td>
+                            <?= data.secondaryPartyAttend || '欠席' ?>
+                            <?= data.secondaryPartyCount ? `(${data.secondaryPartyCount}名) ※現場徴収` : '' ?>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- 備考 -->
+            <? if (data.notes) { ?>
+            <div class="section">
+                <div class="section-title">📝 備考</div>
+                <p>
+                    <?!= (data.notes || '').replace(/\r?\n/g, '<br>') ?>
+                </p>
+            </div>
+            <? } ?>
+
+            <!-- 合計金額 -->
+            <div class="total-box">
+                <div>お振込金額合計</div>
+                <div class="amount">¥
+                    <?= calculationResult.totalFee.toLocaleString() ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            ぶち癒やしフェスタin東京 管理システム
+        </div>
+    </div>
+</body>
+
+</html>

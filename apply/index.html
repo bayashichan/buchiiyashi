@@ -485,15 +485,117 @@
 
   <!-- 規約モーダル -->
   <div id="termsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-    <div class="bg-white rounded-2xl p-6 max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
-      <h2 class="text-xl font-bold text-orange-500 mb-4">出展規約</h2>
-      <div class="text-sm text-gray-700 space-y-3">
-        <p>1. 出展者は、イベント当日の運営ルールに従ってください。</p>
-        <p>2. 出展料のお振込みは、お申し込み後1週間以内にお願いいたします。</p>
-        <p>3. キャンセルの場合は、開催日の1ヶ月前から50%、2週間前から100%のキャンセル料が発生します。</p>
-        <p>4. 出展内容は事前にご申告いただいた内容に限ります。</p>
-        <p>5. 他の出展者やお客様に迷惑となる行為は禁止です。</p>
+    <div class="bg-white rounded-2xl p-6 max-w-2xl mx-4 max-h-[85vh] overflow-y-auto">
+      <h2 class="text-xl font-bold text-orange-500 mb-4 text-center">【出展規約】</h2>
+
+      <div class="text-sm text-gray-700 space-y-4">
+        <!-- 出展に関する注意点とお願い -->
+        <div class="mb-4">
+          <h3 class="font-bold text-orange-600 mb-2 border-b border-orange-200 pb-1">【出展に関する注意点とお願い】</h3>
+          <ul class="space-y-2 list-disc pl-5">
+            <li>体験型イベントになりますので各メニューの料金はイベント価格でお願いします。</li>
+            <li>料金は、はっきりお客様にわかるように提示してください。</li>
+            <li>記載された料金以外に料金が発生する時(延長など)にはお客様に確認をとってからにしてください。</li>
+            <li>お申込みは先着順とさせて頂きます。</li>
+            <li>ブース場所の指定はできません。ご了承ください。</li>
+            <li>出展者様についてはInstagram,HP,Facebook,などでご紹介させて頂きます。</li>
+            <li>会場の壁や柱などに釘、画鋲、テープなどの張り付けは禁止です。</li>
+            <li>床などを汚してしまった場合は各自でお掃除をお願い致します。</li>
+            <li>電源をご利用の方は延長コードをお持ちください。</li>
+            <li>火気厳禁のためお香・セージなどは焚かないようにお願いします。</li>
+            <li>ゴミは各自責任を持って お持ち帰り下さい。</li>
+            <li>終了後 使用した机・椅子などは片づけのご協力をお願い致します。</li>
+            <li>館内施設、及び備品を破損した場合は出展者様の実費負担となります。</li>
+            <li>施設内での怪我、盗難及び事故に関しましては一切の責任を負いかねますのでご了承ください。</li>
+            <li>本イベントでは、皆様が笑顔になりリラックスして体験していただくことを目的としているイベントです。特定のサービスや商品に関する契約や勧誘はお断りをさせていただいております。</li>
+            <li>ご出展内容によっては、協会の主旨と合わないと判断された場合 お断りさせて頂く場合もございますのでご了承下さい。</li>
+            <li>お客様はもちろんのこと、出展者さまにも強引な勧誘などはされませんようによろしくお願いいたします。</li>
+            <li>お客様や出展者様に不快感を与える商法・宗教勧誘など禁止致します。当日そのような行為をされた場合は直ちに退場頂き、次回の出展はお断りさせて頂きますのでご了承ください。</li>
+            <li>本イベントでは、出展者様とお客様の個別契約で成り立っており、主催者側はトラブルに一切関与いたしません。</li>
+            <li>一般的な常識ある行動をお願いします。</li>
+            <li class="font-bold">お客様を最高の笑顔でお迎えください。</li>
+          </ul>
+        </div>
+
+        <!-- 出展料の支払 -->
+        <div class="mb-4">
+          <h3 class="font-bold text-orange-600 mb-2 border-b border-orange-200 pb-1">【出展料の支払】</h3>
+          <ul class="space-y-2 list-disc pl-5">
+            <li>お支払いは銀行振込みになります。（お申し込み後お知らせいたします。）</li>
+            <li>お申し込みをいただきましてから2週間以内にお振り込みをお願いいたします。</li>
+            <li>お振込み手数料は各自ご負担お願いいたします。</li>
+            <li>2週間以内のご入金をお願いしておりますが、ご事情によりどうしても遅れる場合は必ず入金予定日をご連絡ください。※入金予定日お知らせ後、早目のご入金のご協力をお願い致します。</li>
+            <li>なお、イベントを1か月切ってからのお申し込みの場合は、<span class="font-bold text-red-500">3日以内</span>のお振込みをお願いいたします。</li>
+            <li>金融機関の振込明細書または振込完了画面をもって領収書に代えさせていただきます。別途、領収書の発行は行っておりませんのでご了承ください。</li>
+          </ul>
+        </div>
+
+        <!-- キャンセルについて -->
+        <div class="mb-4 bg-red-50 p-3 rounded-lg border border-red-200">
+          <h3 class="font-bold text-red-600 mb-2">【キャンセルについて】</h3>
+          <p class="mb-2"><span class="font-bold">【重要】</span>キャンセルに関して 開催日の<span
+              class="font-bold">1ヶ月前からは50％</span>、<span
+              class="font-bold">２週間前からは100％</span>発生致します。1ヶ月以前対象の場合は、お振込手数料を引いた出展料をお返しいたします。</p>
+          <p class="text-sm">但し、ご連絡無き場合・期日までに連絡が取れない場合、期日までに入金がいただけない場合は出展のキャンセルとみなし、出展料の100%のキャンセル料をご請求いたします。</p>
+        </div>
+
+        <!-- 懇親会について -->
+        <div class="mb-4 bg-purple-50 p-3 rounded-lg border border-purple-200">
+          <h3 class="font-bold text-purple-600 mb-2">【懇親会について】</h3>
+          <p><span class="font-bold">※重要</span>　懇親会の費用につきましては、お席とお料理予約の関係上<span
+              class="font-bold">4日前より100％</span>のキャンセル料が発生致します。何卒ご了承くださいますようお願い申し上げます。</p>
+          <p class="text-sm mt-2">※なお、懇親会の詳細につきましては、自動返信メールで必ずご確認ください。</p>
+        </div>
+
+        <!-- 申込方法 -->
+        <div class="mb-4">
+          <h3 class="font-bold text-orange-600 mb-2 border-b border-orange-200 pb-1">【申込方法】</h3>
+          <ul class="space-y-2 list-disc pl-5">
+            <li>出展をご希望の方は、ページ一番下のお申込みボタンよりお申し込みください。LINE公式に移動します。お申込みはLINE公式より承っております。</li>
+            <li>LINE公式にご登録後、メニューのお申込みフォームよりお申込みいただき、<span class="font-bold">出展料のお振り込みを確認後、本契約</span>とさせていただきます。</li>
+          </ul>
+        </div>
+
+        <!-- 募集項目 -->
+        <div class="mb-4">
+          <h3 class="font-bold text-orange-600 mb-2 border-b border-orange-200 pb-1">【募集項目】</h3>
+          <p class="mb-2">お申し込みフォームの４つのカテゴリーのうちどれか１つにチェックをお願いいたします。</p>
+          <p class="font-bold mb-2">【①占い・スピリチュアル ②ボディケア・美容 ③物販 ④飲食】</p>
+
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="bg-blue-50 p-2 rounded">
+              <p class="font-bold text-blue-600 mb-1">○占い・スピリチュアル</p>
+              <p>霊視鑑定 / ヒーリング / チャネリング / 各種カードセッション / 統計学 / その他セラピー など</p>
+            </div>
+            <div class="bg-pink-50 p-2 rounded">
+              <p class="font-bold text-pink-600 mb-1">○ボディケア・美容</p>
+              <p>フットケア / ハンドケア / 整体 / エステ / メイクアップ など</p>
+            </div>
+            <div class="bg-green-50 p-2 rounded">
+              <p class="font-bold text-green-600 mb-1">○物販</p>
+              <p>アクセサリー / ハンドメイド雑貨 / 実演販売 / 天然石 など</p>
+            </div>
+            <div class="bg-yellow-50 p-2 rounded">
+              <p class="font-bold text-yellow-600 mb-1">○飲食</p>
+              <p>お弁当 / 焼き菓子 / 茶葉 など</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- スタンプラリー -->
+        <div class="mb-4 bg-orange-50 p-3 rounded-lg border border-orange-200">
+          <h3 class="font-bold text-orange-600 mb-2">☆スタンプラリーのご提供について☆</h3>
+          <p class="mb-2">景品の提供をしてくださる方は当日朝、受付横でお渡し下さい。</p>
+          <p class="font-bold mb-1">※景品のご提供に関してのお願い</p>
+          <ul class="space-y-1 list-disc pl-5 text-xs">
+            <li>割引券や無料券はNGとさせて頂きますので、ご了承下さい。</li>
+            <li>出来ましたら３つほど物品のご提供をご協力頂けますと助かります。</li>
+            <li>お客様にご案内できるように、テーブルNo.や出展名(セラピスト名)などの入った名刺やチラシなど入れていただけますと助かります。</li>
+            <li>お客様が選びやすいよう中身が見えるような形での提供をしていただけましたら嬉しいです。</li>
+          </ul>
+        </div>
       </div>
+
       <button onclick="hideTerms()" class="submit-btn mt-6 w-full">閉じる</button>
     </div>
   </div>

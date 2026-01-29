@@ -3,6 +3,7 @@
 
 <head>
     <base target="_top">
+    <meta charset="UTF-8">
     <style>
         body {
             font-family: 'Helvetica Neue', 'Arial', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
@@ -120,12 +121,29 @@
             color: #8e44ad;
         }
 
+        .profile-image {
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
         .footer {
             margin-top: 30px;
             padding-top: 20px;
             border-top: 1px solid #eee;
             font-size: 0.9em;
             color: #777;
+        }
+
+        .line-link {
+            color: #06C755;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        .line-link:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
@@ -153,6 +171,18 @@
                 </td>
             </tr>
             <tr>
+                <th>電話番号</th>
+                <td>
+                    <?= formData['電話番号'] || '未入力' ?>
+                </td>
+            </tr>
+            <tr>
+                <th>郵便番号</th>
+                <td>
+                    <?= formData['郵便番号'] || '未入力' ?>
+                </td>
+            </tr>
+            <tr>
                 <th>ご住所</th>
                 <td>
                     <?= formData['ご住所'] ?>
@@ -162,6 +192,12 @@
                 <th>メールアドレス</th>
                 <td>
                     <?= formData['メールアドレス'] ?>
+                </td>
+            </tr>
+            <tr>
+                <th>協会会員</th>
+                <td>
+                    <?= formData['協会会員'] ?>
                 </td>
             </tr>
             <tr>
@@ -193,13 +229,13 @@
             <tr>
                 <th>出展メニュー名</th>
                 <td>
-                    <?= formData['出展メニュー名']?.replace(/\r?\n/g, '<br>') ?>
+                    <?!= (formData['出展メニュー名'] || '').replace(/\r?\n/g, '<br>') ?>
                 </td>
             </tr>
             <tr>
                 <th>自己紹介</th>
                 <td>
-                    <?= formData['自己紹介']?.replace(/\r?\n/g, '<br>') ?>
+                    <?!= (formData['自己紹介'] || '').replace(/\r?\n/g, '<br>') ?>
                 </td>
             </tr>
             <tr>
@@ -214,10 +250,18 @@
                     <?= formData['写真掲載許可'] ?>
                 </td>
             </tr>
+            <? if (formData['プロフィール写真URL']) { ?>
+            <tr>
+                <th>プロフィール写真</th>
+                <td>
+                    <img src="<?= formData['プロフィール写真URL'] ?>" alt="プロフィール写真" class="profile-image">
+                </td>
+            </tr>
+            <? } ?>
             <tr>
                 <th>SNSリンク</th>
                 <td>
-                    <?= formData['SNSリンク']?.replace(/\n/g, '<br>') || '未入力' ?>
+                    <?!= (formData['SNSリンク'] || '未入力').replace(/\n/g, '<br>') ?>
                 </td>
             </tr>
             <tr>
@@ -263,7 +307,7 @@
             <tr>
                 <th>備考</th>
                 <td>
-                    <?= formData['備考']?.replace(/\n/g, '<br>') ?>
+                    <?!= (formData['備考'] || '').replace(/\n/g, '<br>') ?>
                 </td>
             </tr>
             <? } ?>
@@ -282,7 +326,8 @@
         <div class="error-note">
             <strong>【ご確認ください】</strong><br>
             ご選択いただいたオプション内容に、選択されたブースでは追加できない項目が含まれておりました。<br>
-            システム側で正しい上限値に基づいて再計算を行っておりますが、ご不明な点がございましたら事務局までお問い合わせください。
+            システム側で正しい上限値に基づいて再計算を行っておりますが、ご不明な点がございましたら<a href="https://lin.ee/uqhsDx3"
+                class="line-link">公式LINE</a>までお問い合わせください。
         </div>
         <? } ?>
 
@@ -320,8 +365,7 @@
                 イベント開催日の一ヶ月前を切ってからのお申し込みの場合は、お申し込み後<strong>3日以内</strong>のお振り込みをお願い致します。</p>
             <ul>
                 <li>ご入金確認をもって、正式な出展確定とさせていただきます。</li>
-                <li>お振込み名義がお申込者名と異なる場合は、事前に事務局 (
-                    <?= CONFIG.REPLY_TO_EMAIL ?>) までご連絡をお願いいたします。
+                <li>お振込み名義がお申込者名と異なる場合は、事前に<a href="https://lin.ee/uqhsDx3" class="line-link">公式LINE</a>までご連絡をお願いいたします。
                 </li>
             </ul>
             <p style="background-color: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
@@ -340,9 +384,7 @@
             <li>開催日の2週間前からのキャンセル：出展料の100％</li>
             <li>上記以前のキャンセル：振込手数料を差し引いた全額を返金いたします。</li>
         </ul>
-        <p>※キャンセルの場合は、必ず事務局 (
-            <?= CONFIG.REPLY_TO_EMAIL ?>) までご連絡ください。
-        </p>
+        <p>※キャンセルの場合は、必ず<a href="https://lin.ee/uqhsDx3" class="line-link">公式LINE</a>までご連絡ください。</p>
 
         <h4>【イベントに関するご案内】</h4>
         <p>☆ 出展者情報（セラピスト名・一言PR・出展内容）の変更について</p>
@@ -369,12 +411,12 @@
         </div>
 
         <div class="footer">
-            <p>ご不明な点がございましたら、本メールアドレスまでお気軽にお問い合わせください。<br>（お問い合わせの際は、お名前と出展名をお知らせください。）</p>
+            <p>ご不明な点がございましたら、<a href="https://lin.ee/uqhsDx3"
+                    class="line-link">公式LINE</a>までお気軽にお問い合わせください。<br>（お問い合わせの際は、お名前と出展名をお知らせください。）</p>
             <p>
                 --------------------<br>
                 ぶち癒やしフェスタin東京 事務局<br>
-                Email:
-                <?= CONFIG.REPLY_TO_EMAIL ?><br>
+                公式LINE: <a href="https://lin.ee/uqhsDx3" class="line-link">https://lin.ee/uqhsDx3</a><br>
                 Web: <a
                     href="https://sites.google.com/view/buchiiyashi">https://sites.google.com/view/buchiiyashi</a><br>
                 --------------------
