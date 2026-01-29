@@ -1346,8 +1346,8 @@ function convertFileToBase64(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
 
-                // 最大サイズ設定 (1000px)
-                const MAX_SIZE = 1000;
+                // 最大サイズ設定 (800px)
+                const MAX_SIZE = 800;
                 let width = img.width;
                 let height = img.height;
 
@@ -1367,11 +1367,11 @@ function convertFileToBase64(file) {
                 canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // JPEG形式、品質0.7で圧縮してBase64取得
+                // JPEG形式、品質0.6で圧縮してBase64取得
                 // 元がPNGでもJPEG変換して容量削減
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.6);
 
-                console.log(`Image compressed: ${width}x${height}, Quality: 0.7`); // デバッグログ
+                console.log(`Image compressed: ${width}x${height}, Quality: 0.6`); // デバッグログ
 
                 resolve({
                     base64: compressedDataUrl.split(',')[1],
