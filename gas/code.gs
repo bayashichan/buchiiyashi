@@ -97,63 +97,90 @@ function searchRepeater(name, email) {
 
   const headers = data[0]; // ヘッダー行
   
-
-  // 列インデックスを特定
-  const idx = {
-    eventName: headers.indexOf('開催回'), // 追加
-    submittedAt: headers.indexOf('申込日時'), // 追加（タイムスタンプ）
-    name: headers.indexOf('氏名'),
-    email: headers.indexOf('メールアドレス'),
-    furigana: headers.indexOf('フリガナ'),
-    phone: headers.indexOf('電話番号'),
-    zip: headers.indexOf('郵便番号'),
-    address: headers.indexOf('住所'),
-    exhibitorName: headers.indexOf('出展名'),
-    menuName: headers.indexOf('出展メニュー'),
-    selfIntro: headers.indexOf('自己紹介'),
-    shortPR: headers.indexOf('一言PR'),
-    photoUrl: headers.indexOf('プロフィール写真'),
-    equipment: headers.indexOf('ボディーブース持ち込み物品'),
-    category: headers.indexOf('出展ブース'), // 出展カテゴリではなくブース種別かも？要確認
-    // ヘッダー名が '出展ブース' なのでこれを使うが、Config上のカテゴリIDが必要ならマッピングが必要
-    // ここでは単純に文字列として返す
-    sns: headers.indexOf('SNS')
+  // 列インデックスを特定（新旧両フォーマット対応）
+  // 新形式: 開催回, 申込日時, 氏名...
+  // 旧形式: 元ファイル名, 申込日時, 氏名...
+  // イベント形式: 座席番号, 申込日時, 氏名...
+  const getColIndex = (names) => {
+    for (const name of names) {
+      const idx = headers.indexOf(name);
+      if (idx > -1) return idx;
+    }
+    return -1;
   };
   
+  const idx = {
+    eventName: getColIndex(['開催回', '元ファイル名']), // 新形式または旧形式
+    submittedAt: getColIndex(['申込日時']),
+    name: getColIndex(['氏名']),
+    email: getColIndex(['メールアドレス']),
+    furigana: getColIndex(['フリガナ']),
+    phone: getColIndex(['電話番号']),
+    zip: getColIndex(['郵便番号']),
+    address: getColIndex(['住所']),
+    exhibitorName: getColIndex(['出展名']),
+    menuName: getColIndex(['出展メニュー']),
+    selfIntro: getColIndex(['自己紹介']),
+    shortPR: getColIndex(['一言PR']),
+    photoUrl: getColIndex(['プロフィール写真']),
+    equipment: getColIndex(['ボディーブース持ち込み物品']),
+    boothName: getColIndex(['出展ブース']),
+    sns: getColIndex(['SNS'])
+  };
+  
+  // メールアドレス列がないなら検索不可
+  if (idx.email < 0) {
+    console.error('Email column not found in headers:', headers);
+    return { found: false };
+  }
+  
   // 照合用正規化関数
-  const normalize = (str) => String(str).replace(/[\s\u3000]/g, '').toLowerCase();
+  const normalize = (str) => String(str || '').replace(/[\s\u3000]/g, '').toLowerCase();
   const targetEmail = normalize(email);
+  
+  // 安全に日付をフォーマット
+  const formatDate = (val) => {
+    if (!val) return '';
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return ''; // Invalid Date
+      return Utilities.formatDate(d, 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+    } catch (e) {
+      return '';
+    }
+  };
+  
+  // 安全にセル値を取得
+  const getCell = (row, colIdx) => {
+    if (colIdx < 0 || colIdx >= row.length) return '';
+    return row[colIdx] || '';
+  };
   
   const matches = [];
 
-  // 新しい順に検索（後ろから）
-  for (let i = data.length - 1; i >= 0; i--) {
+  // 新しい順に検索（後ろから、ヘッダー行はスキップ）
+  for (let i = data.length - 1; i > 0; i--) {
     const row = data[i];
-    const rowEmail = normalize(row[idx.email]);
+    const rowEmail = normalize(getCell(row, idx.email));
     
     if (rowEmail === targetEmail) {
       matches.push({
-        eventName: idx.eventName > -1 ? row[idx.eventName] : '',
-        submittedAt: idx.submittedAt > -1 ? Utilities.formatDate(new Date(row[idx.submittedAt]), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm') : '',
-        name: row[idx.name],
-        email: row[idx.email],
-        exhibitorName: row[idx.exhibitorName],
-        // 必要なフィールドを抽出
-        category: '', // カテゴリは保存されていない模様（ブース名のみ？）-> addHeaderRowを見る限り '出展ブース' はあるが '出展カテゴリ' がない？
-        // addHeaderRow: '出展名', '出展ブース', '出展メニュー' ...
-        // フォームデータには category があるが、保存時に saveToMasterSpreadsheet で保存していないかも？
-        // 確認：saveToMasterSpreadsheet では data.boothName を '出展ブース' 列に入れている。
-        // data.category は保存されていない？ -> saveToEventSpreadsheetでも保存されていない。
-        // リピーター検索でカテゴリを復元するのは難しいかも。
-        // とりあえずブース名を入れておく
-        boothName: row[idx.exhibitorName], // idx.category は '出展ブース' 列（idx定義修正必要）
-        
-        menuName: row[idx.menuName],
-        selfIntro: row[idx.selfIntro],
-        shortPR: row[idx.shortPR],
-        equipment: idx.equipment > -1 ? row[idx.equipment] : '',
-        snsLinks: parseSnsLinks(row[idx.sns]),
-        photoUrl: row[idx.photoUrl]
+        eventName: getCell(row, idx.eventName) || '',
+        submittedAt: formatDate(getCell(row, idx.submittedAt)),
+        name: getCell(row, idx.name),
+        email: getCell(row, idx.email),
+        furigana: getCell(row, idx.furigana),
+        phone: getCell(row, idx.phone),
+        postalCode: getCell(row, idx.zip),
+        address: getCell(row, idx.address),
+        exhibitorName: getCell(row, idx.exhibitorName),
+        boothName: getCell(row, idx.boothName),
+        menuName: getCell(row, idx.menuName),
+        selfIntro: getCell(row, idx.selfIntro),
+        shortPR: getCell(row, idx.shortPR),
+        equipment: getCell(row, idx.equipment),
+        snsLinks: parseSnsLinks(getCell(row, idx.sns)),
+        photoUrl: getCell(row, idx.photoUrl)
       });
     }
   }
@@ -168,6 +195,7 @@ function searchRepeater(name, email) {
     return { found: false };
   }
 } // searchRepeater end
+
 
 
 // SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
