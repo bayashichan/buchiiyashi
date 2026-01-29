@@ -1224,8 +1224,9 @@ function fillFormWithData(data) {
     if (data.selfIntro) document.querySelector('textarea[name="selfIntro"]').value = data.selfIntro;
     if (data.shortPR) document.querySelector('input[name="shortPR"]').value = data.shortPR;
 
-    // 写真再利用
-    if (data.profileImageUrl) {
+    // 写真再利用（GASは photoUrl で返すので両方対応）
+    const imageUrl = data.profileImageUrl || data.photoUrl;
+    if (imageUrl) {
         const reuseOption = document.getElementById('reusePhotoOption');
         const prevImg = document.getElementById('prevPhotoImg');
         const hiddenUrl = document.getElementById('profileImageUrl');
@@ -1234,9 +1235,8 @@ function fillFormWithData(data) {
             reuseOption.classList.remove('hidden');
 
             // Google DriveのURLを表示可能な形式に変換
-            // Google DriveのURLを表示可能な形式に変換
             // 形式: https://lh3.googleusercontent.com/d/FILE_ID
-            let displayUrl = data.profileImageUrl;
+            let displayUrl = imageUrl;
             console.log('Original Profile Image URL:', displayUrl); // デバッグ用
 
             // ID抽出（/d/ID または id=ID）
@@ -1254,10 +1254,7 @@ function fillFormWithData(data) {
                 this.parentElement.insertAdjacentHTML('beforeend',
                     '<p class="text-sm text-gray-500">（プレビュー表示できません。前回の写真は使用可能です）</p>');
             };
-            hiddenUrl.value = data.profileImageUrl; // 元のURLを保持
-
-            // 自動的に「前回の写真を使用する」をONにするかはお好みだが、
-            // ユーザーに選択させる方が安全（古い写真を使いたくない場合もある）
+            hiddenUrl.value = imageUrl; // 元のURLを保持
         }
     }
 
@@ -1267,15 +1264,16 @@ function fillFormWithData(data) {
     container.innerHTML = '';
     snsLinkCount = 0;
 
-    // 過去データのSNS各項目をチェックして追加
+    // 過去データのSNS各項目をチェックして追加（GASは snsLinks で返すので両方対応）
+    const snsData = data.sns || data.snsLinks;
     const snsList = [];
-    if (data.sns) {
-        if (data.sns.hp) snsList.push(data.sns.hp);
-        if (data.sns.blog) snsList.push(data.sns.blog);
-        if (data.sns.fb) snsList.push(data.sns.fb);
-        if (data.sns.insta) snsList.push(data.sns.insta);
-        if (data.sns.line) snsList.push(data.sns.line);
-        if (data.sns.other) snsList.push(data.sns.other);
+    if (snsData) {
+        if (snsData.hp) snsList.push(snsData.hp);
+        if (snsData.blog) snsList.push(snsData.blog);
+        if (snsData.fb) snsList.push(snsData.fb);
+        if (snsData.insta) snsList.push(snsData.insta);
+        if (snsData.line) snsList.push(snsData.line);
+        if (snsData.other) snsList.push(snsData.other);
     }
 
     if (snsList.length > 0) {
