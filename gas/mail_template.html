@@ -254,7 +254,9 @@
             <tr>
                 <th>プロフィール写真</th>
                 <td>
-                    <img src="<?= formData['プロフィール写真URL'] ?>" alt="プロフィール写真" class="profile-image">
+                    <a href="<?= formData['プロフィール写真URL'] ?>" target="_blank">
+                        <?= formData['プロフィール写真URL'] ?>
+                    </a>
                 </td>
             </tr>
             <? } ?>
