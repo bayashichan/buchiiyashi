@@ -1213,6 +1213,21 @@ function fillFormWithData(data) {
 
     // 出展内容
     if (data.exhibitorName) document.querySelector('input[name="exhibitorName"]').value = data.exhibitorName;
+
+    // 出展カテゴリの復元
+    if (data.category) {
+        document.getElementById('categoryInput').value = data.category;
+        // カテゴリボタンの選択状態を更新
+        const categoryButtons = document.querySelectorAll('#categoryButtons button');
+        categoryButtons.forEach(btn => {
+            if (btn.textContent.includes(data.category) ||
+                btn.dataset.category === data.category) {
+                btn.classList.add('selected', 'bg-orange-500', 'text-white');
+                btn.classList.remove('bg-gray-100');
+            }
+        });
+    }
+
     if (data.menuName) document.querySelector('textarea[name="menuName"]').value = data.menuName;
     if (data.selfIntro) document.querySelector('textarea[name="selfIntro"]').value = data.selfIntro;
     if (data.shortPR) document.querySelector('input[name="shortPR"]').value = data.shortPR;
