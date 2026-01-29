@@ -70,6 +70,24 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
             return await createSpreadsheet(env, body, corsHeaders);
         }
 
+        // GET /api/admin/exhibitors - 出展者一覧取得
+        if (url.pathname === '/api/admin/exhibitors' && request.method === 'GET') {
+            const spreadsheetId = url.searchParams.get('spreadsheetId');
+            return await getExhibitors(env, spreadsheetId, corsHeaders);
+        }
+
+        // POST /api/admin/generate-image - 画像生成
+        if (url.pathname === '/api/admin/generate-image' && request.method === 'POST') {
+            const body = await request.json();
+            return await generateImage(env, body, corsHeaders);
+        }
+
+        // POST /api/admin/generate-batch-images - 一括画像生成
+        if (url.pathname === '/api/admin/generate-batch-images' && request.method === 'POST') {
+            const body = await request.json();
+            return await generateBatchImages(env, body, corsHeaders);
+        }
+
         return new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -479,6 +497,111 @@ async function createSpreadsheet(env, body, corsHeaders) {
 
     } catch (error) {
         console.error('Create spreadsheet error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// ========================================
+// 出展者一覧・画像生成API
+// ========================================
+
+// 出展者一覧取得
+async function getExhibitors(env, spreadsheetId, corsHeaders) {
+    try {
+        const gasUrl = new URL(env.GAS_URL);
+        gasUrl.searchParams.append('action', 'get_exhibitors');
+        if (spreadsheetId) {
+            gasUrl.searchParams.append('spreadsheetId', spreadsheetId);
+        }
+
+        const response = await fetch(gasUrl.toString(), {
+            method: 'GET',
+            headers: { 'User-Agent': 'Cloudflare-Worker' },
+            redirect: 'follow'
+        });
+
+        const data = await response.text();
+        return new Response(data, {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Get exhibitors error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// 個別画像生成
+async function generateImage(env, body, corsHeaders) {
+    try {
+        const { templateId, exhibitorData, imageType } = body;
+
+        if (!templateId || !exhibitorData || !imageType) {
+            return new Response(JSON.stringify({ error: 'templateId, exhibitorData, imageType are required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const response = await fetch(env.GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'generate_image',
+                templateId,
+                exhibitorData,
+                imageType
+            })
+        });
+
+        const result = await response.json();
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Generate image error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// 一括画像生成
+async function generateBatchImages(env, body, corsHeaders) {
+    try {
+        const { templateId, exhibitorIds, imageType, spreadsheetId } = body;
+
+        if (!templateId || !imageType) {
+            return new Response(JSON.stringify({ error: 'templateId, imageType are required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const response = await fetch(env.GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'generate_batch_images',
+                templateId,
+                exhibitorIds: exhibitorIds || [],
+                imageType,
+                spreadsheetId
+            })
+        });
+
+        const result = await response.json();
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Generate batch images error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -406,3 +406,111 @@ hr {
     padding: 12px 16px;
     white-space: nowrap;
 }
+
+/* 画像生成・キャプション生成 */
+.exhibitor-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.exhibitor-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+}
+
+.exhibitor-item:last-child {
+    border-bottom: none;
+}
+
+.exhibitor-item:hover {
+    background: var(--bg);
+}
+
+.exhibitor-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.exhibitor-seat {
+    color: var(--text-light);
+    font-size: 0.9em;
+}
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mt-2 {
+    margin-top: 8px;
+}
+
+.mt-3 {
+    margin-top: 12px;
+}
+
+.generated-images {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.generated-image-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background: var(--bg);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.generated-image-item.error {
+    border-color: var(--error);
+    background: #fff5f5;
+}
+
+.generated-image-item .name {
+    font-weight: 500;
+}
+
+.generated-image-item .error-msg {
+    color: var(--error);
+    font-size: 0.9em;
+}
+
+textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+textarea[readonly] {
+    background: var(--bg);
+}
+
+.status-inline {
+    margin-left: 10px;
+    color: var(--success);
+    font-size: 0.9em;
+}
+
+code {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+}

@@ -8,6 +8,7 @@ const API_BASE = 'https://buchiiyashi-festa-form.wakaossan2001.workers.dev';
 // 状態管理
 let config = null;
 let authToken = null;
+let exhibitors = []; // 出展者一覧
 
 // DOM要素
 const loginScreen = document.getElementById('loginScreen');
@@ -43,6 +44,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // スプレッドシート作成
     document.getElementById('createSpreadsheetBtn').addEventListener('click', createSpreadsheet);
+
+    // 画像生成関連
+    document.getElementById('loadExhibitorsBtn')?.addEventListener('click', loadExhibitors);
+    document.getElementById('generateSelectedBtn')?.addEventListener('click', generateSelectedImages);
+    document.getElementById('generateAllBtn')?.addEventListener('click', generateAllImages);
+
+    // キャプション生成関連
+    document.getElementById('generateCaptionInstaBtn')?.addEventListener('click', () => generateCaption('instagram'));
+    document.getElementById('generateCaptionFbBtn')?.addEventListener('click', () => generateCaption('facebook'));
+    document.getElementById('copyCaptionBtn')?.addEventListener('click', copyCaption);
 });
 
 // ========================================
@@ -429,4 +440,268 @@ function showLoading() {
 
 function hideLoading() {
     loadingOverlay.classList.add('hidden');
+}
+
+// ========================================
+// 画像生成機能
+// ========================================
+
+// 出展者一覧を読み込む
+async function loadExhibitors() {
+    showLoading();
+    try {
+        const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value;
+        let url = `${API_BASE}/api/admin/exhibitors`;
+        if (spreadsheetId) {
+            url += `?spreadsheetId=${encodeURIComponent(spreadsheetId)}`;
+        }
+
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.exhibitors) {
+            exhibitors = result.exhibitors;
+            renderExhibitorList();
+            updateExhibitorSelect();
+        } else {
+            alert('出展者一覧の取得に失敗しました: ' + (result.error || '不明なエラー'));
+        }
+    } catch (error) {
+        console.error('Load exhibitors error:', error);
+        alert('出展者一覧の取得に失敗しました: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 出展者一覧を表示（チェックボックス付き）
+function renderExhibitorList() {
+    const container = document.getElementById('exhibitorList');
+    if (!container) return;
+
+    if (exhibitors.length === 0) {
+        container.innerHTML = '<p class="hint">出展者データがありません</p>';
+        return;
+    }
+
+    container.innerHTML = exhibitors.map(ex => `
+        <label class="exhibitor-item">
+            <input type="checkbox" name="exhibitor" value="${ex.id}" checked>
+            <span class="exhibitor-name">${ex.exhibitorName}</span>
+            <span class="exhibitor-seat">${ex.seatNumber || '未定'}</span>
+        </label>
+    `).join('');
+}
+
+// キャプション用セレクトを更新
+function updateExhibitorSelect() {
+    const select = document.getElementById('captionExhibitorSelect');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">出展者を選択...</option>' +
+        exhibitors.map(ex => `<option value="${ex.id}">${ex.exhibitorName}</option>`).join('');
+}
+
+// 選択した出展者の画像を生成
+async function generateSelectedImages() {
+    const checkedBoxes = document.querySelectorAll('#exhibitorList input[name="exhibitor"]:checked');
+    const selectedIds = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
+
+    if (selectedIds.length === 0) {
+        alert('出展者を選択してください');
+        return;
+    }
+
+    await generateImages(selectedIds);
+}
+
+// 全員の画像を生成
+async function generateAllImages() {
+    await generateImages([]);
+}
+
+// 画像生成実行
+async function generateImages(exhibitorIds) {
+    const imageType = document.getElementById('imageType').value;
+    const templateId = getTemplateId(imageType);
+
+    if (!templateId) {
+        alert('テンプレートIDを設定してください');
+        return;
+    }
+
+    showLoading();
+    const statusDiv = document.getElementById('imageGenerationStatus');
+    statusDiv.innerHTML = '画像を生成中...';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/generate-batch-images`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                templateId,
+                exhibitorIds,
+                imageType,
+                spreadsheetId: document.getElementById('currentSpreadsheetId')?.value
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            statusDiv.innerHTML = `✅ 完了: ${result.succeeded}件成功, ${result.failed}件失敗`;
+            renderGeneratedImages(result.results);
+        } else {
+            statusDiv.innerHTML = `❌ エラー: ${result.error}`;
+        }
+    } catch (error) {
+        console.error('Generate images error:', error);
+        statusDiv.innerHTML = `❌ エラー: ${error.message}`;
+    } finally {
+        hideLoading();
+    }
+}
+
+// テンプレートIDを取得
+function getTemplateId(imageType) {
+    switch (imageType) {
+        case 'earlySns': return document.getElementById('templateEarlySns')?.value;
+        case 'lateSns': return document.getElementById('templateLateSns')?.value;
+        case 'venue': return document.getElementById('templateVenue')?.value;
+        default: return null;
+    }
+}
+
+// 生成された画像を表示
+function renderGeneratedImages(results) {
+    const container = document.getElementById('generatedImages');
+    if (!container) return;
+
+    container.innerHTML = results.map(r => `
+        <div class="generated-image-item ${r.success ? '' : 'error'}">
+            <span class="name">${r.exhibitorName}</span>
+            ${r.success
+            ? `<a href="${r.downloadUrl}" target="_blank" class="btn-secondary small">📥 ダウンロード</a>`
+            : `<span class="error-msg">${r.error}</span>`
+        }
+        </div>
+    `).join('');
+}
+
+// ========================================
+// キャプション生成機能
+// ========================================
+
+// キャプション生成
+function generateCaption(platform) {
+    const selectEl = document.getElementById('captionExhibitorSelect');
+    const exhibitorId = parseInt(selectEl?.value);
+
+    if (!exhibitorId) {
+        alert('出展者を選択してください');
+        return;
+    }
+
+    const exhibitor = exhibitors.find(e => e.id === exhibitorId);
+    if (!exhibitor) {
+        alert('出展者が見つかりません');
+        return;
+    }
+
+    const templateEl = platform === 'instagram'
+        ? document.getElementById('captionTemplateInsta')
+        : document.getElementById('captionTemplateFb');
+
+    let template = templateEl?.value || getDefaultTemplate(platform);
+    let caption = template;
+
+    // プレースホルダー置換
+    caption = caption.replace(/\{\{出展名\}\}/g, exhibitor.exhibitorName || '');
+    caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
+    caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
+
+    // SNS処理
+    if (platform === 'instagram') {
+        // Instagram: @アカウント名のみ
+        const instaHandle = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
+        caption = caption.replace(/\{\{SNSアカウント\}\}/g, instaHandle ? `@${instaHandle}` : '');
+    } else {
+        // Facebook: すべてのリンクをプラットフォーム名付きで
+        const snsLinks = formatSnsLinks(exhibitor.snsLinks);
+        caption = caption.replace(/\{\{SNSリンク一覧\}\}/g, snsLinks);
+    }
+
+    document.getElementById('generatedCaption').value = caption.trim();
+}
+
+// Instagram URLからハンドル名を抽出
+function extractInstagramHandle(url) {
+    if (!url) return '';
+    const match = url.match(/instagram\.com\/([^\/\?]+)/);
+    return match ? match[1] : '';
+}
+
+// SNSリンクをフォーマット
+function formatSnsLinks(snsLinks) {
+    if (!snsLinks) return '';
+
+    const links = [];
+    if (snsLinks.hp) links.push(`🌐 HP: ${snsLinks.hp}`);
+    if (snsLinks.blog) links.push(`📝 ブログ: ${snsLinks.blog}`);
+    if (snsLinks.insta) links.push(`📸 Instagram: ${snsLinks.insta}`);
+    if (snsLinks.fb) links.push(`👤 Facebook: ${snsLinks.fb}`);
+    if (snsLinks.line) links.push(`💬 LINE: ${snsLinks.line}`);
+    if (snsLinks.other) links.push(`🔗 その他: ${snsLinks.other}`);
+
+    return links.join('\n');
+}
+
+// デフォルトテンプレート
+function getDefaultTemplate(platform) {
+    if (platform === 'instagram') {
+        return `【{{出展名}}】をご紹介✨
+
+{{メニュー}}
+
+{{一言PR}}
+
+{{SNSアカウント}}
+
+#ぶち癒しフェスタ東京 #癒しイベント`;
+    } else {
+        return `【{{出展名}}】をご紹介✨
+
+{{メニュー}}
+
+{{一言PR}}
+
+▼SNS・HP
+{{SNSリンク一覧}}`;
+    }
+}
+
+// クリップボードにコピー
+async function copyCaption() {
+    const caption = document.getElementById('generatedCaption')?.value;
+    if (!caption) {
+        alert('コピーするキャプションがありません');
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(caption);
+        const statusEl = document.getElementById('copyStatus');
+        if (statusEl) {
+            statusEl.textContent = '✅ コピーしました';
+            setTimeout(() => { statusEl.textContent = ''; }, 2000);
+        }
+    } catch (error) {
+        alert('コピーに失敗しました: ' + error.message);
+    }
 }

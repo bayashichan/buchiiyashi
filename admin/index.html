@@ -31,6 +31,8 @@
             <button class="tab" data-tab="pricing">💰 料金設定</button>
             <button class="tab" data-tab="booths">🪑 ブース設定</button>
             <button class="tab" data-tab="availability">📊 満枠設定</button>
+            <button class="tab" data-tab="images">📷 画像生成</button>
+            <button class="tab" data-tab="captions">✍️ キャプション</button>
             <button class="tab" data-tab="deploy">🚀 デプロイ</button>
         </nav>
 
@@ -121,6 +123,129 @@
                 <h2>満枠設定</h2>
                 <p class="hint">満枠にしたいブースにチェックを入れてください。</p>
                 <div id="availabilityList"></div>
+            </section>
+
+            <!-- 画像生成タブ -->
+            <section id="tab-images" class="tab-content hidden">
+                <h2>📷 SNS画像ジェネレーター</h2>
+
+                <div class="card">
+                    <h3>テンプレート設定</h3>
+                    <p class="hint">各画像タイプ用のGoogleスライドテンプレートIDを設定してください。</p>
+
+                    <div class="form-group">
+                        <label>早期SNS用テンプレートID</label>
+                        <input type="text" id="templateEarlySns" placeholder="GoogleスライドのID">
+                        <p class="hint">含む情報: プロフィール画像、出展名、メニュー</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>後期SNS用テンプレートID</label>
+                        <input type="text" id="templateLateSns" placeholder="GoogleスライドのID">
+                        <p class="hint">含む情報: 早期SNS + 座席番号</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>会場掲示用テンプレートID</label>
+                        <input type="text" id="templateVenue" placeholder="GoogleスライドのID">
+                        <p class="hint">含む情報: プロフィール画像、出展名、座席番号、メニュー、一言PR</p>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>画像生成</h3>
+
+                    <div class="form-group">
+                        <label>生成タイプ</label>
+                        <select id="imageType">
+                            <option value="earlySns">早期SNS用</option>
+                            <option value="lateSns">後期SNS用</option>
+                            <option value="venue">会場掲示用</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>出展者選択</label>
+                        <button id="loadExhibitorsBtn" class="btn-secondary small">出展者一覧を読み込む</button>
+                        <div id="exhibitorList" class="exhibitor-list mt-2"></div>
+                    </div>
+
+                    <div class="button-group mt-3">
+                        <button id="generateSelectedBtn" class="btn-primary">選択した出展者の画像を生成</button>
+                        <button id="generateAllBtn" class="btn-secondary">全員の画像を一括生成</button>
+                    </div>
+
+                    <div id="imageGenerationStatus" class="status mt-3"></div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>生成済み画像</h3>
+                    <div id="generatedImages" class="generated-images"></div>
+                </div>
+            </section>
+
+            <!-- キャプション生成タブ -->
+            <section id="tab-captions" class="tab-content hidden">
+                <h2>✍️ キャプションジェネレーター</h2>
+
+                <div class="card">
+                    <h3>テンプレート設定</h3>
+                    <p class="hint">プレースホルダー: <code>{{出展名}}</code>, <code>{{メニュー}}</code>, <code>{{一言PR}}</code>,
+                        <code>{{SNSアカウント}}</code>, <code>{{SNSリンク一覧}}</code></p>
+
+                    <div class="form-group">
+                        <label>Instagram用テンプレート</label>
+                        <textarea id="captionTemplateInsta" rows="8" placeholder="【{{出展名}}】をご紹介✨
+
+{{メニュー}}
+
+{{一言PR}}
+
+{{SNSアカウント}}
+
+#ぶち癒しフェスタ東京 #癒しイベント"></textarea>
+                        <p class="hint">※URLは自動で除外されます。@アカウント名のみ含まれます。</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Facebook用テンプレート</label>
+                        <textarea id="captionTemplateFb" rows="8" placeholder="【{{出展名}}】をご紹介✨
+
+{{メニュー}}
+
+{{一言PR}}
+
+▼SNS・HP
+{{SNSリンク一覧}}"></textarea>
+                        <p class="hint">※すべてのSNS URLがプラットフォーム名付きで記載されます。</p>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>キャプション生成</h3>
+
+                    <div class="form-group">
+                        <label>出展者選択</label>
+                        <select id="captionExhibitorSelect">
+                            <option value="">出展者を選択...</option>
+                        </select>
+                    </div>
+
+                    <div class="button-group mt-3">
+                        <button id="generateCaptionInstaBtn" class="btn-primary">Instagram用を生成</button>
+                        <button id="generateCaptionFbBtn" class="btn-secondary">Facebook用を生成</button>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>生成結果</h3>
+                    <div class="form-group">
+                        <textarea id="generatedCaption" rows="10" readonly
+                            placeholder="生成されたキャプションがここに表示されます"></textarea>
+                    </div>
+                    <button id="copyCaptionBtn" class="btn-primary">📋 クリップボードにコピー</button>
+                    <span id="copyStatus" class="status-inline"></span>
+                </div>
             </section>
 
             <!-- デプロイタブ -->

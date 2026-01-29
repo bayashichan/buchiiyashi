@@ -74,6 +74,16 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
+    // 出展者一覧取得（管理画面用）
+    if (action === 'get_exhibitors') {
+      const spreadsheetId = e.parameter.spreadsheetId || CONFIG.SPREADSHEET_ID;
+      const result = getExhibitorList(spreadsheetId);
+      
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
     return ContentService
       .createTextOutput(JSON.stringify({ error: 'Invalid action' }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -198,6 +208,83 @@ function searchRepeater(name, email) {
   }
 } // searchRepeater end
 
+// ========================================
+// 出展者一覧取得（管理画面用）
+// ========================================
+function getExhibitorList(spreadsheetId) {
+  try {
+    const ss = SpreadsheetApp.openById(spreadsheetId || CONFIG.SPREADSHEET_ID);
+    let sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    
+    if (!sheet) return { success: false, error: 'シートが見つかりません', exhibitors: [] };
+    
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return { success: true, exhibitors: [] };
+    
+    const headers = data[0];
+    
+    // 列インデックスを特定
+    const getColIndex = (names) => {
+      for (const name of names) {
+        const idx = headers.indexOf(name);
+        if (idx > -1) return idx;
+      }
+      return -1;
+    };
+    
+    const idx = {
+      rowNum: -1, // 行番号用（ループ内で設定）
+      seatNumber: getColIndex(['座席番号']),
+      submittedAt: getColIndex(['申込日時']),
+      name: getColIndex(['氏名']),
+      email: getColIndex(['メールアドレス']),
+      exhibitorName: getColIndex(['出展名']),
+      menuName: getColIndex(['出展メニュー']),
+      selfIntro: getColIndex(['自己紹介']),
+      shortPR: getColIndex(['一言PR']),
+      boothName: getColIndex(['出展ブース']),
+      photoUrl: getColIndex(['プロフィール写真']),
+      sns: getColIndex(['SNS'])
+    };
+    
+    const getCell = (row, colIdx) => {
+      if (colIdx < 0 || colIdx >= row.length) return '';
+      const val = row[colIdx];
+      return val !== undefined && val !== null ? String(val).trim() : '';
+    };
+    
+    const exhibitors = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const exhibitorName = getCell(row, idx.exhibitorName);
+      
+      // 出展名がない行はスキップ
+      if (!exhibitorName) continue;
+      
+      exhibitors.push({
+        id: i, // 行番号をIDとして使用
+        seatNumber: getCell(row, idx.seatNumber),
+        submittedAt: getCell(row, idx.submittedAt),
+        name: getCell(row, idx.name),
+        email: getCell(row, idx.email),
+        exhibitorName: exhibitorName,
+        menuName: getCell(row, idx.menuName),
+        selfIntro: getCell(row, idx.selfIntro),
+        shortPR: getCell(row, idx.shortPR),
+        boothName: getCell(row, idx.boothName),
+        photoUrl: getCell(row, idx.photoUrl),
+        snsLinks: parseSnsLinks(getCell(row, idx.sns))
+      });
+    }
+    
+    return { success: true, exhibitors: exhibitors };
+    
+  } catch (error) {
+    console.error('getExhibitorList error:', error);
+    return { success: false, error: error.message, exhibitors: [] };
+  }
+}
 
 
 // SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
@@ -280,6 +367,34 @@ function doPost(e) {
           spreadsheetId: newSs.getId(),
           spreadsheetUrl: newSs.getUrl()
         }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // 画像生成アクション
+    if (params.action === 'generate_image') {
+      const { templateId, exhibitorData, imageType } = params;
+      if (!templateId || !exhibitorData || !imageType) {
+        throw new Error('templateId, exhibitorData, imageType are required');
+      }
+      
+      const result = generateExhibitorImage(templateId, exhibitorData, imageType);
+      
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // 一括画像生成アクション
+    if (params.action === 'generate_batch_images') {
+      const { templateId, exhibitorIds, imageType, spreadsheetId } = params;
+      if (!templateId || !imageType) {
+        throw new Error('templateId, imageType are required');
+      }
+      
+      const result = generateBatchImages(templateId, exhibitorIds || [], imageType, spreadsheetId);
+      
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
     }
     
@@ -822,6 +937,229 @@ function testDoPost() {
   
   const result = doPost(testData);
   console.log(result.getContent());
+}
+
+// ========================================
+// Google Slides 画像生成機能
+// ========================================
+
+/**
+ * テンプレートスライドから出展者画像を生成
+ * @param {string} templateId - テンプレートスライドのID
+ * @param {Object} exhibitorData - 出展者データ
+ * @param {string} imageType - 画像タイプ (earlySns, lateSns, venue)
+ * @returns {Object} 結果 { success, imageUrl, error }
+ */
+function generateExhibitorImage(templateId, exhibitorData, imageType) {
+  try {
+    // 1. テンプレートをコピー
+    const templateFile = DriveApp.getFileById(templateId);
+    const copyName = `temp_${exhibitorData.exhibitorName}_${imageType}_${Date.now()}`;
+    const copiedFile = templateFile.makeCopy(copyName);
+    const copiedId = copiedFile.getId();
+    
+    // 2. スライドを開く
+    const presentation = SlidesApp.openById(copiedId);
+    const slides = presentation.getSlides();
+    
+    if (slides.length === 0) {
+      throw new Error('テンプレートにスライドがありません');
+    }
+    
+    const slide = slides[0];
+    
+    // 3. テキストプレースホルダーを置換
+    const placeholders = {
+      '{{出展名}}': exhibitorData.exhibitorName || '',
+      '{{メニュー}}': exhibitorData.menuName || '',
+      '{{一言PR}}': exhibitorData.shortPR || '',
+      '{{座席番号}}': exhibitorData.seatNumber || '',
+      '{{自己紹介}}': exhibitorData.selfIntro || ''
+    };
+    
+    replaceTextInSlide(slide, placeholders);
+    
+    // 4. プロフィール画像を挿入（プレースホルダーシェイプがあれば）
+    if (exhibitorData.photoUrl) {
+      insertProfileImageInSlide(slide, exhibitorData.photoUrl);
+    }
+    
+    // 5. 変更を保存
+    presentation.saveAndClose();
+    
+    // 6. スライドをPNG画像としてエクスポート
+    const imageBlob = exportSlideAsImage(copiedId);
+    
+    // 7. 画像をDriveに保存
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    let targetFolder;
+    
+    // 画像用フォルダを取得または作成
+    const folderName = 'SNS画像';
+    const folders = folder.getFoldersByName(folderName);
+    if (folders.hasNext()) {
+      targetFolder = folders.next();
+    } else {
+      targetFolder = folder.createFolder(folderName);
+      targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+    
+    const imageName = `${exhibitorData.exhibitorName}_${imageType}.png`;
+    const imageFile = targetFolder.createFile(imageBlob.setName(imageName));
+    imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // 8. 一時ファイルを削除
+    copiedFile.setTrashed(true);
+    
+    return {
+      success: true,
+      imageUrl: imageFile.getUrl(),
+      imageId: imageFile.getId(),
+      downloadUrl: `https://drive.google.com/uc?export=download&id=${imageFile.getId()}`
+    };
+    
+  } catch (error) {
+    console.error('generateExhibitorImage error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * スライド内のテキストプレースホルダーを置換
+ */
+function replaceTextInSlide(slide, placeholders) {
+  const shapes = slide.getShapes();
+  
+  shapes.forEach(shape => {
+    if (shape.getText) {
+      const textRange = shape.getText();
+      let text = textRange.asString();
+      
+      for (const [placeholder, value] of Object.entries(placeholders)) {
+        if (text.includes(placeholder)) {
+          textRange.replaceAllText(placeholder, value);
+        }
+      }
+    }
+  });
+}
+
+/**
+ * プロフィール画像をスライドに挿入
+ * {{プロフィール画像}}というテキストを持つシェイプを画像に置換
+ */
+function insertProfileImageInSlide(slide, photoUrl) {
+  try {
+    const shapes = slide.getShapes();
+    
+    for (const shape of shapes) {
+      if (shape.getText) {
+        const text = shape.getText().asString();
+        
+        if (text.includes('{{プロフィール画像}}')) {
+          // シェイプの位置とサイズを取得
+          const left = shape.getLeft();
+          const top = shape.getTop();
+          const width = shape.getWidth();
+          const height = shape.getHeight();
+          
+          // 画像を取得
+          let imageBlob;
+          if (photoUrl.includes('drive.google.com')) {
+            // Google Drive URL の場合
+            const fileId = extractDriveFileId(photoUrl);
+            if (fileId) {
+              const file = DriveApp.getFileById(fileId);
+              imageBlob = file.getBlob();
+            }
+          } else {
+            // 外部URLの場合
+            const response = UrlFetchApp.fetch(photoUrl);
+            imageBlob = response.getBlob();
+          }
+          
+          if (imageBlob) {
+            // シェイプを削除して画像を挿入
+            shape.remove();
+            slide.insertImage(imageBlob, left, top, width, height);
+          }
+          
+          break;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('insertProfileImageInSlide error:', error);
+    // 画像挿入に失敗してもエラーにはしない
+  }
+}
+
+/**
+ * DriveのURLからファイルIDを抽出
+ */
+function extractDriveFileId(url) {
+  // /d/FILE_ID/ 形式
+  let match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  
+  // id=FILE_ID 形式
+  match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  
+  return null;
+}
+
+/**
+ * スライドをPNG画像としてエクスポート
+ */
+function exportSlideAsImage(presentationId) {
+  const url = `https://docs.google.com/presentation/d/${presentationId}/export/png`;
+  const token = ScriptApp.getOAuthToken();
+  
+  const response = UrlFetchApp.fetch(url, {
+    headers: {
+      'Authorization': 'Bearer ' + token
+    }
+  });
+  
+  return response.getBlob();
+}
+
+/**
+ * 複数の出展者の画像を一括生成
+ */
+function generateBatchImages(templateId, exhibitorIds, imageType, spreadsheetId) {
+  const results = [];
+  
+  // 出展者一覧を取得
+  const listResult = getExhibitorList(spreadsheetId);
+  if (!listResult.success) {
+    return { success: false, error: listResult.error, results: [] };
+  }
+  
+  const exhibitors = listResult.exhibitors.filter(e => 
+    exhibitorIds.includes(e.id) || exhibitorIds.length === 0 // 空配列の場合は全員
+  );
+  
+  for (const exhibitor of exhibitors) {
+    const result = generateExhibitorImage(templateId, exhibitor, imageType);
+    results.push({
+      exhibitorId: exhibitor.id,
+      exhibitorName: exhibitor.exhibitorName,
+      ...result
+    });
+    
+    // APIレート制限対策
+    Utilities.sleep(1000);
+  }
+  
+  return {
+    success: true,
+    total: results.length,
+    succeeded: results.filter(r => r.success).length,
+    failed: results.filter(r => !r.success).length,
+    results: results
+  };
 }
 
 /**
