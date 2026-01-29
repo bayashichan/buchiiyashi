@@ -332,25 +332,20 @@ function doPost(e) {
 // Google Driveに画像保存
 function saveImageToDrive(base64Data, mimeType, fileName, eventName, applicantName) {
   try {
-    // フォルダ取得（リトライ処理付き）
+    // フォルダ取得（エラー診断用）
     let rootFolder;
-    const maxRetries = 3;
-    
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-            break; // 成功したらループを抜ける
-        } catch (e) {
-            console.warn(`Retry ${i+1}/${maxRetries} failed to get root folder: ${e.message}`);
-            if (i === maxRetries - 1) throw e; // 最後のリトライで失敗したらエラーを投げる
-            Utilities.sleep(1000); // 1秒待機
-        }
+    try {
+        console.log(`Attempting to get folder with ID: ${CONFIG.DRIVE_FOLDER_ID}`);
+        rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    } catch (e) {
+        console.error(`Failed to get root folder: ${e.message}`);
+        throw new Error(`フォルダアクセスエラー: ${e.message} (ID: ${CONFIG.DRIVE_FOLDER_ID})`);
     }
     
     // イベント名フォルダの取得または作成
     let targetFolder;
     if (eventName) {
-      // フォルダ検索もリトライ推奨だが、まずはルート取得が主原因と推測
+      // フォルダ検索
       const folders = rootFolder.getFoldersByName(eventName);
       if (folders.hasNext()) {
         targetFolder = folders.next();
