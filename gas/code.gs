@@ -1345,8 +1345,6 @@ function sendAuthEmail(email, code) {
     replyTo: CONFIG.REPLY_TO_EMAIL
   });
 }
-  };
-}
 
 /**
  * ★診断用★ DriveApp動作確認テスト
