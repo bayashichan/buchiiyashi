@@ -1330,7 +1330,7 @@ function sendAuthEmail(email, code) {
 
 ぶち癒しフェスタ東京 出展申込フォームをご利用いただきありがとうございます。
 
-以下の認証コードを入力して、手続きを進めてください。
+上記の認証コードを入力して、手続きを進めてください。
 
 ※このコードの有効期限は10分です。
 ※本メールにお心当たりがない場合は、破棄してください。
@@ -1387,5 +1387,27 @@ function testDriveAccess() {
     console.error('❌ エラー発生: ' + e.message);
     console.error('スタックトレース: ' + e.stack);
     return 'エラー: ' + e.message;
+  }
+}
+
+/**
+ * ★診断用★ SlidesApp動作確認テスト
+ * この関数を実行して、スライド作成権限を承認してください
+ */
+function testSlidesAccess() {
+  console.log('=== SlidesApp診断テスト開始 ===');
+  try {
+    const pres = SlidesApp.create('【テスト】権限確認用スライド');
+    console.log('✅ スライド作成成功 ID: ' + pres.getId());
+    
+    // 作成したゴミファイルを削除（DriveApp権限も確認）
+    const file = DriveApp.getFileById(pres.getId());
+    file.setTrashed(true);
+    console.log('✅ テスト用スライドを削除しました');
+    
+    return '成功';
+  } catch (e) {
+    console.error('❌ エラー: ' + e.message);
+    throw e;
   }
 }
