@@ -795,15 +795,25 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
     try {
         const url = new URL(request.url);
         const searchParams = url.searchParams;
+        const action = searchParams.get('action');
+
+        // アクションのバリデーション
+        const allowedActions = ['check_repeater', 'send_auth_code', 'verify_auth_code'];
+        if (!allowedActions.includes(action)) {
+            return new Response(JSON.stringify({ error: 'Invalid action' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
 
         // GASへ転送
-        // env.GAS_URL は Web App URL
         const gasUrl = new URL(env.GAS_URL);
 
-        // クエリパラメータをコピー
-        for (const [key, value] of searchParams) {
-            gasUrl.searchParams.append(key, value);
-        }
+        // 必要なパラメータを転送
+        gasUrl.searchParams.append('action', action);
+        if (searchParams.has('name')) gasUrl.searchParams.append('name', searchParams.get('name'));
+        if (searchParams.has('email')) gasUrl.searchParams.append('email', searchParams.get('email'));
+        if (searchParams.has('code')) gasUrl.searchParams.append('code', searchParams.get('code'));
 
         // GASへのリクエスト
         const response = await fetch(gasUrl.toString(), {
