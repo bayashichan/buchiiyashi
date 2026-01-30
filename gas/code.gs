@@ -133,7 +133,7 @@ function doGet(e) {
     }
     
     return ContentService
-      .createTextOutput(JSON.stringify({ error: 'Invalid action' }))
+      .createTextOutput(JSON.stringify({ error: `Invalid action (GAS): ${action}` }))
       .setMimeType(ContentService.MimeType.JSON);
       
   } catch (error) {
@@ -196,6 +196,7 @@ function searchRepeater(name, email) {
   // 照合用正規化関数
   const normalize = (str) => String(str || '').replace(/[\s\u3000]/g, '').toLowerCase();
   const targetEmail = normalize(email);
+  const targetName = normalize(name);
   
   // 安全に日付をフォーマット
   const formatDate = (val) => {
@@ -221,8 +222,10 @@ function searchRepeater(name, email) {
   for (let i = data.length - 1; i > 0; i--) {
     const row = data[i];
     const rowEmail = normalize(getCell(row, idx.email));
+    const rowName = normalize(getCell(row, idx.name));
     
-    if (rowEmail === targetEmail) {
+    // 氏名とメールアドレスの両方が一致する場合のみ
+    if (rowEmail === targetEmail && rowName === targetName) {
       matches.push({
         eventName: getCell(row, idx.eventName) || '',
         submittedAt: formatDate(getCell(row, idx.submittedAt)),
