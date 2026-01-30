@@ -54,7 +54,34 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('generateCaptionInstaBtn')?.addEventListener('click', () => generateCaption('instagram'));
     document.getElementById('generateCaptionFbBtn')?.addEventListener('click', () => generateCaption('facebook'));
     document.getElementById('copyCaptionBtn')?.addEventListener('click', copyCaption);
+
+    // プレースホルダーボタン
+    document.querySelectorAll('.placeholder-btn').forEach(btn => {
+        btn.addEventListener('click', () => insertPlaceholder(btn.dataset.tag));
+    });
+
+    // テキストエリアのフォーカス追跡
+    document.getElementById('captionTemplateInsta')?.addEventListener('focus', () => lastFocusedTextarea = 'captionTemplateInsta');
+    document.getElementById('captionTemplateFb')?.addEventListener('focus', () => lastFocusedTextarea = 'captionTemplateFb');
 });
+
+let lastFocusedTextarea = 'captionTemplateInsta'; // デフォルト
+
+// プレースホルダー挿入
+function insertPlaceholder(tag) {
+    const textarea = document.getElementById(lastFocusedTextarea);
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end, text.length);
+
+    textarea.value = before + tag + after;
+    textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+    textarea.focus();
+}
 
 // ========================================
 // スプレッドシート作成
@@ -682,6 +709,7 @@ function generateCaption(platform) {
     caption = caption.replace(/\{\{出展名\}\}/g, exhibitor.exhibitorName || '');
     caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
     caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
+    caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
 
     // SNS処理
     if (platform === 'instagram') {

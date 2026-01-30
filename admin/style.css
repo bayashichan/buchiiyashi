@@ -514,3 +514,30 @@ code {
     font-family: monospace;
     font-size: 0.9em;
 }
+
+/* プレースホルダーツールバー */
+.placeholder-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px;
+    background: #edf2f7;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.placeholder-btn {
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    background: white;
+    border: 1px solid #cbd5e0;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.placeholder-btn:hover {
+    background: #e2e8f0;
+    border-color: #a0aec0;
+}

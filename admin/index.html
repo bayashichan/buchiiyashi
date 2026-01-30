@@ -210,9 +210,22 @@
 
                 <div class="card">
                     <h3>テンプレート設定</h3>
-                    <p class="hint">プレースホルダー: <code>{{出展名}}</code>, <code>{{メニュー}}</code>, <code>{{一言PR}}</code>,
-                        <code>{{SNSアカウント}}</code>, <code>{{SNSリンク一覧}}</code>
-                    </p>
+                    <p class="hint">以下のボタンをクリックすると、カーソル位置にプレースホルダーが挿入されます。</p>
+
+                    <div class="placeholder-toolbar mb-2">
+                        <button type="button" class="btn-secondary small placeholder-btn"
+                            data-tag="{{出展名}}">出展名</button>
+                        <button type="button" class="btn-secondary small placeholder-btn"
+                            data-tag="{{メニュー}}">メニュー</button>
+                        <button type="button" class="btn-secondary small placeholder-btn"
+                            data-tag="{{一言PR}}">一言PR</button>
+                        <button type="button" class="btn-secondary small placeholder-btn"
+                            data-tag="{{自己紹介}}">自己紹介</button>
+                        <button type="button" class="btn-secondary small placeholder-btn"
+                            data-tag="{{SNSアカウント}}">SNSアカウント(Insta)</button>
+                        <button type="button" class="btn-secondary small placeholder-btn"
+                            data-tag="{{SNSリンク一覧}}">SNSリンク一覧(FB)</button>
+                    </div>
 
                     <div class="form-group">
                         <label>Instagram用テンプレート</label>
