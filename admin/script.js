@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 画像生成関連
     document.getElementById('loadExhibitorsBtn')?.addEventListener('click', loadExhibitors);
+    document.getElementById('loadCaptionExhibitorsBtn')?.addEventListener('click', loadExhibitors);
     document.getElementById('generateSelectedBtn')?.addEventListener('click', generateSelectedImages);
     document.getElementById('generateAllBtn')?.addEventListener('click', generateAllImages);
 
@@ -251,6 +252,43 @@ function renderConfig() {
 
     // 基本設定
     renderBasicSettings();
+
+    // 生成ツール設定（追加）
+    renderGeneratorSettings();
+}
+
+function renderGeneratorSettings() {
+    if (!config) return;
+
+    // スライドテンプレート
+    if (config.slideTemplates) {
+        document.getElementById('templateEarlySns').value = config.slideTemplates.earlySns || '';
+        document.getElementById('templateLateSns').value = config.slideTemplates.lateSns || '';
+        document.getElementById('templateVenue').value = config.slideTemplates.venue || '';
+
+        // リンク表示更新
+        if (config.slideTemplates.earlySns) {
+            const link = document.getElementById('openEarlySns');
+            link.href = `https://docs.google.com/presentation/d/${config.slideTemplates.earlySns}/edit`;
+            link.style.display = 'inline-block';
+        }
+        if (config.slideTemplates.lateSns) {
+            const link = document.getElementById('openLateSns');
+            link.href = `https://docs.google.com/presentation/d/${config.slideTemplates.lateSns}/edit`;
+            link.style.display = 'inline-block';
+        }
+        if (config.slideTemplates.venue) {
+            const link = document.getElementById('openVenue');
+            link.href = `https://docs.google.com/presentation/d/${config.slideTemplates.venue}/edit`;
+            link.style.display = 'inline-block';
+        }
+    }
+
+    // キャプションテンプレート
+    if (config.captionTemplates) {
+        document.getElementById('captionTemplateInsta').value = config.captionTemplates.instagram || '';
+        document.getElementById('captionTemplateFb').value = config.captionTemplates.facebook || '';
+    }
 }
 
 function renderBasicSettings() {
@@ -388,6 +426,19 @@ function collectConfigFromUI() {
     config.currentSpreadsheetId = document.getElementById('currentSpreadsheetId').value;
     // databaseSpreadsheetId は readonly なのでそのまま（もしくは hidden があればそこから）
     // 現状 config オブジェクトはメモリ上にあるので変更なければそのまま維持される
+
+    // スライドテンプレート
+    config.slideTemplates = {
+        earlySns: document.getElementById('templateEarlySns').value,
+        lateSns: document.getElementById('templateLateSns').value,
+        venue: document.getElementById('templateVenue').value
+    };
+
+    // キャプションテンプレート
+    config.captionTemplates = {
+        instagram: document.getElementById('captionTemplateInsta').value,
+        facebook: document.getElementById('captionTemplateFb').value
+    };
 
     // 早割締切
     const deadline = document.getElementById('earlyBirdDeadline').value;

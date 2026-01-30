@@ -260,9 +260,12 @@
 
                     <div class="form-group">
                         <label>出展者選択</label>
-                        <select id="captionExhibitorSelect">
-                            <option value="">出展者を選択...</option>
-                        </select>
+                        <div class="flex-row">
+                            <select id="captionExhibitorSelect" style="flex-grow: 1;">
+                                <option value="">出展者を選択...</option>
+                            </select>
+                            <button id="loadCaptionExhibitorsBtn" class="btn-secondary small">出展者一覧を読み込む</button>
+                        </div>
                     </div>
 
                     <div class="button-group mt-3">
