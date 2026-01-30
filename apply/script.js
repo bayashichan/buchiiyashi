@@ -92,6 +92,17 @@ function updateEarlyBirdBanner() {
 
     if (now > deadline) {
         banner.style.display = 'none';
+    } else {
+        // 日付を「M/D」形式にする
+        const month = deadline.getMonth() + 1;
+        const date = deadline.getDate();
+        const dateStr = `${month}/${date}`;
+
+        // バナーのテキストを更新
+        const badge = banner.querySelector('.early-bird-badge');
+        if (badge) {
+            badge.textContent = `🎉 早割期間中！${dateStr}まで`;
+        }
     }
 }
 
