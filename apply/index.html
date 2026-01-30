@@ -87,7 +87,7 @@
           <div>
             <label class="block mb-2 text-sm font-medium text-gray-900">メールアドレス</label>
             <input type="email" id="repeaterEmail"
-              class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
+              class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full py-3 px-2.5"
               placeholder="example@email.com">
           </div>
 
@@ -102,17 +102,17 @@
         <div id="authCodeArea" class="hidden mb-4 bg-orange-50 p-4 rounded-lg border border-orange-200">
           <p class="font-bold text-green-600 mb-2">✅ 認証メールを送信しました！</p>
           <p class="text-sm mb-3">
-            入力されたメールアドレス宛に6桁の認証コードが届いています。<br>
+            入力されたメールアドレス宛に4桁の認証コードが届いています。<br>
             コードを入力して「認証して呼出」ボタンを押してください。
           </p>
 
           <div class="mb-4">
             <label class="block mb-2 text-sm font-medium text-gray-900">認証コード<span
-                class="text-xs text-orange-600">※メールに送信された6桁の数字</span></label>
+                class="text-xs text-orange-600">※メールに送信された4桁の数字</span></label>
             <div class="flex gap-2">
-              <input type="text" id="repeaterAuthCode" maxlength="6"
+              <input type="text" id="repeaterAuthCode" maxlength="4"
                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
-                placeholder="123456">
+                placeholder="1234">
               <button type="button" id="verifyAuthCodeBtn"
                 class="text-white bg-green-500 hover:bg-green-600 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center whitespace-nowrap">
                 認証して呼出
@@ -124,7 +124,8 @@
             <p class="font-bold text-orange-600 mb-1">⚠️ メールが届かない場合</p>
             <ul class="list-disc pl-4 space-y-1">
               <li><strong>迷惑メールフォルダ</strong>に入っていないかご確認ください。</li>
-              <li>メールアドレスの入力間違いがないか、再度ご確認ください。</li>
+              <li>前回申込時のメールアドレスと異なる場合は届きません。</li>
+              <li>メールアドレスの入力ミスがないか、再度ご確認ください。</li>
               <li>「buchi.iyashi.tokyo.info@gmail.com」からの受信許可設定をお願いします。</li>
               <li>数分待っても届かない場合は、お手数ですが再度「認証コードを送信」をお試しください。</li>
             </ul>

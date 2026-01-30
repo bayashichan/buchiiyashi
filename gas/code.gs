@@ -75,8 +75,8 @@ function doGet(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
       
-      // 認証コード生成 (6桁数字)
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      // 認証コード生成 (4桁数字)
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
       
       // キャッシュに保存 (有効期限10分)
       const cache = CacheService.getScriptCache();
@@ -1326,11 +1326,11 @@ function sendAuthEmail(email, code) {
   const subject = `【ぶち癒しフェスタ東京】認証コードのお知らせ`;
   
   const body = `
+認証コード: ${code}
+
 ぶち癒しフェスタ東京 出展申込フォームをご利用いただきありがとうございます。
 
 以下の認証コードを入力して、手続きを進めてください。
-
-認証コード: ${code}
 
 ※このコードの有効期限は10分です。
 ※本メールにお心当たりがない場合は、破棄してください。

@@ -797,6 +797,9 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
         const searchParams = url.searchParams;
         const action = searchParams.get('action');
 
+        console.log(`[handleRepeaterSearch] Action received: ${action}`); // Debug log
+        console.log(`[handleRepeaterSearch] Full URL: ${request.url}`); // Debug log
+
         // アクションのバリデーション
         const allowedActions = ['check_repeater', 'send_auth_code', 'verify_auth_code'];
         if (!allowedActions.includes(action)) {

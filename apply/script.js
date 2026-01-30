@@ -1145,8 +1145,8 @@ function initRepeaterSearch() {
             const code = document.getElementById('repeaterAuthCode').value;
             const statusEl = document.getElementById('repeaterSearchStatus');
 
-            if (!code || code.length < 6) {
-                statusEl.textContent = '❌ 6桁の認証コードを入力してください';
+            if (!code || code.length < 4) {
+                statusEl.textContent = '❌ 4桁の認証コードを入力してください';
                 statusEl.className = 'mt-2 text-sm font-medium text-red-600';
                 return;
             }
