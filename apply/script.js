@@ -1124,7 +1124,12 @@ function initRepeaterSearch() {
                     authCodeArea.classList.remove('hidden');
                     sendAuthBtn.classList.add('hidden'); // 送信ボタンは隠す
                 } else {
-                    statusEl.textContent = `⚠️ ${result.error || '該当するデータが見つかりませんでした'}`;
+                    const errorMsg = result.error || '該当するデータが見つかりませんでした';
+                    if (errorMsg.includes('見つかりませんでした')) {
+                        statusEl.innerHTML = '⚠️ 該当するデータが見つかりませんでした。<br><span class="text-xs">※前回申込時の「氏名（本名）」または「メールアドレス」と異なる可能性があります。再度ご確認ください。</span>';
+                    } else {
+                        statusEl.textContent = `⚠️ ${errorMsg}`;
+                    }
                     statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
                     sendAuthBtn.disabled = false;
                 }
