@@ -1081,7 +1081,9 @@ function initFileSizeCheck() {
 function initRepeaterSearch() {
     const toggleBtn = document.getElementById('toggleRepeaterSearchBtn');
     const searchArea = document.getElementById('repeaterSearchArea');
-    const searchBtn = document.getElementById('searchRepeaterBtn');
+    const sendAuthBtn = document.getElementById('sendAuthCodeBtn');
+    const verifyBtn = document.getElementById('verifyAuthCodeBtn');
+    const authCodeArea = document.getElementById('authCodeArea');
 
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
@@ -1089,8 +1091,9 @@ function initRepeaterSearch() {
         });
     }
 
-    if (searchBtn) {
-        searchBtn.addEventListener('click', async () => {
+    // 認証コード送信
+    if (sendAuthBtn) {
+        sendAuthBtn.addEventListener('click', async () => {
             const name = document.getElementById('repeaterName').value;
             const email = document.getElementById('repeaterEmail').value;
             const statusEl = document.getElementById('repeaterSearchStatus');
@@ -1101,44 +1104,100 @@ function initRepeaterSearch() {
                 return;
             }
 
-            statusEl.textContent = '🔍 検索中...';
+            statusEl.textContent = '📧 認証コードを送信中...';
             statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
-            searchBtn.disabled = true;
+            sendAuthBtn.disabled = true;
 
             try {
-                // GAS APIを呼び出す（Worker経由）
-                // URLパラメータとして送信
+                // GAS APIを呼び出す
                 const url = new URL(`${CONFIG.workerUrl}/api/repeater`);
-                url.searchParams.append('action', 'check_repeater');
+                url.searchParams.append('action', 'send_auth_code');
                 url.searchParams.append('name', name);
                 url.searchParams.append('email', email);
 
                 const response = await fetch(url);
                 const result = await response.json();
 
-                if (result.found) {
+                if (result.success) {
+                    statusEl.textContent = '✅ メールに認証コードを送信しました。入力して「認証して呼出」を押してください。';
+                    statusEl.className = 'mt-2 text-sm font-medium text-green-600';
+                    authCodeArea.classList.remove('hidden');
+                    sendAuthBtn.classList.add('hidden'); // 送信ボタンは隠す
+                } else {
+                    statusEl.textContent = `⚠️ ${result.error || '該当するデータが見つかりませんでした'}`;
+                    statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
+                    sendAuthBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Send auth code error:', error);
+                statusEl.textContent = '❌ エラーが発生しました。通信環境を確認してください。';
+                statusEl.className = 'mt-2 text-sm font-medium text-red-600';
+                sendAuthBtn.disabled = false;
+            }
+        });
+    }
+
+    // 認証コード検証・データ取得
+    if (verifyBtn) {
+        verifyBtn.addEventListener('click', async () => {
+            const name = document.getElementById('repeaterName').value;
+            const email = document.getElementById('repeaterEmail').value;
+            const code = document.getElementById('repeaterAuthCode').value;
+            const statusEl = document.getElementById('repeaterSearchStatus');
+
+            if (!code || code.length < 6) {
+                statusEl.textContent = '❌ 6桁の認証コードを入力してください';
+                statusEl.className = 'mt-2 text-sm font-medium text-red-600';
+                return;
+            }
+
+            statusEl.textContent = '🔍 認証中...';
+            statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
+            verifyBtn.disabled = true;
+
+            try {
+                const url = new URL(`${CONFIG.workerUrl}/api/repeater`);
+                url.searchParams.append('action', 'verify_auth_code');
+                url.searchParams.append('name', name);
+                url.searchParams.append('email', email);
+                url.searchParams.append('code', code);
+
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.success) {
                     // 結果がある場合は必ずモーダルで選択させる
-                    const dataList = result.list || [result.data];
+                    const dataList = result.list || [result.data]; // result.data is fallback if verification returns single record mixed in root
+                    // verify_auth_code API returns { success: true, list: [...] } or { success: true, found: true, list: [...] }
+
                     console.log('Repeater data found:', dataList);
 
                     if (dataList.length === 1) {
-                        statusEl.textContent = '🔍 過去のデータが見つかりました。使用する場合は選択してください。';
+                        statusEl.textContent = '🔍 認証成功！データが見つかりました。';
                     } else {
-                        statusEl.textContent = '🔍 複数の履歴が見つかりました。使用するデータを選択してください。';
+                        statusEl.textContent = '🔍 認証成功！複数の履歴が見つかりました。';
                     }
                     statusEl.className = 'mt-2 text-sm font-medium text-blue-600';
-                    showRepeaterSelectionModal(dataList, statusEl, searchArea);
-                } else {
-                    statusEl.textContent = '⚠️ データが見つかりませんでした。入力内容を確認するか、新規に入力してください。';
-                    statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
-                }
 
+                    // モーダル表示
+                    if (dataList && dataList.length > 0) {
+                        showRepeaterSelectionModal(dataList, statusEl, searchArea);
+                    } else {
+                        // 万が一 list が空だった場合 (API上はありえないはずだが)
+                        statusEl.textContent = '⚠️ 認証は成功しましたが、データが見つかりませんでした。';
+                        statusEl.className = 'mt-2 text-sm font-medium text-amber-600';
+                    }
+
+                } else {
+                    statusEl.textContent = `❌ ${result.error || '認証に失敗しました'}`;
+                    statusEl.className = 'mt-2 text-sm font-medium text-red-600';
+                    verifyBtn.disabled = false;
+                }
             } catch (error) {
-                console.error('Repeater search error:', error);
+                console.error('Verify auth code error:', error);
                 statusEl.textContent = '❌ エラーが発生しました。通信環境を確認してください。';
                 statusEl.className = 'mt-2 text-sm font-medium text-red-600';
-            } finally {
-                searchBtn.disabled = false;
+                verifyBtn.disabled = false;
             }
         });
     }

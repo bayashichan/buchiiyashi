@@ -83,18 +83,35 @@
                 class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
                 placeholder="山田 花子">
             </div>
-            <div>
-              <label class="block mb-2 text-sm font-medium text-gray-900">メールアドレス</label>
-              <input type="email" id="repeaterEmail"
-                class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
-                placeholder="example@email.com">
-            </div>
           </div>
-          <button type="button" id="searchRepeaterBtn"
-            class="w-full text-white bg-orange-500 hover:bg-orange-600 focus:ring-4 focus:outline-none focus:ring-orange-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-            データを検索して自動入力
-          </button>
-          <p id="repeaterSearchStatus" class="mt-2 text-sm font-medium"></p>
+          <div>
+            <label class="block mb-2 text-sm font-medium text-gray-900">メールアドレス</label>
+            <input type="email" id="repeaterEmail"
+              class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
+              placeholder="example@email.com">
+          </div>
+        </div>
+
+        <div id="authCodeArea" class="hidden mb-4">
+          <label class="block mb-2 text-sm font-medium text-gray-900">認証コード<span
+              class="text-xs text-orange-600">※メールに送信された6桁の数字</span></label>
+          <div class="flex gap-2">
+            <input type="text" id="repeaterAuthCode" maxlength="6"
+              class="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
+              placeholder="123456">
+            <button type="button" id="verifyAuthCodeBtn"
+              class="text-white bg-green-500 hover:bg-green-600 focus:ring-4 focus:outline-none focus:ring-green-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center whitespace-nowrap">
+              認証して呼出
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="sendAuthCodeBtn"
+          class="w-full text-white bg-orange-500 hover:bg-orange-600 focus:ring-4 focus:outline-none focus:ring-orange-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
+          認証コードを送信
+        </button>
+
+        <p id="repeaterSearchStatus" class="mt-2 text-sm font-medium"></p>
         </div>
       </section>
 

@@ -58,8 +58,8 @@ function doGet(e) {
   try {
     const action = e.parameter.action;
     
-    // リピーターチェック
-    if (action === 'check_repeater') {
+    // リピーターチェック（認証コード送信）
+    if (action === 'send_auth_code') {
       const email = e.parameter.email;
       const name = e.parameter.name;
       
@@ -67,11 +67,59 @@ function doGet(e) {
         throw new Error('Name and Email are required');
       }
       
-      const result = searchRepeater(name, email);
+      // まず該当者がいるかチェック
+      const checkResult = searchRepeater(name, email);
+      if (!checkResult.found) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ success: false, error: '該当するデータが見つかりませんでした' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      // 認証コード生成 (6桁数字)
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // キャッシュに保存 (有効期限10分)
+      const cache = CacheService.getScriptCache();
+      const cacheKey = `auth_${email}`; // メールアドレスをキーにする
+      cache.put(cacheKey, code, 600);
+      
+      // メール送信
+      sendAuthEmail(email, code);
       
       return ContentService
-        .createTextOutput(JSON.stringify(result))
+        .createTextOutput(JSON.stringify({ success: true }))
         .setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    // リピーターチェック（認証コード検証）
+    if (action === 'verify_auth_code') {
+      const email = e.parameter.email;
+      const name = e.parameter.name;
+      const code = e.parameter.code;
+      
+      if (!email || !name || !code) {
+        throw new Error('Missing required parameters');
+      }
+      
+      // キャッシュからコード取得
+      const cache = CacheService.getScriptCache();
+      const cacheKey = `auth_${email}`;
+      const savedCode = cache.get(cacheKey);
+      
+      if (savedCode && savedCode === code) {
+        // 認証成功 -> データを返す
+        const result = searchRepeater(name, email);
+        cache.remove(cacheKey); // 使い終わったコードは削除
+        
+        return ContentService
+          .createTextOutput(JSON.stringify({ success: true, ...result }))
+          .setMimeType(ContentService.MimeType.JSON);
+      } else {
+        // 認証失敗
+        return ContentService
+          .createTextOutput(JSON.stringify({ success: false, error: '認証コードが正しくないか、有効期限切れです' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
     }
     
     // 出展者一覧取得（管理画面用）
@@ -1265,6 +1313,38 @@ function generateBatchImages(templateId, exhibitorIds, imageType, spreadsheetId)
     succeeded: results.filter(r => r.success).length,
     failed: results.filter(r => !r.success).length,
     results: results
+  };
+}
+
+// ========================================
+// 認証メール送信
+// ========================================
+function sendAuthEmail(email, code) {
+  const subject = `【ぶち癒しフェスタ東京】認証コードのお知らせ`;
+  
+  const body = `
+ぶち癒しフェスタ東京 出展申込フォームをご利用いただきありがとうございます。
+
+以下の認証コードを入力して、手続きを進めてください。
+
+認証コード: ${code}
+
+※このコードの有効期限は10分です。
+※本メールにお心当たりがない場合は、破棄してください。
+
+--------------------------------------------------
+ぶち癒しフェスタ東京 実行委員会
+--------------------------------------------------
+  `.trim();
+  
+  MailApp.sendEmail({
+    to: email,
+    subject: subject,
+    body: body,
+    name: 'ぶち癒しフェスタ東京 実行委員会',
+    replyTo: CONFIG.REPLY_TO_EMAIL
+  });
+}
   };
 }
 
