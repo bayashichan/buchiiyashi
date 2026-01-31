@@ -4,7 +4,7 @@ compatibility_date = "2024-01-01"
 
 # 環境変数（デプロイ時に設定）
 [vars]
-GAS_URL = "https://script.google.com/macros/s/AKfycbzjoA1ClbXURgas8tnlqtLy668rfMPQf7wX_ft_8Vo86pNeOFmXBI0kORblgRxdydwN/exec"
+GAS_URL = "https://script.google.com/macros/s/AKfycbxQ5ug6NBUBsS7cIb7_XaJF6-1-ei5kSPOaf49S20SkcICC6G8rzpNUYDKL27PuYdFMzA/exec"
 R2_PUBLIC_URL = "https://pub-66037ae487194387bd8941466131ce7c.r2.dev"
 GITHUB_REPO = "bayashichan/buchiiyashi"
 
