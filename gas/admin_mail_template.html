@@ -315,6 +315,33 @@
             <? } ?>
 
             <!-- 合計金額 -->
+            <!-- 料金内訳 -->
+            <div class="section">
+                <div class="section-title">料金内訳</div>
+
+                <? if (isMember) { ?>
+                <div
+                    style="background-color: #fce4ec; border: 1px solid #f8bbd0; color: #c2185b; padding: 10px; margin-bottom: 15px; border-radius: 4px; font-size: 0.9em;">
+                    アーキエンジェルハピネス協会会員様は早割価格の適用外となりますが、<br>
+                    代わりに会員様特別割引（-2,000円）を適用いたしました。
+                </div>
+                <? } ?>
+
+                <table class="info-table">
+                    <? breakdownList.forEach(item => { ?>
+                    <tr>
+                        <th style="background-color: #fff; font-weight: normal;">
+                            <?= item.item ?>
+                        </th>
+                        <td
+                            style="text-align: right; <?= item.price < 0 ? 'color: #e74c3c; font-weight: bold;' : '' ?>">
+                            <?= item.price.toLocaleString() ?> 円
+                        </td>
+                    </tr>
+                    <? }) ?>
+                </table>
+            </div>
+
             <div class="total-box">
                 <div>お振込金額合計</div>
                 <div class="amount">¥

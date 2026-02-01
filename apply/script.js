@@ -539,6 +539,9 @@ function hideTerms() {
 // ========================================
 // 料金計算（二次会は除外）
 // ========================================
+// ========================================
+// 料金計算（二次会は除外）
+// ========================================
 function calculatePrice() {
     const breakdown = [];
     let total = 0;
@@ -548,6 +551,7 @@ function calculatePrice() {
         const boothPrice = isEarlyBird()
             ? selectedBooth.prices.earlyBird
             : selectedBooth.prices.regular;
+
         breakdown.push(`${selectedBooth.name}: ¥${boothPrice.toLocaleString()}`);
         total += boothPrice;
 
@@ -716,6 +720,8 @@ function initCharCounters() {
         });
     });
 }
+
+
 
 // ========================================
 // バリデーション

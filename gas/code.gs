@@ -580,8 +580,16 @@ function calculatePrice(data) {
   const boothInfo = CONFIG.BOOTHS[data.boothId];
   if (!boothInfo) throw new Error('Invalid Booth ID');
   
+  // 会員判定
+  const isMember = data.isMember === '1';
+  
   // ブース料金
-  const isEarlyBird = data.isEarlyBird === '1';
+  // 会員は早割適用外（通常価格）
+  let isEarlyBird = data.isEarlyBird === '1';
+  if (isMember) {
+    isEarlyBird = false;
+  }
+  
   const boothPrice = isEarlyBird ? boothInfo.earlyBird : boothInfo.regular;
   total += boothPrice;
   
@@ -601,6 +609,11 @@ function calculatePrice(data) {
   // 懇親会
   const partyCount = parseInt(data.partyCount || 0);
   total += partyCount * CONFIG.UNIT_PRICES.party;
+
+  // 会員割引
+  if (isMember) {
+    total -= CONFIG.MEMBER_DISCOUNT;
+  }
   
   return {
     totalFee: total,
@@ -609,7 +622,8 @@ function calculatePrice(data) {
       staff: extraStaff * CONFIG.UNIT_PRICES.staff,
       chairs: extraChairs * CONFIG.UNIT_PRICES.chair,
       power: data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0,
-      party: partyCount * CONFIG.UNIT_PRICES.party
+      party: partyCount * CONFIG.UNIT_PRICES.party,
+      memberDiscount: isMember ? -CONFIG.MEMBER_DISCOUNT : 0
     }
   };
 }
@@ -843,6 +857,19 @@ ${data.notes || 'なし'}
   template.calculationResult = calculationResult;
   template.snsLinksFormatted = formatSnsLinks(data.snsLinks);
   
+  // 料金内訳の表示用リスト作成
+  const breakdownList = [
+    { item: '出展ブース料', price: calculationResult.breakdown.booth },
+    { item: '追加スタッフ (×' + (data.extraStaff || 0) + ')', price: calculationResult.breakdown.staff },
+    { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
+    { item: '電源使用料', price: calculationResult.breakdown.power },
+    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party },
+    { item: '会員様特別割引', price: calculationResult.breakdown.memberDiscount || 0 }
+  ].filter(item => item.price !== 0);
+
+  template.breakdownList = breakdownList;
+  template.isMember = data.isMember === '1';
+
   const htmlBody = template.evaluate().getContent();
   
   GmailApp.sendEmail(CONFIG.ADMIN_EMAIL, subject, textBody, {
@@ -894,8 +921,9 @@ function sendConfirmationEmail(data, calculationResult) {
     { item: '追加スタッフ (×' + (data.extraStaff || 0) + ')', price: calculationResult.breakdown.staff },
     { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
     { item: '電源使用料', price: calculationResult.breakdown.power },
-    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party }
-  ].filter(item => item.price > 0);
+    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party },
+    { item: '会員様特別割引', price: calculationResult.breakdown.memberDiscount || 0 }
+  ].filter(item => item.price !== 0);
 
   // HTMLテンプレートを読み込み
   const template = HtmlService.createTemplateFromFile('mail_template');
@@ -909,6 +937,11 @@ function sendConfirmationEmail(data, calculationResult) {
   const htmlBody = template.evaluate().getContent();
   
   // テキスト版（HTMLが表示できないクライアント用）
+  let memberMessage = '';
+  if (isMember) {
+    memberMessage = '\n※アーキエンジェルハピネス協会会員様は早割適用外となりますが、会員様特別割引（-2,000円）を適用しております。\n';
+  }
+
   const textBody = `
 ${data.name} 様
 
@@ -926,7 +959,7 @@ ${data.name} 様
 
 ■ 料金
 合計: ¥${calculationResult.totalFee.toLocaleString()}
-
+${memberMessage}
 詳細はHTML版メールをご確認ください。
 
 -----
