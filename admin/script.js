@@ -773,6 +773,22 @@ function generateCaption(platform) {
         caption = caption.replace(/\{\{SNSリンク一覧\}\}/g, snsLinks);
     }
 
+    // ボタンのスタイル切り替え
+    const instaBtn = document.getElementById('generateCaptionInstaBtn');
+    const fbBtn = document.getElementById('generateCaptionFbBtn');
+
+    if (platform === 'instagram') {
+        instaBtn.classList.remove('btn-secondary');
+        instaBtn.classList.add('btn-primary');
+        fbBtn.classList.remove('btn-primary');
+        fbBtn.classList.add('btn-secondary');
+    } else {
+        fbBtn.classList.remove('btn-secondary');
+        fbBtn.classList.add('btn-primary');
+        instaBtn.classList.remove('btn-primary');
+        instaBtn.classList.add('btn-secondary');
+    }
+
     document.getElementById('generatedCaption').value = caption.trim();
 }
 
