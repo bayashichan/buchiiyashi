@@ -1138,9 +1138,10 @@ function createSlideTemplatePresentation(templateType) {
  * @param {string} templateId - テンプレートスライドのID
  * @param {Object} exhibitorData - 出展者データ
  * @param {string} imageType - 画像タイプ (earlySns, lateSns, venue)
- * @returns {Object} 結果 { success, imageUrl, error }
+ * @param {Object} options - オプション { keepSlide: boolean }
+ * @returns {Object} 結果 { success, imageUrl, error, presentationUrl }
  */
-function generateExhibitorImage(templateId, exhibitorData, imageType) {
+function generateExhibitorImage(templateId, exhibitorData, imageType, options = {}) {
   try {
     // 1. テンプレートをコピー
     const templateFile = DriveApp.getFileById(templateId);
@@ -1198,14 +1199,17 @@ function generateExhibitorImage(templateId, exhibitorData, imageType) {
     const imageFile = targetFolder.createFile(imageBlob.setName(imageName));
     imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     
-    // 8. 一時ファイルを削除
-    copiedFile.setTrashed(true);
+    // 8. 一時ファイルを削除（オプションで残す場合を除く）
+    if (!options.keepSlide) {
+      copiedFile.setTrashed(true);
+    }
     
     return {
       success: true,
       imageUrl: imageFile.getUrl(),
       imageId: imageFile.getId(),
-      downloadUrl: `https://drive.google.com/uc?export=download&id=${imageFile.getId()}`
+      downloadUrl: `https://drive.google.com/uc?export=download&id=${imageFile.getId()}`,
+      presentationUrl: `https://docs.google.com/presentation/d/${copiedId}/edit` // スライドURLを返す
     };
     
   } catch (error) {
@@ -1318,7 +1322,7 @@ function exportSlideAsImage(presentationId) {
 /**
  * 複数の出展者の画像を一括生成
  */
-function generateBatchImages(templateId, exhibitorIds, imageType, spreadsheetId) {
+function generateBatchImages(templateId, exhibitorIds, imageType, spreadsheetId, options = {}) {
   const results = [];
   
   // 出展者一覧を取得
@@ -1332,7 +1336,7 @@ function generateBatchImages(templateId, exhibitorIds, imageType, spreadsheetId)
   );
   
   for (const exhibitor of exhibitors) {
-    const result = generateExhibitorImage(templateId, exhibitor, imageType);
+    const result = generateExhibitorImage(templateId, exhibitor, imageType, options);
     results.push({
       exhibitorId: exhibitor.id,
       exhibitorName: exhibitor.exhibitorName,

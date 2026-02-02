@@ -605,6 +605,7 @@ async function generateAllImages() {
 async function generateImages(exhibitorIds) {
     const imageType = document.getElementById('imageType').value;
     const templateId = getTemplateId(imageType);
+    const keepSlide = document.getElementById('keepSlideCheckbox')?.checked || false;
 
     if (!templateId) {
         alert('テンプレートIDを設定してください');
@@ -626,7 +627,8 @@ async function generateImages(exhibitorIds) {
                 templateId,
                 exhibitorIds,
                 imageType,
-                spreadsheetId: document.getElementById('currentSpreadsheetId')?.value
+                spreadsheetId: document.getElementById('currentSpreadsheetId')?.value,
+                options: { keepSlide }
             })
         });
 
@@ -721,10 +723,13 @@ function renderGeneratedImages(results) {
     container.innerHTML = results.map(r => `
         <div class="generated-image-item ${r.success ? '' : 'error'}">
             <span class="name">${r.exhibitorName}</span>
-            ${r.success
+            <div class="actions">
+                ${r.success
             ? `<a href="${r.downloadUrl}" target="_blank" class="btn-secondary small">📥 ダウンロード</a>`
             : `<span class="error-msg">${r.error}</span>`
         }
+                ${r.presentationUrl ? `<a href="${r.presentationUrl}" target="_blank" class="btn-secondary small" style="margin-left: 5px;">✏️ スライド編集</a>` : ''}
+            </div>
         </div>
     `).join('');
 }
