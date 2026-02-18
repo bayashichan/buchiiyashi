@@ -905,28 +905,48 @@ async function submitForm() {
         formData.append('lineUserId', document.getElementById('lineUserId').value);
         formData.append('lineDisplayName', document.getElementById('lineDisplayName').value);
 
-        // APIへ送信
-        const response = await fetch(CONFIG.workerUrl, {
-            method: 'POST',
-            body: formData
-        });
+        // APIへ送信（タイムアウト付き）
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 90000); // 90秒タイムアウト
+
+        let response;
+        try {
+            response = await fetch(CONFIG.workerUrl, {
+                method: 'POST',
+                body: formData,
+                signal: controller.signal
+            });
+        } catch (fetchError) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+                throw new Error('通信がタイムアウトしました。電波の良い場所で再度お試しください。');
+            }
+            throw new Error('ネットワークに接続できませんでした。インターネット接続を確認して再度お試しください。');
+        }
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
-            throw new Error('送信に失敗しました');
+            throw new Error('サーバーとの通信に失敗しました。しばらくしてから再度お試しください。');
         }
 
-        const result = await response.json();
+        let result;
+        try {
+            result = await response.json();
+        } catch (parseError) {
+            throw new Error('サーバーからの応答が正しく受信できませんでした。再度お試しください。');
+        }
 
         if (result.success) {
             // 完了モーダル表示
             document.getElementById('completeModal').classList.remove('hidden');
         } else {
-            throw new Error(result.error || '送信に失敗しました');
+            throw new Error(result.error || '送信に失敗しました。再度お試しください。');
         }
 
     } catch (error) {
         console.error('Submit error:', error);
-        alert('送信エラー: ' + error.message);
+        const errorMessage = error.message || '予期しないエラーが発生しました。';
+        alert('送信エラー:\n\n' + errorMessage + '\n\n解決しない場合は、公式LINEまでお問い合わせください。');
     } finally {
         document.getElementById('loadingOverlay').classList.remove('visible');
         document.getElementById('submitBtn').disabled = false;
