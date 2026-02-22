@@ -895,10 +895,15 @@ async function submitForm() {
         const photoInput = form.querySelector('[name="profileImage"]');
         if (photoInput.files && photoInput.files.length > 0) {
             const file = photoInput.files[0];
-            const base64Data = await convertFileToBase64(file);
-            formData.append('profileImageBase64', base64Data.base64);
-            formData.append('profileImageMimeType', base64Data.mimeType);
-            formData.append('profileImageName', base64Data.name);
+            try {
+                const base64Data = await convertFileToBase64(file);
+                formData.append('profileImageBase64', base64Data.base64);
+                formData.append('profileImageMimeType', base64Data.mimeType);
+                formData.append('profileImageName', base64Data.name);
+            } catch (imageError) {
+                console.error('Image processing error:', imageError);
+                throw new Error('画像の処理に失敗しました。別の画像を選択するか、画像サイズを小さくしてお試しください。');
+            }
         }
 
         // LIFFデータ
@@ -1439,45 +1444,65 @@ function convertFileToBase64(file) {
             const img = new Image();
             img.src = event.target.result;
             img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
 
-                // 最大サイズ設定 (2000px)
-                const MAX_SIZE = 2000;
-                let width = img.width;
-                let height = img.height;
+                    if (!ctx) {
+                        reject(new Error('Canvas の初期化に失敗しました'));
+                        return;
+                    }
 
-                if (width > height) {
-                    if (width > MAX_SIZE) {
-                        height *= MAX_SIZE / width;
-                        width = MAX_SIZE;
+                    // 最大サイズ設定 (1200px - Android端末のメモリ対策で縮小)
+                    const MAX_SIZE = 1200;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_SIZE) {
+                            height *= MAX_SIZE / width;
+                            width = MAX_SIZE;
+                        }
+                    } else {
+                        if (height > MAX_SIZE) {
+                            width *= MAX_SIZE / height;
+                            height = MAX_SIZE;
+                        }
                     }
-                } else {
-                    if (height > MAX_SIZE) {
-                        width *= MAX_SIZE / height;
-                        height = MAX_SIZE;
+
+                    // 整数に丸める（Canvas は小数を受け付けない場合がある）
+                    width = Math.round(width);
+                    height = Math.round(height);
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // JPEG形式、品質0.8で圧縮してBase64取得
+                    // 元がPNGでもJPEG変換して容量削減
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+                    const base64Only = compressedDataUrl.split(',')[1];
+
+                    if (!base64Only) {
+                        reject(new Error('画像の変換結果が空です'));
+                        return;
                     }
+
+                    console.log(`Image compressed: ${width}x${height}, Quality: 0.8, Size: ${Math.round(base64Only.length / 1024)}KB`);
+
+                    resolve({
+                        base64: base64Only,
+                        mimeType: 'image/jpeg',
+                        name: file.name.replace(/\.[^/.]+$/, "") + ".jpg" // 拡張子をjpgに変更
+                    });
+                } catch (canvasError) {
+                    console.error('Canvas processing error:', canvasError);
+                    reject(new Error('画像の圧縮処理に失敗しました: ' + (canvasError.message || '不明なエラー')));
                 }
-
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-
-                // JPEG形式、品質0.85で圧縮してBase64取得
-                // 元がPNGでもJPEG変換して容量削減
-                const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-                const base64Only = compressedDataUrl.split(',')[1];
-                console.log(`Image compressed: ${width}x${height}, Quality: 0.85`);
-
-                resolve({
-                    base64: base64Only,
-                    mimeType: 'image/jpeg',
-                    name: file.name.replace(/\.[^/.]+$/, "") + ".jpg" // 拡張子をjpgに変更
-                });
             };
-            img.onerror = (error) => reject(error);
+            img.onerror = () => reject(new Error('画像の読み込みに失敗しました。ファイルが破損している可能性があります。'));
         };
-        reader.onerror = error => reject(error);
+        reader.onerror = () => reject(new Error('画像ファイルの読み取りに失敗しました。'));
     });
 }
