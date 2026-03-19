@@ -187,6 +187,12 @@
                     <div class="form-group">
                         <label>出展者選択</label>
                         <button id="loadExhibitorsBtn" class="btn-secondary small">出展者一覧を読み込む</button>
+                        
+                        <div id="selectAllContainer" class="checkbox-wrapper mt-2" style="display: none; align-items: center; margin-bottom: 8px;">
+                            <input type="checkbox" id="selectAllExhibitors" checked>
+                            <label for="selectAllExhibitors" style="font-weight: bold; cursor: pointer;">全て選択 / 解除</label>
+                        </div>
+
                         <div id="exhibitorList" class="exhibitor-list mt-2"></div>
                     </div>
 

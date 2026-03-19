@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 画像生成関連
     document.getElementById('loadExhibitorsBtn')?.addEventListener('click', loadExhibitors);
+    document.getElementById('selectAllExhibitors')?.addEventListener('change', toggleAllExhibitors);
     document.getElementById('loadCaptionExhibitorsBtn')?.addEventListener('click', loadExhibitors);
     document.getElementById('generateSelectedBtn')?.addEventListener('click', generateSelectedImages);
     document.getElementById('generateAllBtn')?.addEventListener('click', generateAllImages);
@@ -558,21 +559,45 @@ async function loadExhibitors() {
 // 出展者一覧を表示（チェックボックス付き）
 function renderExhibitorList() {
     const container = document.getElementById('exhibitorList');
+    const selectAllContainer = document.getElementById('selectAllContainer');
     if (!container) return;
 
     if (exhibitors.length === 0) {
         container.innerHTML = '<p class="hint">出展者データがありません</p>';
+        if (selectAllContainer) selectAllContainer.style.display = 'none';
         return;
     }
+    
+    if (selectAllContainer) selectAllContainer.style.display = 'flex';
 
     container.innerHTML = exhibitors.map(ex => `
         <label class="exhibitor-item">
-            <input type="checkbox" name="exhibitor" value="${ex.id}" checked>
+            <input type="checkbox" name="exhibitor" value="${ex.id}" checked onchange="updateSelectAllState()">
             <span class="exhibitor-name">${ex.exhibitorName}</span>
             <span class="exhibitor-seat">${ex.seatNumber || '未定'}</span>
         </label>
     `).join('');
+    
+    // 初期状態は全てチェック済みにする
+    const selectAllCb = document.getElementById('selectAllExhibitors');
+    if (selectAllCb) selectAllCb.checked = true;
 }
+
+// 全選択/全解除の切り替え
+function toggleAllExhibitors(e) {
+    const isChecked = e.target.checked;
+    const checkboxes = document.querySelectorAll('#exhibitorList input[name="exhibitor"]');
+    checkboxes.forEach(cb => cb.checked = isChecked);
+}
+
+// 個別のチェックボックスが変更されたときに「全て選択」の状態を更新
+window.updateSelectAllState = function() {
+    const checkboxes = document.querySelectorAll('#exhibitorList input[name="exhibitor"]');
+    if (checkboxes.length === 0) return;
+    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+    const selectAllCb = document.getElementById('selectAllExhibitors');
+    if (selectAllCb) selectAllCb.checked = allChecked;
+};
 
 // キャプション用セレクトを更新
 function updateExhibitorSelect() {
@@ -598,7 +623,15 @@ async function generateSelectedImages() {
 
 // 全員の画像を生成
 async function generateAllImages() {
-    await generateImages([]);
+    const checkboxes = document.querySelectorAll('#exhibitorList input[name="exhibitor"]');
+    const allIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    
+    if (allIds.length === 0) {
+        alert('出展者が読み込まれていません。先に出展者一覧を読み込んでください。');
+        return;
+    }
+
+    await generateImages(allIds);
 }
 
 // 画像生成実行
@@ -612,34 +645,63 @@ async function generateImages(exhibitorIds) {
         return;
     }
 
+    if (!exhibitorIds || exhibitorIds.length === 0) {
+        alert('出展者が選択されていません');
+        return;
+    }
+
     showLoading();
     const statusDiv = document.getElementById('imageGenerationStatus');
-    statusDiv.innerHTML = '画像を生成中...';
+    
+    // タイムアウト回避のためのチャンク設定
+    const CHUNK_SIZE = 3;
+    const totalCount = exhibitorIds.length;
+    let completedCount = 0;
+    let successCount = 0;
+    let failCount = 0;
+    
+    // 結果表示エリアをクリア
+    const container = document.getElementById('generatedImages');
+    if (container) container.innerHTML = '';
 
     try {
-        const response = await fetch(`${API_BASE}/api/admin/generate-batch-images`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({
-                templateId,
-                exhibitorIds,
-                imageType,
-                spreadsheetId: document.getElementById('currentSpreadsheetId')?.value,
-                options: { keepSlide }
-            })
-        });
+        // チャンクごとにバッチ処理としてリクエストを送信
+        for (let i = 0; i < totalCount; i += CHUNK_SIZE) {
+            const chunkIds = exhibitorIds.slice(i, i + CHUNK_SIZE);
+            statusDiv.innerHTML = `⏳ 画像を生成中... (${completedCount}/${totalCount}件終了)<br><small style="color:red;">※画面を閉じないでください</small>`;
+            
+            const response = await fetch(`${API_BASE}/api/admin/generate-batch-images`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({
+                    templateId,
+                    exhibitorIds: chunkIds,
+                    imageType,
+                    spreadsheetId: document.getElementById('currentSpreadsheetId')?.value,
+                    options: { keepSlide }
+                })
+            });
 
-        const result = await response.json();
+            const result = await response.json();
 
-        if (result.success) {
-            statusDiv.innerHTML = `✅ 完了: ${result.succeeded}件成功, ${result.failed}件失敗`;
-            renderGeneratedImages(result.results);
-        } else {
-            statusDiv.innerHTML = `❌ エラー: ${result.error}`;
+            if (result.success) {
+                successCount += result.succeeded;
+                failCount += result.failed;
+                
+                // 順次画面に結果を追加表示する
+                appendGeneratedImages(result.results || []);
+            } else {
+                console.error('Chunk generation error:', result.error);
+                failCount += chunkIds.length;
+            }
+            
+            completedCount += chunkIds.length;
         }
+
+        statusDiv.innerHTML = `✅ 完了: ${successCount}件成功, ${failCount}件失敗`;
     } catch (error) {
         console.error('Generate images error:', error);
         statusDiv.innerHTML = `❌ エラー: ${error.message}`;
@@ -715,12 +777,14 @@ async function createSlideTemplate(templateType) {
     }
 }
 
-// 生成された画像を表示
-function renderGeneratedImages(results) {
+// 生成された画像を表示 (チャンクごとに順次追加表示)
+function appendGeneratedImages(results) {
     const container = document.getElementById('generatedImages');
     if (!container) return;
 
-    container.innerHTML = results.map(r => `
+    if (!results || results.length === 0) return;
+
+    const html = results.map(r => `
         <div class="generated-image-item ${r.success ? '' : 'error'}">
             <span class="name">${r.exhibitorName}</span>
             <div class="actions">
@@ -732,6 +796,9 @@ function renderGeneratedImages(results) {
             </div>
         </div>
     `).join('');
+    
+    // 生成結果を末尾に追加
+    container.insertAdjacentHTML('beforeend', html);
 }
 
 // ========================================

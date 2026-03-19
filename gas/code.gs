@@ -537,7 +537,11 @@ function saveImageToDrive(base64Data, mimeType, fileName, eventName, applicantNa
       } else {
         targetFolder = rootFolder.createFolder(eventName);
         // 新規作成したフォルダを「リンクを知っている全員が閲覧可」に設定
-        targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        try {
+          targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        } catch (sharingError) {
+          console.warn('Failed to set sharing on folder: ' + sharingError.message);
+        }
       }
     } else {
       targetFolder = rootFolder; // イベント名がない場合はルートに保存
@@ -560,7 +564,11 @@ function saveImageToDrive(base64Data, mimeType, fileName, eventName, applicantNa
     const file = targetFolder.createFile(blob);
     
     // 公開設定（リンクを知っている人全員）
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (sharingError) {
+      console.warn('Failed to set sharing on file: ' + sharingError.message);
+    }
     
     // 埋め込み用直リンクURLを返す
     return `https://lh3.googleusercontent.com/d/${file.getId()}`;
