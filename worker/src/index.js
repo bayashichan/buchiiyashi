@@ -111,16 +111,34 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
             }
             
             try {
-                const imgRes = await fetch(imageUrl);
-                const imgHeaders = new Headers(imgRes.headers);
-                // CORSヘッダーを追加
-                for (const [key, value] of Object.entries(corsHeaders)) {
-                    imgHeaders.set(key, value);
+                // Google DriveのDLリダイレクトを手動で追跡
+                let fetchUrl = imageUrl;
+                
+                // drive.google.comのUCUrlをlh3に変換するためただちにリクエスト
+                const imgRes = await fetch(fetchUrl, {
+                    redirect: 'follow',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0'
+                    }
+                });
+                
+                if (!imgRes.ok) {
+                    return new Response(JSON.stringify({ error: `Upstream error: ${imgRes.status}` }), {
+                        status: imgRes.status,
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                    });
                 }
                 
-                return new Response(imgRes.body, {
-                    status: imgRes.status,
-                    headers: imgHeaders
+                const contentType = imgRes.headers.get('Content-Type') || 'image/png';
+                const imageData = await imgRes.arrayBuffer();
+                
+                return new Response(imageData, {
+                    status: 200,
+                    headers: {
+                        ...corsHeaders,
+                        'Content-Type': contentType,
+                        'Cache-Control': 'public, max-age=3600'
+                    }
                 });
             } catch (err) {
                 return new Response(JSON.stringify({ error: err.message }), {

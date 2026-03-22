@@ -1245,7 +1245,7 @@ function generateExhibitorImage(templateId, exhibitorData, imageType, options = 
       success: true,
       imageUrl: imageFile.getUrl(),
       imageId: imageFile.getId(),
-      downloadUrl: `https://drive.google.com/uc?export=download&id=${imageFile.getId()}`,
+      downloadUrl: `https://lh3.googleusercontent.com/d/${imageFile.getId()}`,
       presentationUrl: `https://docs.google.com/presentation/d/${copiedId}/edit` // スライドURLを返す
     };
     
