@@ -688,22 +688,16 @@ async function createSlideTemplate(env, body, corsHeaders) {
 // スライド結合
 async function combinePresentationsWorker(env, body, corsHeaders) {
     try {
-        const { presentationIds, title } = body;
-
-        if (!presentationIds || !Array.isArray(presentationIds)) {
-            return new Response(JSON.stringify({ error: 'presentationIds array is required' }), {
-                status: 400,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-            });
-        }
+        const { action, presentationIds, title, targetId } = body;
 
         const response = await fetch(env.GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                action: 'combine_presentations',
+                action: action || 'combine_presentations',
                 presentationIds,
-                title
+                title,
+                targetId
             })
         });
 

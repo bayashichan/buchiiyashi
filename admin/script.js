@@ -999,32 +999,86 @@ async function combineGeneratedSlides() {
         // 選択された画像タイプからタイトルを生成
         const imageTypeSelect = document.getElementById('imageType');
         const imageTypeName = imageTypeSelect ? imageTypeSelect.options[imageTypeSelect.selectedIndex].text : 'スライド';
+        const title = `[結合済] ${imageTypeName}_${dateStr}`;
         
-        const response = await fetch(`${API_BASE}/api/admin/combine-presentations`, {
+        // 1. 初期化 (空のプレゼンテーション作成)
+        btn.innerHTML = '⏳ 準備中...';
+        const initResponse = await fetch(`${API_BASE}/api/admin/combine-presentations`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${authToken}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                presentationIds,
-                title: `[結合済] ${imageTypeName}_${dateStr}`
+                action: 'combine_presentations_init',
+                title: title
             })
         });
 
-        if (response.status === 401) {
+        if (initResponse.status === 401) {
             handleLogout();
             return;
         }
 
-        const result = await response.json();
-
-        if (result.success) {
-            alert(`✅ ${result.count}件のスライドを1つに結合しました！\n新しいタブで開きます。`);
-            window.open(result.presentationUrl, '_blank');
-        } else {
-            throw new Error(result.error || '不明なエラー');
+        const initResult = await initResponse.json();
+        if (!initResult.success) {
+            throw new Error(initResult.error || '初期化エラー');
         }
+
+        const targetId = initResult.presentationId;
+        const targetUrl = initResult.presentationUrl;
+
+        // 2. チャンクごとにスライドを追加
+        const CHUNK_SIZE = 5;
+        let successCount = 0;
+        
+        for (let i = 0; i < presentationIds.length; i += CHUNK_SIZE) {
+            const chunk = presentationIds.slice(i, i + CHUNK_SIZE);
+            btn.innerHTML = `⏳ 結合中... (${successCount}/${presentationIds.length}件完了)`;
+            
+            const appendResponse = await fetch(`${API_BASE}/api/admin/combine-presentations`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'combine_presentations_append',
+                    targetId: targetId,
+                    presentationIds: chunk
+                })
+            });
+
+            if (appendResponse.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            const appendResult = await appendResponse.json();
+            if (!appendResult.success) {
+                console.error('append chunk error:', appendResult.error);
+                throw new Error(appendResult.error || 'スライド追加エラー');
+            }
+            
+            successCount += appendResult.count || 0;
+        }
+
+        // 3. 最後の仕上げ (最初の空スライドを削除)
+        btn.innerHTML = '⏳ 仕上げ処理中...';
+        await fetch(`${API_BASE}/api/admin/combine-presentations`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: 'combine_presentations_cleanup',
+                targetId: targetId
+            })
+        });
+
+        alert(`✅ ${successCount}件のスライドを1つに結合しました！\n新しいタブで開きます。`);
+        window.open(targetUrl, '_blank');
     } catch (error) {
         console.error('Combine error:', error);
         alert('スライドの結合中にエラーが発生しました:\n' + error.message);
