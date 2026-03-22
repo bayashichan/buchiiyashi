@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理画面 | ぶち癒しフェスタ東京</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 
 <body>
@@ -217,6 +218,11 @@
 
                 <div class="card mt-4">
                     <h3>生成済み画像</h3>
+                    <div class="button-group mb-3" id="downloadAllGroup" style="display: none; gap: 8px;">
+                        <button id="downloadAllImagesBtn" class="btn-primary">📥 画像を一括ダウンロード(ZIP)</button>
+                        <button id="downloadSlideUrlsBtn" class="btn-secondary">📄 スライドURL一覧(CSV)</button>
+                        <button id="combineSlidesBtn" class="btn-secondary">📑 全スライドを1つにまとめる</button>
+                    </div>
                     <div id="generatedImages" class="generated-images"></div>
                 </div>
             </section>

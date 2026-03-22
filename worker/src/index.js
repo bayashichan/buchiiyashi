@@ -94,6 +94,12 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
             return await createSlideTemplate(env, body, corsHeaders);
         }
 
+        // POST /api/admin/combine-presentations - スライド結合
+        if (url.pathname === '/api/admin/combine-presentations' && request.method === 'POST') {
+            const body = await request.json();
+            return await combinePresentationsWorker(env, body, corsHeaders);
+        }
+
         return new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -642,6 +648,41 @@ async function createSlideTemplate(env, body, corsHeaders) {
         });
     } catch (error) {
         console.error('Create slide template error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// スライド結合
+async function combinePresentationsWorker(env, body, corsHeaders) {
+    try {
+        const { presentationIds, title } = body;
+
+        if (!presentationIds || !Array.isArray(presentationIds)) {
+            return new Response(JSON.stringify({ error: 'presentationIds array is required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const response = await fetch(env.GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'combine_presentations',
+                presentationIds,
+                title
+            })
+        });
+
+        const result = await response.json();
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Combine presentations error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

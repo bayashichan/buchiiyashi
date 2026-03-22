@@ -9,6 +9,7 @@ const API_BASE = 'https://buchiiyashi-festa-form.wakaossan2001.workers.dev';
 let config = null;
 let authToken = null;
 let exhibitors = []; // 出展者一覧
+let currentGeneratedResults = []; // 現在の画像生成結果保持用
 
 // DOM要素
 const loginScreen = document.getElementById('loginScreen');
@@ -51,6 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('loadCaptionExhibitorsBtn')?.addEventListener('click', loadExhibitors);
     document.getElementById('generateSelectedBtn')?.addEventListener('click', generateSelectedImages);
     document.getElementById('generateAllBtn')?.addEventListener('click', generateAllImages);
+    document.getElementById('downloadAllImagesBtn')?.addEventListener('click', downloadAllImagesZip);
+    document.getElementById('downloadSlideUrlsBtn')?.addEventListener('click', downloadSlideUrlsCsv);
+    document.getElementById('combineSlidesBtn')?.addEventListener('click', combineGeneratedSlides);
 
     // キャプション生成関連
     document.getElementById('generateCaptionInstaBtn')?.addEventListener('click', () => generateCaption('instagram'));
@@ -660,9 +664,12 @@ async function generateImages(exhibitorIds) {
     let successCount = 0;
     let failCount = 0;
     
-    // 結果表示エリアをクリア
+    // 結果保持用配列と表示エリアをクリア
+    currentGeneratedResults = [];
     const container = document.getElementById('generatedImages');
     if (container) container.innerHTML = '';
+    const downloadGroup = document.getElementById('downloadAllGroup');
+    if (downloadGroup) downloadGroup.style.display = 'none';
 
     try {
         // チャンクごとにバッチ処理としてリクエストを送信
@@ -691,6 +698,11 @@ async function generateImages(exhibitorIds) {
                 successCount += result.succeeded;
                 failCount += result.failed;
                 
+                // 生存結果を保持
+                if (result.results) {
+                    currentGeneratedResults.push(...result.results);
+                }
+                
                 // 順次画面に結果を追加表示する
                 appendGeneratedImages(result.results || []);
             } else {
@@ -702,6 +714,11 @@ async function generateImages(exhibitorIds) {
         }
 
         statusDiv.innerHTML = `✅ 完了: ${successCount}件成功, ${failCount}件失敗`;
+        
+        // 結果が1件以上あれば一括DLボタン群を表示
+        if (currentGeneratedResults.length > 0 && downloadGroup) {
+            downloadGroup.style.display = 'flex';
+        }
     } catch (error) {
         console.error('Generate images error:', error);
         statusDiv.innerHTML = `❌ エラー: ${error.message}`;
@@ -799,6 +816,180 @@ function appendGeneratedImages(results) {
     
     // 生成結果を末尾に追加
     container.insertAdjacentHTML('beforeend', html);
+}
+
+// ========================================
+// 一括ダウンロード機能
+// ========================================
+
+// 画像一括ダウンロード (JSZip使用)
+async function downloadAllImagesZip() {
+    if (currentGeneratedResults.length === 0) {
+        alert('ダウンロードできる画像がありません。');
+        return;
+    }
+
+    const successfulResults = currentGeneratedResults.filter(r => r.success && r.downloadUrl);
+    if (successfulResults.length === 0) {
+        alert('ダウンロード可能な画像データがありません。');
+        return;
+    }
+
+    const btn = document.getElementById('downloadAllImagesBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ ZIP作成中...';
+    btn.disabled = true;
+
+    try {
+        const zip = new JSZip();
+        
+        // 画像のURLからfetchしてzipに追加
+        const promises = successfulResults.map(async (result) => {
+            try {
+                // ファイル名で使えない文字を置換
+                const sanitizedName = result.exhibitorName.replace(/[\\/:*?"<>|]/g, '_');
+                const filename = `${sanitizedName}.png`;
+                
+                const response = await fetch(result.downloadUrl);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const blob = await response.blob();
+                
+                zip.file(filename, blob);
+            } catch (err) {
+                console.error(`Failed to fetch image for ${result.exhibitorName}:`, err);
+            }
+        });
+
+        await Promise.all(promises);
+
+        // ZIPファイルを生成してダウンロード
+        const content = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        a.download = `イベント画像一括_${dateStr}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('ZIP creation error:', error);
+        alert('ZIPファイルの作成中にエラーが発生しました。');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+// スライドURL一覧ダウンロード (CSV)
+function downloadSlideUrlsCsv() {
+    if (currentGeneratedResults.length === 0) {
+        alert('ダウンロードできるデータがありません。');
+        return;
+    }
+
+    const successfulResults = currentGeneratedResults.filter(r => r.success && r.presentationUrl);
+    if (successfulResults.length === 0) {
+        alert('ダウンロード可能なスライドURLデータがありません。');
+        return;
+    }
+
+    // CSVヘッダー
+    let csvContent = "出展者名,スライドURL\n";
+
+    // データの追加 (CSVエスケープ処理込み)
+    successfulResults.forEach(r => {
+        let name = r.exhibitorName.replace(/"/g, '""');
+        let url = r.presentationUrl;
+        csvContent += `"${name}","${url}"\n`;
+    });
+
+    // BOM (UTF-8)
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blobUrl = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.download = `スライドURL一覧_${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+}
+
+// 全スライドを1つにまとめる
+async function combineGeneratedSlides() {
+    if (currentGeneratedResults.length === 0) {
+        alert('結合できるデータがありません。');
+        return;
+    }
+
+    const successfulResults = currentGeneratedResults.filter(r => r.success && r.presentationUrl);
+    if (successfulResults.length === 0) {
+        alert('結合可能なスライドがありません。');
+        return;
+    }
+
+    // URLからIDを抽出
+    const presentationIds = successfulResults.map(r => {
+        const match = r.presentationUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        return match ? match[1] : null;
+    }).filter(id => id !== null);
+
+    if (presentationIds.length === 0) {
+        alert('有効なスライドIDが見つかりませんでした。');
+        return;
+    }
+
+    const btn = document.getElementById('combineSlidesBtn');
+    if(!btn) return;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '⏳ 結合中... (数十秒かかります)';
+    btn.disabled = true;
+    showLoading();
+
+    try {
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        // 選択された画像タイプからタイトルを生成
+        const imageTypeSelect = document.getElementById('imageType');
+        const imageTypeName = imageTypeSelect ? imageTypeSelect.options[imageTypeSelect.selectedIndex].text : 'スライド';
+        
+        const response = await fetch(`${API_BASE}/api/admin/combine-presentations`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                presentationIds,
+                title: `[結合済] ${imageTypeName}_${dateStr}`
+            })
+        });
+
+        if (response.status === 401) {
+            handleLogout();
+            return;
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert(`✅ ${result.count}件のスライドを1つに結合しました！\n新しいタブで開きます。`);
+            window.open(result.presentationUrl, '_blank');
+        } else {
+            throw new Error(result.error || '不明なエラー');
+        }
+    } catch (error) {
+        console.error('Combine error:', error);
+        alert('スライドの結合中にエラーが発生しました:\n' + error.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        hideLoading();
+    }
 }
 
 // ========================================

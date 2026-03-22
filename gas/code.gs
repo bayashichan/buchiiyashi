@@ -463,6 +463,20 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
     
+    // スライド結合アクション
+    if (params.action === 'combine_presentations') {
+      const { presentationIds, title } = params;
+      if (!presentationIds || !Array.isArray(presentationIds)) {
+        throw new Error('presentationIds array is required');
+      }
+      
+      const result = combinePresentations(presentationIds, title || '結合されたスライド');
+      
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    
     // 画像アップロード処理
     let profileImageUrl = params.profileImageUrl || ''; // 既存のURLがあればそれを使用
     
@@ -1454,5 +1468,75 @@ function testSlidesAccess() {
   } catch (e) {
     console.error('❌ エラー: ' + e.message);
     throw e;
+  }
+}
+
+// ========================================
+// スライド結合機能
+// ========================================
+
+/**
+ * 複数のスライドプレゼンテーションを1つに結合
+ * @param {string[]} presentationIds 
+ * @param {string} title 
+ */
+function combinePresentations(presentationIds, title) {
+  try {
+    const combined = SlidesApp.create(title);
+    const combinedId = combined.getId();
+    const slideToKeep = combined.getSlides()[0]; // 作成時に自動生成される空白スライド
+    
+    let successCount = 0;
+    for (const id of presentationIds) {
+      if (!id) continue;
+      try {
+        const sourcePres = SlidesApp.openById(id);
+        const sourceSlides = sourcePres.getSlides();
+        if (sourceSlides.length > 0) {
+          combined.appendSlide(sourceSlides[0]);
+          successCount++;
+        }
+      } catch (err) {
+        console.error(`Failed to copy slide from ${id}:`, err);
+      }
+    }
+    
+    // 最初の空スライドを削除（ただし追加が成功した場合のみ）
+    if (successCount > 0 && slideToKeep) {
+      slideToKeep.remove();
+    }
+    
+    combined.saveAndClose();
+    
+    // フォルダ移動と共有設定（リンクを知っている全員が閲覧可能）
+    try {
+      const file = DriveApp.getFileById(combinedId);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      
+      // SNS画像フォルダに移動
+      const rootFolder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+      const folderName = 'SNS画像';
+      let targetFolder;
+      const folders = rootFolder.getFoldersByName(folderName);
+      if (folders.hasNext()) {
+        targetFolder = folders.next();
+      } else {
+        targetFolder = rootFolder.createFolder(folderName);
+        targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      }
+      file.moveTo(targetFolder);
+    } catch (e) {
+      console.warn('Failed to move/share combined file (it may still exist in root):', e);
+    }
+    
+    return {
+      success: true,
+      presentationId: combinedId,
+      presentationUrl: `https://docs.google.com/presentation/d/${combinedId}/edit`,
+      count: successCount
+    };
+  } catch (error) {
+    console.error('combinePresentations error:', error);
+    return { success: false, error: error.message };
   }
 }
