@@ -1277,48 +1277,68 @@ function replaceTextInSlide(slide, placeholders) {
 
 /**
  * プロフィール画像をスライドに挿入
- * {{プロフィール画像}}というテキストを持つシェイプを画像に置換
+ * {{プロフィール画像}}という代替テキストを持つ画像、またはテキストを持つ図形を実際の写真に置換
  */
 function insertProfileImageInSlide(slide, photoUrl) {
   try {
-    const shapes = slide.getShapes();
+    // 置換用の画像Blobを取得
+    let imageBlob;
+    if (photoUrl.includes('drive.google.com') || photoUrl.includes('lh3.googleusercontent.com')) {
+      // Google Drive URL の場合
+      const fileId = extractDriveFileId(photoUrl);
+      if (fileId) {
+        const file = DriveApp.getFileById(fileId);
+        imageBlob = file.getBlob();
+      }
+    } else {
+      // 外部URLの場合
+      const response = UrlFetchApp.fetch(photoUrl);
+      imageBlob = response.getBlob();
+    }
     
-    for (const shape of shapes) {
-      if (shape.getText) {
-        const text = shape.getText().asString();
-        
-        if (text.includes('{{プロフィール画像}}')) {
-          // シェイプの位置とサイズを取得
-          const left = shape.getLeft();
-          const top = shape.getTop();
-          const width = shape.getWidth();
-          const height = shape.getHeight();
-          
-          // 画像を取得
-          let imageBlob;
-          if (photoUrl.includes('drive.google.com')) {
-            // Google Drive URL の場合
-            const fileId = extractDriveFileId(photoUrl);
-            if (fileId) {
-              const file = DriveApp.getFileById(fileId);
-              imageBlob = file.getBlob();
-            }
-          } else {
-            // 外部URLの場合
-            const response = UrlFetchApp.fetch(photoUrl);
-            imageBlob = response.getBlob();
+    if (!imageBlob) return;
+    
+    let targetElement = null;
+
+    // 1. 画像の「代替テキスト（タイトルまたは説明）」を検索
+    const images = slide.getImages();
+    for (const img of images) {
+      const title = img.getTitle() || '';
+      const desc = img.getDescription() || '';
+      if (title.includes('{{プロフィール画像}}') || desc.includes('{{プロフィール画像}}')) {
+        targetElement = img;
+        break;
+      }
+    }
+
+    // 2. 見つからなければ、図形内のテキスト「{{プロフィール画像}}」を検索
+    if (!targetElement) {
+      const shapes = slide.getShapes();
+      for (const shape of shapes) {
+        if (shape.getText) {
+          const text = shape.getText().asString();
+          if (text.includes('{{プロフィール画像}}')) {
+            targetElement = shape;
+            break;
           }
-          
-          if (imageBlob) {
-            // シェイプを削除して画像を挿入
-            shape.remove();
-            slide.insertImage(imageBlob, left, top, width, height);
-          }
-          
-          break;
         }
       }
     }
+
+    // ターゲットが見つかれば置換する
+    if (targetElement) {
+      const left = targetElement.getLeft();
+      const top = targetElement.getTop();
+      const width = targetElement.getWidth();
+      const height = targetElement.getHeight();
+      
+      targetElement.remove();
+      const newImage = slide.insertImage(imageBlob, left, top, width, height);
+      
+      // 複数回生成や仕様のために同じ代替テキストを設定しておく
+      newImage.setTitle('{{プロフィール画像}}');
+    }
+
   } catch (error) {
     console.error('insertProfileImageInSlide error:', error);
     // 画像挿入に失敗してもエラーにはしない
