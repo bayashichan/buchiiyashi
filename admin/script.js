@@ -888,7 +888,12 @@ async function downloadAllImagesZip() {
                 const sanitizedName = result.exhibitorName.replace(/[\\/:*?"<>|]/g, '_');
                 const filename = `${sanitizedName}.png`;
                 
-                const response = await fetch(result.downloadUrl);
+                // CORS回避のため、Workerのプロキシ経由で取得
+                const proxyUrl = `${API_BASE}/api/admin/fetch-image?url=${encodeURIComponent(result.downloadUrl)}`;
+                const response = await fetch(proxyUrl, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const blob = await response.blob();
                 

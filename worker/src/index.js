@@ -100,6 +100,36 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
             return await combinePresentationsWorker(env, body, corsHeaders);
         }
 
+        // GET /api/admin/fetch-image - 画像取得プロキシ
+        if (url.pathname === '/api/admin/fetch-image' && request.method === 'GET') {
+            const imageUrl = url.searchParams.get('url');
+            if (!imageUrl) {
+                return new Response(JSON.stringify({ error: 'url property is required' }), {
+                    status: 400,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+            
+            try {
+                const imgRes = await fetch(imageUrl);
+                const imgHeaders = new Headers(imgRes.headers);
+                // CORSヘッダーを追加
+                for (const [key, value] of Object.entries(corsHeaders)) {
+                    imgHeaders.set(key, value);
+                }
+                
+                return new Response(imgRes.body, {
+                    status: imgRes.status,
+                    headers: imgHeaders
+                });
+            } catch (err) {
+                return new Response(JSON.stringify({ error: err.message }), {
+                    status: 500,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                });
+            }
+        }
+
         return new Response(JSON.stringify({ error: 'Not found' }), {
             status: 404,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
