@@ -1327,16 +1327,22 @@ function insertProfileImageInSlide(slide, photoUrl) {
 
     // ターゲットが見つかれば置換する
     if (targetElement) {
-      const left = targetElement.getLeft();
-      const top = targetElement.getTop();
-      const width = targetElement.getWidth();
-      const height = targetElement.getHeight();
-      
-      targetElement.remove();
-      const newImage = slide.insertImage(imageBlob, left, top, width, height);
-      
-      // 複数回生成や仕様のために同じ代替テキストを設定しておく
-      newImage.setTitle('{{プロフィール画像}}');
+      // Image要素の場合は replace() を使って角丸などの書式を保持したまま中身だけ差し替える
+      if (targetElement.getPageElementType && 
+          targetElement.getPageElementType() === SlidesApp.PageElementType.IMAGE) {
+        // ★ replace() を使うことで角丸・クリッピングマスク・サイズ等をすべて保持
+        targetElement.replace(imageBlob);
+      } else {
+        // テキストボックス(図形)の場合は従来どおりremove+insert
+        const left = targetElement.getLeft();
+        const top = targetElement.getTop();
+        const width = targetElement.getWidth();
+        const height = targetElement.getHeight();
+        
+        targetElement.remove();
+        const newImage = slide.insertImage(imageBlob, left, top, width, height);
+        newImage.setTitle('{{プロフィール画像}}');
+      }
     }
 
   } catch (error) {
