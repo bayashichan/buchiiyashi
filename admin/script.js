@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     authToken = sessionStorage.getItem('adminToken');
     if (authToken) {
         showMainScreen();
+        restoreGeneratedResults();
     }
 
     // イベントリスナー設定
@@ -181,6 +182,7 @@ async function handleLogin() {
 
         showMainScreen();
         renderConfig();
+        restoreGeneratedResults();
     } catch (error) {
         console.error('Login error:', error);
         document.getElementById('loginError').classList.remove('hidden');
@@ -193,6 +195,39 @@ function handleLogout() {
     authToken = null;
     sessionStorage.removeItem('adminToken');
     location.reload();
+}
+
+// 保存されている生成結果の復元
+function restoreGeneratedResults() {
+    try {
+        const saved = localStorage.getItem('buchiiyashi_generated_results');
+        if (saved) {
+            const results = JSON.parse(saved);
+            if (Array.isArray(results) && results.length > 0) {
+                currentGeneratedResults = results;
+                
+                // 表示の復元
+                const container = document.getElementById('generatedImages');
+                if (container) {
+                    container.innerHTML = '';
+                    appendGeneratedImages(results);
+                }
+                
+                // ボタンの表示
+                const downloadGroup = document.getElementById('downloadAllGroup');
+                if (downloadGroup) downloadGroup.style.display = 'flex';
+                
+                // ステータスメッセージ
+                const statusDiv = document.getElementById('imageGenerationStatus');
+                if (statusDiv) {
+                    statusDiv.innerHTML = `✅ 復元完了: 前回生成した ${results.length}件の画像データを読み込みました`;
+                }
+            }
+        }
+    } catch(e) {
+        console.error('Failed to restore generated results', e);
+        localStorage.removeItem('buchiiyashi_generated_results');
+    }
 }
 
 function showMainScreen() {
@@ -666,6 +701,7 @@ async function generateImages(exhibitorIds) {
     
     // 結果保持用配列と表示エリアをクリア
     currentGeneratedResults = [];
+    localStorage.removeItem('buchiiyashi_generated_results');
     const container = document.getElementById('generatedImages');
     if (container) container.innerHTML = '';
     const downloadGroup = document.getElementById('downloadAllGroup');
@@ -716,8 +752,10 @@ async function generateImages(exhibitorIds) {
         statusDiv.innerHTML = `✅ 完了: ${successCount}件成功, ${failCount}件失敗`;
         
         // 結果が1件以上あれば一括DLボタン群を表示
-        if (currentGeneratedResults.length > 0 && downloadGroup) {
-            downloadGroup.style.display = 'flex';
+        if (currentGeneratedResults.length > 0) {
+            if (downloadGroup) downloadGroup.style.display = 'flex';
+            // ローカルストレージに保存
+            localStorage.setItem('buchiiyashi_generated_results', JSON.stringify(currentGeneratedResults));
         }
     } catch (error) {
         console.error('Generate images error:', error);
