@@ -1330,8 +1330,8 @@ function insertProfileImageInSlide(slide, photoUrl) {
       // Image要素の場合は replace() を使って角丸などの書式を保持したまま中身だけ差し替える
       if (targetElement.getPageElementType && 
           targetElement.getPageElementType() === SlidesApp.PageElementType.IMAGE) {
-        // ★ replace() を使うことで角丸・クリッピングマスク・サイズ等をすべて保持
-        targetElement.replace(imageBlob);
+        // ★ replace(blob, true) で角丸等の書式を保持しつつ、縦横比を維持してトリミング
+        targetElement.replace(imageBlob, true);
       } else {
         // テキストボックス(図形)の場合は従来どおりremove+insert
         const left = targetElement.getLeft();
