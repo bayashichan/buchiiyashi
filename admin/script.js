@@ -62,6 +62,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('generateCaptionFbBtn')?.addEventListener('click', () => generateCaption('facebook'));
     document.getElementById('copyCaptionBtn')?.addEventListener('click', copyCaption);
 
+    // 全員分キャプション一括ダウンロード
+    document.getElementById('downloadAllCaptionsInstaBtn')?.addEventListener('click', () => downloadAllCaptions('instagram'));
+    document.getElementById('downloadAllCaptionsFbBtn')?.addEventListener('click', () => downloadAllCaptions('facebook'));
+    document.getElementById('downloadAllCaptionsBothBtn')?.addEventListener('click', () => downloadAllCaptions('both'));
+
     // プレースホルダーボタン
     document.querySelectorAll('.placeholder-btn').forEach(btn => {
         btn.addEventListener('click', () => insertPlaceholder(btn.dataset.tag));
@@ -1216,4 +1221,95 @@ async function copyCaption() {
     } catch (error) {
         alert('コピーに失敗しました: ' + error.message);
     }
+}
+
+// ========================================
+// キャプション一括ダウンロード機能
+// ========================================
+
+/**
+ * 全出展者分のキャプションを生成してTXTファイルとしてダウンロードする
+ * @param {'instagram'|'facebook'|'both'} platform
+ */
+function downloadAllCaptions(platform) {
+    if (!exhibitors || exhibitors.length === 0) {
+        alert('出展者が読み込まれていません。\n先に「出展者一覧を読み込む」ボタンを押してください。');
+        return;
+    }
+
+    const statusEl = document.getElementById('captionDownloadStatus');
+    statusEl.className = 'status loading';
+    statusEl.textContent = 'キャプションを生成中...';
+
+    try {
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+        if (platform === 'both') {
+            // Instagram と Facebook をそれぞれ別ファイルでダウンロード
+            _triggerCaptionDownload('instagram', dateStr);
+            // 少し間を置いて2つ目のダウンロードをトリガー
+            setTimeout(() => _triggerCaptionDownload('facebook', dateStr), 300);
+        } else {
+            _triggerCaptionDownload(platform, dateStr);
+        }
+
+        statusEl.className = 'status success';
+        statusEl.textContent = `✅ ${exhibitors.length}名分のキャプションをダウンロードしました`;
+    } catch (error) {
+        console.error('Caption download error:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ エラー: ${error.message}`;
+    }
+}
+
+/**
+ * 指定プラットフォームのキャプションを生成してファイルをトリガーする
+ * @param {'instagram'|'facebook'} platform
+ * @param {string} dateStr  'YYYYMMDD' 形式の日付文字列
+ */
+function _triggerCaptionDownload(platform, dateStr) {
+    const templateEl = platform === 'instagram'
+        ? document.getElementById('captionTemplateInsta')
+        : document.getElementById('captionTemplateFb');
+
+    const template = templateEl?.value || getDefaultTemplate(platform);
+    const separator = '\n' + '─'.repeat(40) + '\n';
+
+    const lines = exhibitors.map(exhibitor => {
+        let caption = template;
+
+        // プレースホルダー置換
+        caption = caption.replace(/\{\{出展名\}\}/g, exhibitor.exhibitorName || '');
+        caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
+        caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
+        caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
+
+        if (platform === 'instagram') {
+            const instaHandle = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
+            caption = caption.replace(/\{\{SNSアカウント\}\}/g, instaHandle ? `@${instaHandle}` : '');
+        } else {
+            const snsLinks = formatSnsLinks(exhibitor.snsLinks);
+            caption = caption.replace(/\{\{SNSリンク一覧\}\}/g, snsLinks);
+        }
+
+        // ヘッダー (出展者名) を先頭に付ける
+        const header = `【${exhibitor.exhibitorName}】`;
+        return header + '\n' + caption.trim();
+    });
+
+    const fullText = lines.join(separator);
+    const platformLabel = platform === 'instagram' ? 'Instagram' : 'Facebook';
+    const filename = `キャプション_${platformLabel}_${dateStr}.txt`;
+
+    // BOM付きUTF-8でダウンロード（Windowsのテキストエディタ対応）
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, fullText], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
