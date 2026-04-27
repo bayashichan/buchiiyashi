@@ -104,6 +104,7 @@ function showExhibitor(id) {
     // 詳細情報
     document.getElementById('detail-menu').textContent = currentExhibitor.menuName || '-';
     document.getElementById('detail-pr').textContent = currentExhibitor.shortPR || '-';
+    document.getElementById('detail-intro').textContent = currentExhibitor.selfIntro || '-';
     document.getElementById('detail-seat').textContent = currentExhibitor.seatNumber || '未定';
 
     // キャプション
