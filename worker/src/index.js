@@ -979,6 +979,7 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
         const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
             // 出展名から正規化キーを作成 (GAS側のnormalizeNameと合わせる)
             const normalizedName = ex.exhibitorName
+                .normalize('NFC')
                 .replace(/[ 　\-_.\(\)（）!！?？]/g, "")
                 .toLowerCase();
             

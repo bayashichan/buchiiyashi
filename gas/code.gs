@@ -1743,7 +1743,7 @@ function getFolderImagesList(folderId) {
 function normalizeName(name) {
   if (!name) return "";
   return String(name)
+    .normalize('NFC') // Unicode正規化を追加（濁点・半濁点の差異を吸収）
     .replace(/[ 　\-_.\(\)（）!！?？]/g, "") // 一般的な記号とスペースを削除
-    .replace(/[A-Za-z0-9]/g, s => String.fromCharCode(s.charCodeAt(0) + (s.charCodeAt(0) <= 122 && s.charCodeAt(0) >= 65 ? 0 : 0))) // 半角に寄せたいが一旦そのまま
     .toLowerCase();
 }
