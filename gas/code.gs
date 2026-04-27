@@ -131,6 +131,17 @@ function doGet(e) {
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
     }
+
+    // 指定フォルダ内の画像をスキャンしてリストを返す
+    if (action === 'get_folder_images') {
+      const folderId = e.parameter.folderId;
+      if (!folderId) throw new Error('folderId is required');
+      const result = getFolderImagesList(folderId);
+
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
     return ContentService
       .createTextOutput(JSON.stringify({ error: `Invalid action (GAS): ${action}` }))
@@ -478,7 +489,7 @@ function doPost(e) {
     }
 
     if (params.action === 'combine_presentations_init') {
-      const result = combinePresentationsInit(params.title || '結合されたスライド');
+      const result = combinePresentationsInit(params.title || '結合されたスライド', params.sourceId);
       return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1585,10 +1596,30 @@ function combinePresentations(presentationIds, title) {
 /**
  * 結合用の空スライドを作成して初期化
  */
-function combinePresentationsInit(title) {
+function combinePresentationsInit(title, sourceId) {
   try {
-    const combined = SlidesApp.create(title);
-    const combinedId = combined.getId();
+    let combinedId;
+    
+    if (sourceId) {
+      // テンプレートの縦横比を維持するためにコピーを作成
+      const sourceFile = DriveApp.getFileById(sourceId);
+      const newFile = sourceFile.makeCopy(title);
+      combinedId = newFile.getId();
+      
+      const combined = SlidesApp.openById(combinedId);
+      const slides = combined.getSlides();
+      
+      // 空白の仮スライドを追加し、元からあったスライドを全て削除
+      // combinePresentationsCleanup() でこの最初の空スライドが削除される
+      combined.appendSlide(SlidesApp.PredefinedLayout.BLANK);
+      for (const slide of slides) {
+        slide.remove();
+      }
+      combined.saveAndClose();
+    } else {
+      const combined = SlidesApp.create(title);
+      combinedId = combined.getId();
+    }
     
     // フォルダ移動と共有設定
     try {
@@ -1664,4 +1695,55 @@ function combinePresentationsCleanup(targetId) {
   } catch (error) {
     return { success: false, error: error.message };
   }
+}
+/**
+ * 指定されたフォルダ内の画像をスキャンして、正規化されたファイル名とIDのマップを返す
+ */
+function getFolderImagesList(folderId) {
+  try {
+    const folder = DriveApp.getFolderById(folderId);
+    const files = folder.getFiles();
+    const imageMap = {};
+    
+    while (files.hasNext()) {
+      const file = files.next();
+      const fileName = file.getName();
+      
+      // 拡張子を除去
+      const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+      
+      // 正規化（記号・スペースを除去して小文字化）
+      const normalized = normalizeName(nameWithoutExt);
+      
+      if (normalized) {
+        // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
+        try {
+          if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
+            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+          }
+        } catch (e) {
+          console.warn('Failed to set sharing for ' + fileName);
+        }
+        
+        imageMap[normalized] = file.getId();
+      }
+    }
+    
+    return { success: true, images: imageMap };
+  } catch (error) {
+    console.error('getFolderImagesList error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 照合用の正規化関数
+ * スペース（全角半角）、ハイフン、アンダースコア、ドット、その他記号を除去
+ */
+function normalizeName(name) {
+  if (!name) return "";
+  return String(name)
+    .replace(/[ 　\-_.\(\)（）!！?？]/g, "") // 一般的な記号とスペースを削除
+    .replace(/[A-Za-z0-9]/g, s => String.fromCharCode(s.charCodeAt(0) + (s.charCodeAt(0) <= 122 && s.charCodeAt(0) >= 65 ? 0 : 0))) // 半角に寄せたいが一旦そのまま
+    .toLowerCase();
 }

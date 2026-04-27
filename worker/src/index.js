@@ -29,6 +29,11 @@ export default {
             return handleAdminAPI(request, env, corsHeaders, url);
         }
 
+        // 公開用確認データ取得API
+        if (url.pathname === '/api/public/exhibitor-data' && request.method === 'GET') {
+            return handlePublicExhibitorData(request, env, corsHeaders, url);
+        }
+
         // 既存のフォーム送信処理
         return handleFormSubmission(request, env, corsHeaders);
     }
@@ -706,7 +711,7 @@ async function createSlideTemplate(env, body, corsHeaders) {
 // スライド結合
 async function combinePresentationsWorker(env, body, corsHeaders) {
     try {
-        const { action, presentationIds, title, targetId } = body;
+        const { action, presentationIds, title, targetId, sourceId } = body;
 
         const response = await fetch(env.GAS_URL, {
             method: 'POST',
@@ -715,7 +720,8 @@ async function combinePresentationsWorker(env, body, corsHeaders) {
                 action: action || 'combine_presentations',
                 presentationIds,
                 title,
-                targetId
+                targetId,
+                sourceId
             })
         });
 
@@ -922,6 +928,84 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
         });
     } catch (error) {
         console.error('Repeater search error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+/**
+ * 公開用確認データ取得（個人情報を除外）
+ */
+async function handlePublicExhibitorData(request, env, corsHeaders, url) {
+    try {
+        const spreadsheetId = url.searchParams.get('sid');
+        
+        // 1. 設定を取得 (GitHubから)
+        const configResponse = await getConfig(env, corsHeaders);
+        const config = await configResponse.json();
+        
+        // 2. 出展者一覧を取得 (GASから)
+        const gasUrl = new URL(env.GAS_URL);
+        gasUrl.searchParams.append('action', 'get_exhibitors');
+        if (spreadsheetId) {
+            gasUrl.searchParams.append('spreadsheetId', spreadsheetId);
+        } else if (config.currentSpreadsheetId) {
+            gasUrl.searchParams.append('spreadsheetId', config.currentSpreadsheetId);
+        }
+
+        const exhibitorsRes = await fetch(gasUrl.toString(), { redirect: 'follow' });
+        const exhibitorsData = await exhibitorsRes.json();
+
+        if (!exhibitorsData.success) {
+            throw new Error(exhibitorsData.error || 'Failed to fetch exhibitors');
+        }
+
+        // 3. 画像フォルダのスキャン (GASから)
+        const folderId = url.searchParams.get('folderId') || config.introImagesFolderId;
+        let imagesData = { success: true, images: {} };
+        
+        if (folderId) {
+            const imagesGasUrl = new URL(env.GAS_URL);
+            imagesGasUrl.searchParams.append('action', 'get_folder_images');
+            imagesGasUrl.searchParams.append('folderId', folderId);
+            
+            const imagesRes = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
+            imagesData = await imagesRes.json();
+        }
+
+        // 4. 個人情報の除外と画像IDの紐付け
+        const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
+            // 出展名から正規化キーを作成 (GAS側のnormalizeNameと合わせる)
+            const normalizedName = ex.exhibitorName
+                .replace(/[ 　\-_.\(\)（）!！?？]/g, "")
+                .toLowerCase();
+            
+            return {
+                id: ex.id,
+                exhibitorName: ex.exhibitorName,
+                menuName: ex.menuName,
+                shortPR: ex.shortPR,
+                selfIntro: ex.selfIntro,
+                snsLinks: ex.snsLinks,
+                photoUrl: ex.photoUrl,
+                introImageId: imagesData.images[normalizedName] || null, // フォルダ内の画像ID
+                seatNumber: ex.seatNumber
+            };
+        });
+
+        return new Response(JSON.stringify({
+            success: true,
+            exhibitors: safeExhibitors,
+            captionTemplates: config.captionTemplates,
+            eventName: config.eventName
+        }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+    } catch (error) {
+        console.error('Public data error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

@@ -78,6 +78,21 @@
                     <input type="text" id="databaseSpreadsheetId" readonly class="readonly">
                     <p class="hint">※ここは変更できません。全ての履歴がここに保存されます。</p>
                 </div>
+
+                <div class="form-group mt-4">
+                    <label>出展者紹介画像フォルダID (Google Drive)</label>
+                    <input type="text" id="introImagesFolderId" placeholder="フォルダIDを入力">
+                    <p class="hint">「出展名.jpg/png」が保存されているフォルダのIDを入力してください。</p>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>📢 出展者向け確認ページ</h3>
+                    <p>出展者がプルダウンで自分の名前を選んで内容を確認できるページです。</p>
+                    <div class="flex-row">
+                        <input type="text" id="confirmPageUrl" readonly class="readonly" style="flex-grow: 1;">
+                        <button id="copyConfirmUrlBtn" class="btn-secondary small">URLをコピー</button>
+                    </div>
+                </div>
             </section>
 
             <!-- 料金設定タブ -->

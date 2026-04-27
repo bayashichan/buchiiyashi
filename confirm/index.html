@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>内容確認 | ぶち癒しフェスタ</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&family=Outfit:wght@600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="container">
+                <h1 id="event-name">ぶち癒しフェスタ</h1>
+                <p class="subtitle">出展内容確認ページ</p>
+            </div>
+        </header>
+
+        <main class="container">
+            <section class="selection-card">
+                <label for="exhibitor-select">出展名を選択してください</label>
+                <div class="select-wrapper">
+                    <select id="exhibitor-select">
+                        <option value="">読み込み中...</option>
+                    </select>
+                </div>
+                <p class="hint">自分の屋号・出展名を選んでください。</p>
+            </section>
+
+            <div id="content-area" class="hidden">
+                <div class="grid">
+                    <!-- 画像エリア -->
+                    <section class="image-section">
+                        <h2>📸 SNS掲載用画像</h2>
+                        <div class="image-container">
+                            <img id="intro-image" src="" alt="出展画像">
+                            <div id="no-image" class="no-image-placeholder hidden">
+                                <p>画像がまだ準備できていないか、<br>ファイル名が一致しません。</p>
+                            </div>
+                        </div>
+                        <p class="image-note">※画像はSNS投稿やカタログで使用されます。</p>
+                    </section>
+
+                    <!-- キャプションエリア -->
+                    <section class="caption-section">
+                        <h2>✍️ 紹介文（キャプション）</h2>
+                        <div class="tabs">
+                            <button class="tab-btn active" data-platform="instagram">Instagram用</button>
+                            <button class="tab-btn" data-platform="facebook">Facebook用</button>
+                        </div>
+                        <div class="caption-container">
+                            <textarea id="caption-text" readonly rows="12"></textarea>
+                            <button id="copy-btn" class="btn-copy">📋 紹介文をコピー</button>
+                        </div>
+                        <p class="caption-note">※プレースホルダーが実際の情報に置換された状態です。</p>
+                    </section>
+                </div>
+
+                <section class="details-card">
+                    <h2>📋 登録情報</h2>
+                    <div class="details-grid">
+                        <div class="detail-item">
+                            <span class="label">出展メニュー</span>
+                            <span id="detail-menu" class="value"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">一言PR</span>
+                            <span id="detail-pr" class="value"></span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">座席番号</span>
+                            <span id="detail-seat" class="value"></span>
+                        </div>
+                    </div>
+                </section>
+
+                <footer class="confirmation-footer">
+                    <p>内容に間違いがある場合や、画像の修正を希望される場合は、事務局のLINEまでご連絡ください。</p>
+                </footer>
+            </div>
+
+            <div id="loading" class="loading-state">
+                <div class="spinner"></div>
+                <p>データを取得しています...</p>
+            </div>
+
+            <div id="error" class="error-state hidden">
+                <p id="error-message">データの取得に失敗しました。</p>
+                <button onclick="location.reload()">再読み込み</button>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

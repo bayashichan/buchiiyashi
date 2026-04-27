@@ -67,6 +67,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('downloadAllCaptionsFbBtn')?.addEventListener('click', () => downloadAllCaptions('facebook'));
     document.getElementById('downloadAllCaptionsBothBtn')?.addEventListener('click', () => downloadAllCaptions('both'));
 
+    // 確認ページURLコピー
+    document.getElementById('copyConfirmUrlBtn')?.addEventListener('click', copyConfirmUrl);
+
     // プレースホルダーボタン
     document.querySelectorAll('.placeholder-btn').forEach(btn => {
         btn.addEventListener('click', () => insertPlaceholder(btn.dataset.tag));
@@ -344,6 +347,14 @@ function renderBasicSettings() {
     document.getElementById('eventLocation').value = config.eventLocation || '';
     document.getElementById('currentSpreadsheetId').value = config.currentSpreadsheetId || '';
     document.getElementById('databaseSpreadsheetId').value = config.databaseSpreadsheetId || '';
+    document.getElementById('introImagesFolderId').value = config.introImagesFolderId || '';
+
+    // 確認ページURLの生成
+    const confirmUrlInput = document.getElementById('confirmPageUrl');
+    if (confirmUrlInput) {
+        const baseUrl = window.location.href.split('/admin/')[0];
+        confirmUrlInput.value = `${baseUrl}/confirm/`;
+    }
 
     const openBtn = document.getElementById('openSpreadsheetBtn');
     if (config.currentSpreadsheetId) {
@@ -469,6 +480,7 @@ function collectConfigFromUI() {
     config.eventDate = document.getElementById('eventDate').value;
     config.eventLocation = document.getElementById('eventLocation').value;
     config.currentSpreadsheetId = document.getElementById('currentSpreadsheetId').value;
+    config.introImagesFolderId = document.getElementById('introImagesFolderId').value;
     // databaseSpreadsheetId は readonly なのでそのまま（もしくは hidden があればそこから）
     // 現状 config オブジェクトはメモリ上にあるので変更なければそのまま維持される
 
@@ -1016,7 +1028,8 @@ async function combineGeneratedSlides() {
             },
             body: JSON.stringify({
                 action: 'combine_presentations_init',
-                title: title
+                title: title,
+                sourceId: presentationIds[0]
             })
         });
 
@@ -1312,4 +1325,19 @@ function _triggerCaptionDownload(platform, dateStr) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+// 確認ページURLをコピー
+async function copyConfirmUrl() {
+    const url = document.getElementById('confirmPageUrl')?.value;
+    if (!url) return;
+
+    try {
+        await navigator.clipboard.writeText(url);
+        const btn = document.getElementById('copyConfirmUrlBtn');
+        const originalText = btn.textContent;
+        btn.textContent = '✅ コピー完了';
+        setTimeout(() => { btn.textContent = originalText; }, 2000);
+    } catch (err) {
+        alert('コピーに失敗しました: ' + err.message);
+    }
 }
