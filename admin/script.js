@@ -1142,13 +1142,9 @@ function generateCaption(platform) {
 
     // SNS処理
     if (platform === 'instagram') {
-        // Instagram: @アカウント名（2つある場合はスペース区切りで両方）
-        const handle1 = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
-        const handle2 = extractInstagramHandle(exhibitor.snsLinks?.insta2 || '');
-        const handles = [handle1 ? `@${handle1}` : '', handle2 ? `@${handle2}` : ''].filter(Boolean).join(' ');
+        const handles = extractAllInstagramHandles(exhibitor.snsLinks);
         caption = caption.replace(/\{\{SNSアカウント\}\}/g, handles);
     } else {
-        // Facebook: すべてのリンクをプラットフォーム名付きで
         const snsLinks = formatSnsLinks(exhibitor.snsLinks);
         caption = caption.replace(/\{\{SNSリンク一覧\}\}/g, snsLinks);
     }
@@ -1179,20 +1175,29 @@ function extractInstagramHandle(url) {
     return match ? match[1] : '';
 }
 
-// SNSリンクをフォーマット
+// snsLinks配列から全Instagramハンドルを "@handle1 @handle2" 形式で返す
+function extractAllInstagramHandles(snsLinks) {
+    if (!Array.isArray(snsLinks)) return '';
+    return snsLinks
+        .filter(l => l.type === 'Instagram')
+        .map(l => { const h = extractInstagramHandle(l.url); return h ? `@${h}` : ''; })
+        .filter(Boolean)
+        .join(' ');
+}
+
+// SNSリンクをフォーマット（snsLinks は [{type, url}] 配列）
 function formatSnsLinks(snsLinks) {
-    if (!snsLinks) return '';
+    if (!Array.isArray(snsLinks) || snsLinks.length === 0) return '';
+    return snsLinks.map(l => `${getSnsEmoji(l.type)} ${l.type}: ${l.url}`).join('\n');
+}
 
-    const links = [];
-    if (snsLinks.hp) links.push(`🌐 HP: ${snsLinks.hp}`);
-    if (snsLinks.blog) links.push(`📝 ブログ: ${snsLinks.blog}`);
-    if (snsLinks.insta) links.push(`📸 Instagram: ${snsLinks.insta}`);
-    if (snsLinks.insta2) links.push(`📸 Instagram: ${snsLinks.insta2}`);
-    if (snsLinks.fb) links.push(`👤 Facebook: ${snsLinks.fb}`);
-    if (snsLinks.line) links.push(`💬 LINE: ${snsLinks.line}`);
-    if (snsLinks.other) links.push(`🔗 その他: ${snsLinks.other}`);
-
-    return links.join('\n');
+function getSnsEmoji(type) {
+    const map = {
+        'Instagram': '📸', 'Facebook': '👤', '公式LINE': '💬',
+        'YouTube': '▶️', 'TikTok': '🎵', 'X(Twitter)': '🐦',
+        'Ameblo': '📝', 'HP': '🌐', 'Linktree': '🌐', 'lit.link': '🌐'
+    };
+    return map[type] || '🔗';
 }
 
 // デフォルトテンプレート
@@ -1301,9 +1306,7 @@ function _triggerCaptionDownload(platform, dateStr) {
         caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
 
         if (platform === 'instagram') {
-            const handle1 = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
-            const handle2 = extractInstagramHandle(exhibitor.snsLinks?.insta2 || '');
-            const handles = [handle1 ? `@${handle1}` : '', handle2 ? `@${handle2}` : ''].filter(Boolean).join(' ');
+            const handles = extractAllInstagramHandles(exhibitor.snsLinks);
             caption = caption.replace(/\{\{SNSアカウント\}\}/g, handles);
         } else {
             const snsLinks = formatSnsLinks(exhibitor.snsLinks);

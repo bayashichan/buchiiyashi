@@ -1374,17 +1374,23 @@ function fillFormWithData(data) {
     container.innerHTML = '';
     snsLinkCount = 0;
 
-    // 過去データのSNS各項目をチェックして追加（GASは snsLinks で返すので両方対応）
+    // 過去データのSNS各項目をチェックして追加
     const snsData = data.sns || data.snsLinks;
     const snsList = [];
     if (snsData) {
-        if (snsData.hp) snsList.push(snsData.hp);
-        if (snsData.blog) snsList.push(snsData.blog);
-        if (snsData.fb) snsList.push(snsData.fb);
-        if (snsData.insta) snsList.push(snsData.insta);
-        if (snsData.insta2) snsList.push(snsData.insta2);
-        if (snsData.line) snsList.push(snsData.line);
-        if (snsData.other) snsList.push(snsData.other);
+        if (Array.isArray(snsData)) {
+            // 新形式: [{type, url}, ...] 配列
+            snsData.forEach(item => { if (item.url) snsList.push(item.url); });
+        } else {
+            // 旧形式: {hp, blog, fb, insta, line, other} オブジェクト（後方互換）
+            if (snsData.hp) snsList.push(snsData.hp);
+            if (snsData.blog) snsList.push(snsData.blog);
+            if (snsData.fb) snsList.push(snsData.fb);
+            if (snsData.insta) snsList.push(snsData.insta);
+            if (snsData.insta2) snsList.push(snsData.insta2);
+            if (snsData.line) snsList.push(snsData.line);
+            if (snsData.other) snsList.push(snsData.other);
+        }
     }
 
     if (snsList.length > 0) {

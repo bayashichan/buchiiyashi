@@ -350,8 +350,9 @@ function getExhibitorList(spreadsheetId) {
 
 
 // SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
+// 返り値: [{type, url}, ...] の配列（同一タイプの複数エントリも全て保持）
 function parseSnsLinks(str) {
-  const result = { hp: '', blog: '', fb: '', insta: '', insta2: '', line: '', other: '' };
+  const result = [];
   if (!str || str === 'なし' || str === '（形式エラー）') return result;
 
   const lines = str.split('\n');
@@ -360,32 +361,25 @@ function parseSnsLinks(str) {
     if (!line) return;
 
     // "Type: URL" 形式かチェック
-    const parts = line.split(': ');
-    if (parts.length >= 2 && !line.startsWith('http')) {
-      const type = parts[0];
-      const url = parts.slice(1).join(': ');
-
-      if (type === 'HP' || type === 'Linktree' || type === 'lit.link') result.hp = url;
-      else if (type === 'ブログ' || type === 'Ameblo') result.blog = url;
-      else if (type === 'Facebook') result.fb = url;
-      else if (type === 'Instagram') {
-        if (!result.insta) result.insta = url;
-        else result.insta2 = url;
-      }
-      else if (type === '公式LINE') result.line = url;
-      else result.other = url;
+    const colonIdx = line.indexOf(': ');
+    if (colonIdx > 0 && !line.startsWith('http')) {
+      const type = line.slice(0, colonIdx);
+      const url = line.slice(colonIdx + 2);
+      if (url) result.push({ type, url });
     } else {
-      // "Type: " 形式でない場合（URLのみの場合）、ドメインで判定
+      // URLのみの場合、ドメインからタイプを推定
       const url = line;
-      if (url.includes('instagram.com')) {
-        if (!result.insta) result.insta = url;
-        else result.insta2 = url;
-      }
-      else if (url.includes('facebook.com')) result.fb = url;
-      else if (url.includes('ameblo.jp')) result.blog = url;
-      else if (url.includes('lin.ee') || url.includes('line.me')) result.line = url;
-      else if (url.includes('youtube.com') || url.includes('tiktok.com') || url.includes('twitter.com') || url.includes('x.com')) result.other = url;
-      else result.hp = url; // その他はHP枠へ
+      let type = 'HP';
+      if (url.includes('instagram.com') || url.includes('instagr.am')) type = 'Instagram';
+      else if (url.includes('facebook.com') || url.includes('fb.com')) type = 'Facebook';
+      else if (url.includes('ameblo.jp') || url.includes('ameba.jp')) type = 'Ameblo';
+      else if (url.includes('lin.ee') || url.includes('line.me')) type = '公式LINE';
+      else if (url.includes('youtube.com') || url.includes('youtu.be')) type = 'YouTube';
+      else if (url.includes('tiktok.com')) type = 'TikTok';
+      else if (url.includes('twitter.com') || url.includes('x.com')) type = 'X(Twitter)';
+      else if (url.includes('lit.link')) type = 'lit.link';
+      else if (url.includes('linktr.ee')) type = 'Linktree';
+      result.push({ type, url });
     }
   });
   return result;

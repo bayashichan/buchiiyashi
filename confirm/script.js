@@ -129,9 +129,7 @@ function renderCaption() {
 
     // SNS処理
     if (currentPlatform === 'instagram') {
-        const handle1 = extractInstagramHandle(currentExhibitor.snsLinks?.insta || '');
-        const handle2 = extractInstagramHandle(currentExhibitor.snsLinks?.insta2 || '');
-        const handles = [handle1 ? `@${handle1}` : '', handle2 ? `@${handle2}` : ''].filter(Boolean).join(' ');
+        const handles = extractAllInstagramHandles(currentExhibitor.snsLinks);
         caption = caption.replace(/\{\{SNSアカウント\}\}/g, handles);
     } else {
         const snsLinks = formatSnsLinks(currentExhibitor.snsLinks);
@@ -164,17 +162,27 @@ function extractInstagramHandle(url) {
     return match ? match[1] : '';
 }
 
+function extractAllInstagramHandles(snsLinks) {
+    if (!Array.isArray(snsLinks)) return '';
+    return snsLinks
+        .filter(l => l.type === 'Instagram')
+        .map(l => { const h = extractInstagramHandle(l.url); return h ? `@${h}` : ''; })
+        .filter(Boolean)
+        .join(' ');
+}
+
 function formatSnsLinks(snsLinks) {
-    if (!snsLinks) return '';
-    const links = [];
-    if (snsLinks.hp) links.push(`🌐 HP: ${snsLinks.hp}`);
-    if (snsLinks.blog) links.push(`📝 ブログ: ${snsLinks.blog}`);
-    if (snsLinks.insta) links.push(`📸 Instagram: ${snsLinks.insta}`);
-    if (snsLinks.insta2) links.push(`📸 Instagram: ${snsLinks.insta2}`);
-    if (snsLinks.fb) links.push(`👤 Facebook: ${snsLinks.fb}`);
-    if (snsLinks.line) links.push(`💬 LINE: ${snsLinks.line}`);
-    if (snsLinks.other) links.push(`🔗 その他: ${snsLinks.other}`);
-    return links.join('\n');
+    if (!Array.isArray(snsLinks) || snsLinks.length === 0) return '';
+    return snsLinks.map(l => `${getSnsEmoji(l.type)} ${l.type}: ${l.url}`).join('\n');
+}
+
+function getSnsEmoji(type) {
+    const map = {
+        'Instagram': '📸', 'Facebook': '👤', '公式LINE': '💬',
+        'YouTube': '▶️', 'TikTok': '🎵', 'X(Twitter)': '🐦',
+        'Ameblo': '📝', 'HP': '🌐', 'Linktree': '🌐', 'lit.link': '🌐'
+    };
+    return map[type] || '🔗';
 }
 
 function getDefaultTemplate(platform) {
