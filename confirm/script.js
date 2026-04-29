@@ -92,13 +92,23 @@ function showExhibitor(id) {
     contentArea.classList.remove('hidden');
 
     // 画像表示
+    const downloadBtn = document.getElementById('download-image-btn');
     if (currentExhibitor.introImageId) {
-        introImageEl.src = `https://lh3.googleusercontent.com/d/${currentExhibitor.introImageId}`;
+        const imageUrl = `https://lh3.googleusercontent.com/d/${currentExhibitor.introImageId}`;
+        introImageEl.src = imageUrl;
         introImageEl.classList.remove('hidden');
         noImageEl.classList.add('hidden');
+        if (downloadBtn) {
+            downloadBtn.href = imageUrl;
+            downloadBtn.download = `${currentExhibitor.exhibitorName || '出展者'}_画像.jpg`;
+            downloadBtn.classList.remove('hidden');
+        }
     } else {
         introImageEl.classList.add('hidden');
         noImageEl.classList.remove('hidden');
+        if (downloadBtn) {
+            downloadBtn.classList.add('hidden');
+        }
     }
 
     // 詳細情報

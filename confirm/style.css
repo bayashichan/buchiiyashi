@@ -232,6 +232,26 @@ textarea:focus {
     transform: scale(0.98);
 }
 
+.btn-download {
+    display: block;
+    width: 100%;
+    margin-top: 15px;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    text-align: center;
+    text-decoration: none;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.btn-download:active {
+    transform: scale(0.98);
+}
+
 /* 詳細カード */
 .details-card {
     background: var(--card-bg);
