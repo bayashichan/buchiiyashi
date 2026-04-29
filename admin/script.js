@@ -1142,9 +1142,11 @@ function generateCaption(platform) {
 
     // SNS処理
     if (platform === 'instagram') {
-        // Instagram: @アカウント名のみ
-        const instaHandle = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
-        caption = caption.replace(/\{\{SNSアカウント\}\}/g, instaHandle ? `@${instaHandle}` : '');
+        // Instagram: @アカウント名（2つある場合はスペース区切りで両方）
+        const handle1 = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
+        const handle2 = extractInstagramHandle(exhibitor.snsLinks?.insta2 || '');
+        const handles = [handle1 ? `@${handle1}` : '', handle2 ? `@${handle2}` : ''].filter(Boolean).join(' ');
+        caption = caption.replace(/\{\{SNSアカウント\}\}/g, handles);
     } else {
         // Facebook: すべてのリンクをプラットフォーム名付きで
         const snsLinks = formatSnsLinks(exhibitor.snsLinks);
@@ -1185,6 +1187,7 @@ function formatSnsLinks(snsLinks) {
     if (snsLinks.hp) links.push(`🌐 HP: ${snsLinks.hp}`);
     if (snsLinks.blog) links.push(`📝 ブログ: ${snsLinks.blog}`);
     if (snsLinks.insta) links.push(`📸 Instagram: ${snsLinks.insta}`);
+    if (snsLinks.insta2) links.push(`📸 Instagram: ${snsLinks.insta2}`);
     if (snsLinks.fb) links.push(`👤 Facebook: ${snsLinks.fb}`);
     if (snsLinks.line) links.push(`💬 LINE: ${snsLinks.line}`);
     if (snsLinks.other) links.push(`🔗 その他: ${snsLinks.other}`);
@@ -1298,8 +1301,10 @@ function _triggerCaptionDownload(platform, dateStr) {
         caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
 
         if (platform === 'instagram') {
-            const instaHandle = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
-            caption = caption.replace(/\{\{SNSアカウント\}\}/g, instaHandle ? `@${instaHandle}` : '');
+            const handle1 = extractInstagramHandle(exhibitor.snsLinks?.insta || '');
+            const handle2 = extractInstagramHandle(exhibitor.snsLinks?.insta2 || '');
+            const handles = [handle1 ? `@${handle1}` : '', handle2 ? `@${handle2}` : ''].filter(Boolean).join(' ');
+            caption = caption.replace(/\{\{SNSアカウント\}\}/g, handles);
         } else {
             const snsLinks = formatSnsLinks(exhibitor.snsLinks);
             caption = caption.replace(/\{\{SNSリンク一覧\}\}/g, snsLinks);

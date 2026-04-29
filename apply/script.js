@@ -1382,6 +1382,7 @@ function fillFormWithData(data) {
         if (snsData.blog) snsList.push(snsData.blog);
         if (snsData.fb) snsList.push(snsData.fb);
         if (snsData.insta) snsList.push(snsData.insta);
+        if (snsData.insta2) snsList.push(snsData.insta2);
         if (snsData.line) snsList.push(snsData.line);
         if (snsData.other) snsList.push(snsData.other);
     }

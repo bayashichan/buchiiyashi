@@ -129,8 +129,10 @@ function renderCaption() {
 
     // SNS処理
     if (currentPlatform === 'instagram') {
-        const instaHandle = extractInstagramHandle(currentExhibitor.snsLinks?.insta || '');
-        caption = caption.replace(/\{\{SNSアカウント\}\}/g, instaHandle ? `@${instaHandle}` : '');
+        const handle1 = extractInstagramHandle(currentExhibitor.snsLinks?.insta || '');
+        const handle2 = extractInstagramHandle(currentExhibitor.snsLinks?.insta2 || '');
+        const handles = [handle1 ? `@${handle1}` : '', handle2 ? `@${handle2}` : ''].filter(Boolean).join(' ');
+        caption = caption.replace(/\{\{SNSアカウント\}\}/g, handles);
     } else {
         const snsLinks = formatSnsLinks(currentExhibitor.snsLinks);
         caption = caption.replace(/\{\{SNSリンク一覧\}\}/g, snsLinks);
@@ -168,6 +170,7 @@ function formatSnsLinks(snsLinks) {
     if (snsLinks.hp) links.push(`🌐 HP: ${snsLinks.hp}`);
     if (snsLinks.blog) links.push(`📝 ブログ: ${snsLinks.blog}`);
     if (snsLinks.insta) links.push(`📸 Instagram: ${snsLinks.insta}`);
+    if (snsLinks.insta2) links.push(`📸 Instagram: ${snsLinks.insta2}`);
     if (snsLinks.fb) links.push(`👤 Facebook: ${snsLinks.fb}`);
     if (snsLinks.line) links.push(`💬 LINE: ${snsLinks.line}`);
     if (snsLinks.other) links.push(`🔗 その他: ${snsLinks.other}`);

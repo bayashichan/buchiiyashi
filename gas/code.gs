@@ -351,9 +351,9 @@ function getExhibitorList(spreadsheetId) {
 
 // SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
 function parseSnsLinks(str) {
-  const result = { hp: '', blog: '', fb: '', insta: '', line: '', other: '' };
+  const result = { hp: '', blog: '', fb: '', insta: '', insta2: '', line: '', other: '' };
   if (!str || str === 'なし' || str === '（形式エラー）') return result;
-  
+
   const lines = str.split('\n');
   lines.forEach(line => {
     line = line.trim();
@@ -364,17 +364,23 @@ function parseSnsLinks(str) {
     if (parts.length >= 2 && !line.startsWith('http')) {
       const type = parts[0];
       const url = parts.slice(1).join(': ');
-      
+
       if (type === 'HP' || type === 'Linktree' || type === 'lit.link') result.hp = url;
       else if (type === 'ブログ' || type === 'Ameblo') result.blog = url;
       else if (type === 'Facebook') result.fb = url;
-      else if (type === 'Instagram') result.insta = url;
+      else if (type === 'Instagram') {
+        if (!result.insta) result.insta = url;
+        else result.insta2 = url;
+      }
       else if (type === '公式LINE') result.line = url;
       else result.other = url;
     } else {
       // "Type: " 形式でない場合（URLのみの場合）、ドメインで判定
       const url = line;
-      if (url.includes('instagram.com')) result.insta = url;
+      if (url.includes('instagram.com')) {
+        if (!result.insta) result.insta = url;
+        else result.insta2 = url;
+      }
       else if (url.includes('facebook.com')) result.fb = url;
       else if (url.includes('ameblo.jp')) result.blog = url;
       else if (url.includes('lin.ee') || url.includes('line.me')) result.line = url;
