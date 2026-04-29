@@ -158,7 +158,7 @@ async function copyCaption() {
 // ユーティリティ
 function extractInstagramHandle(url) {
     if (!url) return '';
-    const match = url.match(/instagram\.com\/([^\/\?]+)/);
+    const match = url.match(/instagram\.com\/([^\/\?]+)/i);
     return match ? match[1] : '';
 }
 

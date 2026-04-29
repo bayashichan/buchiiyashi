@@ -1168,10 +1168,10 @@ function generateCaption(platform) {
     document.getElementById('generatedCaption').value = caption.trim();
 }
 
-// Instagram URLからハンドル名を抽出
+// Instagram URLからハンドル名を抽出（大文字小文字を問わない）
 function extractInstagramHandle(url) {
     if (!url) return '';
-    const match = url.match(/instagram\.com\/([^\/\?]+)/);
+    const match = url.match(/instagram\.com\/([^\/\?]+)/i);
     return match ? match[1] : '';
 }
 
