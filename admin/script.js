@@ -1176,19 +1176,45 @@ function extractInstagramHandle(url) {
 }
 
 // snsLinks配列から全Instagramハンドルを "@handle1 @handle2" 形式で返す
+// 新形式（配列）・旧形式（オブジェクト）どちらにも対応
 function extractAllInstagramHandles(snsLinks) {
-    if (!Array.isArray(snsLinks)) return '';
-    return snsLinks
-        .filter(l => l.type === 'Instagram')
-        .map(l => { const h = extractInstagramHandle(l.url); return h ? `@${h}` : ''; })
-        .filter(Boolean)
-        .join(' ');
+    if (Array.isArray(snsLinks)) {
+        return snsLinks
+            .filter(l => l.type === 'Instagram')
+            .map(l => { const h = extractInstagramHandle(l.url); return h ? `@${h}` : ''; })
+            .filter(Boolean)
+            .join(' ');
+    }
+    if (snsLinks && typeof snsLinks === 'object') {
+        const handles = [];
+        ['insta', 'insta2'].forEach(key => {
+            if (snsLinks[key]) {
+                const h = extractInstagramHandle(snsLinks[key]);
+                if (h) handles.push(`@${h}`);
+            }
+        });
+        return handles.join(' ');
+    }
+    return '';
 }
 
-// SNSリンクをフォーマット（snsLinks は [{type, url}] 配列）
+// SNSリンクをフォーマット（新形式の配列・旧形式のオブジェクト両対応）
 function formatSnsLinks(snsLinks) {
-    if (!Array.isArray(snsLinks) || snsLinks.length === 0) return '';
-    return snsLinks.map(l => `${getSnsEmoji(l.type)} ${l.type}: ${l.url}`).join('\n');
+    if (Array.isArray(snsLinks) && snsLinks.length > 0) {
+        return snsLinks.map(l => `${getSnsEmoji(l.type)} ${l.type}: ${l.url}`).join('\n');
+    }
+    if (snsLinks && typeof snsLinks === 'object') {
+        const links = [];
+        if (snsLinks.hp) links.push(`🌐 HP: ${snsLinks.hp}`);
+        if (snsLinks.blog) links.push(`📝 ブログ: ${snsLinks.blog}`);
+        if (snsLinks.insta) links.push(`📸 Instagram: ${snsLinks.insta}`);
+        if (snsLinks.insta2) links.push(`📸 Instagram: ${snsLinks.insta2}`);
+        if (snsLinks.fb) links.push(`👤 Facebook: ${snsLinks.fb}`);
+        if (snsLinks.line) links.push(`💬 LINE: ${snsLinks.line}`);
+        if (snsLinks.other) links.push(`🔗 その他: ${snsLinks.other}`);
+        return links.join('\n');
+    }
+    return '';
 }
 
 function getSnsEmoji(type) {
