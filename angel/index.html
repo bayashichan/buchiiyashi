@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>天使診断 | ぶち癒しフェスタin東京</title>
+  <meta name="description" content="4つの質問でわかる、あなたの守護天使。恋愛・仕事・お金・健康、どの力が今あなたに宿っている？">
+  <meta property="og:title" content="4つの質問でわかる、あなたの守護天使">
+  <meta property="og:description" content="恋愛・仕事・お金・健康、どの力が今あなたに宿っている？">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#1a0533">
+
+  <!-- Meta Pixel -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1143852114505095');
+    fbq('track', 'PageView');
+  </script>
+  <noscript><img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1"
+    /></noscript>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+      background: linear-gradient(160deg, #1a0533 0%, #0d1b4b 55%, #0a0a2e 100%);
+      min-height: 100vh;
+      color: #fff;
+      overflow-x: hidden;
+    }
+
+    #starCanvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Screens ── */
+    .screen {
+      display: none;
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      padding: 48px 24px 60px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .screen.active { display: flex; animation: fadeUp 0.45s ease both; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Hero ── */
+    .hero-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.35em;
+      color: #c9a84c;
+      margin-bottom: 20px;
+    }
+
+    .hero-title {
+      font-size: 22px;
+      font-weight: 300;
+      line-height: 1.7;
+      text-align: center;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+
+    .hero-rule {
+      width: 56px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #c9a84c, transparent);
+      margin: 20px auto 24px;
+    }
+
+    .hero-sub {
+      font-size: 13px;
+      color: #9aa0c8;
+      text-align: center;
+      line-height: 1.9;
+      margin-bottom: 48px;
+    }
+
+    /* ── Buttons ── */
+    .btn-gold {
+      display: block;
+      width: 100%;
+      max-width: 320px;
+      padding: 18px;
+      background: linear-gradient(135deg, #c9a84c 0%, #f0d080 100%);
+      color: #1a0533;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      text-align: center;
+      letter-spacing: 0.06em;
+      box-shadow: 0 4px 28px rgba(201,168,76,0.45);
+      transition: transform .18s, box-shadow .18s;
+    }
+    .btn-gold:active { transform: scale(.96); box-shadow: 0 2px 12px rgba(201,168,76,.3); }
+
+    /* ── Progress ── */
+    .progress-wrap {
+      width: 100%;
+      max-width: 340px;
+      margin-bottom: 44px;
+    }
+    .progress-label {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: #c9a84c;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .progress-track {
+      height: 2px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(to right, #c9a84c, #f0d080);
+      border-radius: 2px;
+      transition: width .4s ease;
+    }
+
+    /* ── Question ── */
+    .q-text {
+      font-size: 17px;
+      font-weight: 300;
+      text-align: center;
+      line-height: 1.75;
+      letter-spacing: 0.03em;
+      max-width: 300px;
+      margin-bottom: 36px;
+      white-space: pre-line;
+    }
+
+    .choices {
+      width: 100%;
+      max-width: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .choice {
+      width: 100%;
+      padding: 15px 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(201,168,76,0.25);
+      border-radius: 12px;
+      color: #dde0f0;
+      font-size: 14px;
+      line-height: 1.55;
+      text-align: left;
+      cursor: pointer;
+      transition: background .2s, border-color .2s, color .2s;
+    }
+    .choice:active, .choice:hover {
+      background: rgba(201,168,76,0.14);
+      border-color: #c9a84c;
+      color: #fff;
+    }
+    .choice-lbl {
+      color: #c9a84c;
+      font-weight: bold;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+
+    /* ── Result ── */
+    .result-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      color: #c9a84c;
+      margin-bottom: 14px;
+    }
+
+    .result-name {
+      font-size: 42px;
+      font-weight: 200;
+      letter-spacing: 0.18em;
+      text-shadow: 0 0 48px rgba(201,168,76,.7);
+      margin-bottom: 10px;
+    }
+
+    .result-catch {
+      font-size: 13px;
+      color: #c9a84c;
+      letter-spacing: 0.05em;
+      margin-bottom: 28px;
+      text-align: center;
+      max-width: 280px;
+    }
+
+    .result-desc {
+      font-size: 14px;
+      color: #c8cce8;
+      line-height: 1.95;
+      text-align: center;
+      max-width: 300px;
+      white-space: pre-line;
+      margin-bottom: 36px;
+    }
+
+    .result-rule {
+      width: 72px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #c9a84c, transparent);
+      margin: 0 auto 36px;
+    }
+
+    .cta-label {
+      font-size: 12px;
+      color: #8890b8;
+      margin-bottom: 14px;
+      text-align: center;
+    }
+
+    .btn-line {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 320px;
+      padding: 18px;
+      background: #06C755;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 4px 24px rgba(6,199,85,.38);
+      transition: transform .18s;
+      margin-bottom: 14px;
+    }
+    .btn-line:active { transform: scale(.96); }
+
+    .btn-copy {
+      display: block;
+      width: 100%;
+      max-width: 320px;
+      padding: 15px;
+      background: transparent;
+      border: 1px solid rgba(201,168,76,.45);
+      border-radius: 50px;
+      color: #c9a84c;
+      font-size: 14px;
+      cursor: pointer;
+      text-align: center;
+      transition: background .2s;
+      margin-bottom: 8px;
+    }
+    .btn-copy:active { background: rgba(201,168,76,.1); }
+
+    .copy-hint {
+      font-size: 11px;
+      color: #555e88;
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 48px;
+    }
+
+    /* ── Event ── */
+    .event-section {
+      width: 100%;
+      max-width: 340px;
+      border-top: 1px solid rgba(255,255,255,.1);
+      padding-top: 40px;
+      text-align: center;
+    }
+    .event-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.25em;
+      color: #c9a84c;
+      margin-bottom: 18px;
+    }
+    .event-name {
+      font-size: 17px;
+      font-weight: 300;
+      line-height: 1.6;
+      letter-spacing: 0.04em;
+      margin-bottom: 20px;
+    }
+    .event-detail {
+      font-size: 13px;
+      color: #8890b8;
+      line-height: 2.1;
+    }
+    .event-badge {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 5px 20px;
+      border: 1px solid #c9a84c;
+      border-radius: 20px;
+      color: #c9a84c;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(72px);
+      background: rgba(201,168,76,.95);
+      color: #1a0533;
+      padding: 12px 28px;
+      border-radius: 28px;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 999;
+      transition: transform .3s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<canvas id="starCanvas"></canvas>
+<div class="toast" id="toast">コピーしました ✓</div>
+
+<!-- ════ HERO ════ -->
+<div class="screen active" id="scr-hero">
+  <div class="hero-eyebrow">✦ ANGEL DIAGNOSIS ✦</div>
+  <h1 class="hero-title">4つの質問でわかる、<br>あなたの守護天使</h1>
+  <div class="hero-rule"></div>
+  <p class="hero-sub">恋愛・仕事・お金・健康、<br>どの力が今あなたに宿っている？</p>
+  <button class="btn-gold" onclick="startDiagnosis()">診断スタート</button>
+</div>
+
+<!-- ════ QUESTION ════ -->
+<div class="screen" id="scr-question">
+  <div class="progress-wrap">
+    <div class="progress-label" id="prog-label">Q1 / 4</div>
+    <div class="progress-track">
+      <div class="progress-fill" id="prog-fill" style="width:25%"></div>
+    </div>
+  </div>
+  <p class="q-text" id="q-text"></p>
+  <div class="choices" id="choices"></div>
+</div>
+
+<!-- ════ RESULT ════ -->
+<div class="screen" id="scr-result">
+  <div class="result-eyebrow">あなたの守護天使</div>
+  <div class="result-name" id="r-name"></div>
+  <div class="result-catch" id="r-catch"></div>
+  <div class="result-desc" id="r-desc"></div>
+  <div class="result-rule"></div>
+  <p class="cta-label">詳しい結果とエネルギー画像を受け取る</p>
+  <a class="btn-line" id="btn-line" href="https://lin.ee/zbT55QS" target="_blank"
+     onclick="trackLine()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.630 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+    </svg>
+    LINEで詳しい結果を受け取る
+  </a>
+  <button class="btn-copy" id="btn-copy" onclick="copyName()">
+    「<span id="copy-lbl"></span>」をコピーしてLINEに送る
+  </button>
+  <p class="copy-hint">LINEが開かない場合は上のボタンで天使名をコピーし、<br>公式LINEのトーク画面に貼り付けて送信してください</p>
+
+  <div class="event-section">
+    <div class="event-eyebrow">✦ EVENT ✦</div>
+    <div class="event-name">第5回 ぶち癒しフェスタ<br>in東京</div>
+    <div class="event-detail">
+      2026年5月24日（日）10:30〜16:30<br>
+      東京都立産業貿易センター 台東館6階<br>
+      浅草
+    </div>
+    <div class="event-badge">入場無料</div>
+  </div>
+</div>
+
+<script>
+const QUESTIONS = [
+  {
+    text: "休日に一人時間ができたら、\n自然とやること",
+    choices: [
+      { l:"A", text:"会いたい人に連絡してみる",                          type:"haniel"  },
+      { l:"B", text:"気になっていたことを調べて、将来のことを考える",      type:"uriel"   },
+      { l:"C", text:"スキルアップの本を読んだり、やりたいことを計画する",  type:"michael" },
+      { l:"D", text:"とにかくゆっくり寝て、体を休める",                   type:"raphael" }
+    ]
+  },
+  {
+    text: "「豊かな人生」と聞いて\nパッと思い浮かぶのは",
+    choices: [
+      { l:"A", text:"愛されていて、温かい人間関係がある",          type:"haniel"  },
+      { l:"B", text:"お金の心配なく、好きなことにお金が使える",    type:"uriel"   },
+      { l:"C", text:"情熱を持てる仕事や使命がある",                type:"michael" },
+      { l:"D", text:"心も体も、いつも元気でいられる",              type:"raphael" }
+    ]
+  },
+  {
+    text: "最近、頭の片隅にある\nモヤモヤに近いのは",
+    choices: [
+      { l:"A", text:"人間関係や恋愛がなんとなくうまくいっていない気がする", type:"haniel"  },
+      { l:"B", text:"お金や将来のことが、ふとした瞬間に不安になる",        type:"uriel"   },
+      { l:"C", text:"仕事や方向性が定まらず、焦りを感じる",               type:"michael" },
+      { l:"D", text:"疲れが取れない、心か体のどちらかが重い",             type:"raphael" }
+    ]
+  },
+  {
+    text: "「もっとこうなりたい」と\n思う自分に近いのは",
+    choices: [
+      { l:"A", text:"自分らしさを大切にしながら、愛される自分",        type:"haniel"  },
+      { l:"B", text:"お金に余裕があって、選択肢が広い自分",            type:"uriel"   },
+      { l:"C", text:"目標に向かって力強く進んでいる自分",              type:"michael" },
+      { l:"D", text:"エネルギーにあふれて、いつも健やかな自分",        type:"raphael" }
+    ]
+  }
+];
+
+const ANGELS = {
+  haniel: {
+    name:  "ハニエル",
+    catch: "愛と美しさを司る、金星の天使",
+    desc:  "あなたの周りに素敵な縁を引き寄せる力があります。\nハニエルは、あなたの魅力をそっと輝かせています。"
+  },
+  uriel: {
+    name:  "ウリエル",
+    catch: "知恵と豊かさを司る、大地の天使",
+    desc:  "あなたには豊かさを現実にする力があります。\nウリエルは、その道筋をそっと照らしています。"
+  },
+  michael: {
+    name:  "ミカエル",
+    catch: "全天使の中で最も力強い、目標達成の天使",
+    desc:  "あなたは今、新しい一歩を踏み出すエネルギーを持っています。\nミカエルは、あなたの決断と前進をずっと支えています。"
+  },
+  raphael: {
+    name:  "ラファエル",
+    catch: "「神は癒す」—旅人と病人を守る、癒しの大天使",
+    desc:  "あなたの心と体は、今、休息とケアを求めています。\nラファエルは、あなたの回復をそっと支えています。"
+  }
+};
+
+let cur = 0, answers = [], lastType = null;
+
+function startDiagnosis() {
+  cur = 0; answers = []; lastType = null;
+  renderQuestion(0);
+  show("scr-question");
+}
+
+function renderQuestion(i) {
+  const q = QUESTIONS[i];
+  const pct = ((i + 1) / QUESTIONS.length) * 100;
+  document.getElementById("prog-label").textContent = `Q${i+1} / ${QUESTIONS.length}`;
+  document.getElementById("prog-fill").style.width = pct + "%";
+  document.getElementById("q-text").textContent = q.text;
+
+  const wrap = document.getElementById("choices");
+  wrap.innerHTML = "";
+  q.choices.forEach(c => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.innerHTML = `<span class="choice-lbl">${c.l}.</span>${c.text}`;
+    btn.onclick = () => pick(c.type);
+    wrap.appendChild(btn);
+  });
+}
+
+function pick(type) {
+  answers.push(type);
+  lastType = type;
+  cur++;
+  if (cur < QUESTIONS.length) {
+    renderQuestion(cur);
+  } else {
+    calcResult();
+  }
+}
+
+function calcResult() {
+  const cnt = {};
+  answers.forEach(t => cnt[t] = (cnt[t] || 0) + 1);
+  const max = Math.max(...Object.values(cnt));
+  const tops = Object.keys(cnt).filter(t => cnt[t] === max);
+  const resultType = tops.length === 1 ? tops[0] : lastType;
+
+  const a = ANGELS[resultType];
+  document.getElementById("r-name").textContent   = a.name;
+  document.getElementById("r-catch").textContent  = a.catch;
+  document.getElementById("r-desc").textContent   = a.desc;
+  document.getElementById("copy-lbl").textContent = a.name;
+  document.getElementById("btn-copy").dataset.name = a.name;
+
+  show("scr-result");
+
+  if (typeof fbq !== "undefined") fbq("track", "Lead");
+}
+
+function show(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function trackLine() {
+  if (typeof fbq !== "undefined") fbq("track", "Contact");
+}
+
+function copyName() {
+  const name = document.getElementById("btn-copy").dataset.name;
+  navigator.clipboard.writeText(name).then(() => {
+    const t = document.getElementById("toast");
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2200);
+  }).catch(() => {
+    const ta = document.createElement("textarea");
+    ta.value = name;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    const t = document.getElementById("toast");
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2200);
+  });
+}
+
+(function () {
+  const cv = document.getElementById("starCanvas");
+  const cx = cv.getContext("2d");
+  let stars = [];
+
+  function resize() {
+    cv.width  = window.innerWidth;
+    cv.height = window.innerHeight;
+  }
+  function initStars() {
+    stars = Array.from({ length: 130 }, () => ({
+      x: Math.random() * cv.width,
+      y: Math.random() * cv.height,
+      r: Math.random() * 1.1 + 0.3,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.006 + 0.002
+    }));
+  }
+  function draw() {
+    cx.clearRect(0, 0, cv.width, cv.height);
+    stars.forEach(s => {
+      s.phase += s.speed;
+      const a = (Math.sin(s.phase) + 1) / 2 * 0.75 + 0.1;
+      cx.beginPath();
+      cx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      cx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+      cx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize(); initStars(); draw();
+  window.addEventListener("resize", () => { resize(); initStars(); });
+})();
+</script>
+</body>
+</html>
