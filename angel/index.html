@@ -257,29 +257,34 @@
     }
     .btn-line:active { transform: scale(.96); }
 
-    .btn-copy {
-      display: block;
+    .line-steps {
       width: 100%;
       max-width: 320px;
-      padding: 15px;
-      background: transparent;
-      border: 1px solid rgba(201,168,76,.45);
-      border-radius: 50px;
-      color: #c9a84c;
-      font-size: 14px;
-      cursor: pointer;
-      text-align: center;
-      transition: background .2s;
-      margin-bottom: 8px;
-    }
-    .btn-copy:active { background: rgba(201,168,76,.1); }
-
-    .copy-hint {
-      font-size: 11px;
-      color: #555e88;
-      text-align: center;
-      line-height: 1.6;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(201,168,76,.3);
+      border-radius: 16px;
+      padding: 22px 20px;
       margin-bottom: 48px;
+      text-align: center;
+    }
+    .line-step {
+      font-size: 12px;
+      color: #8890b8;
+      line-height: 1.7;
+    }
+    .line-step-name {
+      font-size: 26px;
+      font-weight: 300;
+      letter-spacing: 0.2em;
+      color: #fff;
+      text-shadow: 0 0 24px rgba(201,168,76,.6);
+      margin: 10px 0;
+    }
+    .line-step-divider {
+      width: 40px;
+      height: 1px;
+      background: rgba(201,168,76,.3);
+      margin: 14px auto;
     }
 
     /* ── Event ── */
@@ -319,30 +324,11 @@
       letter-spacing: 0.12em;
     }
 
-    /* ── Toast ── */
-    .toast {
-      position: fixed;
-      bottom: 32px;
-      left: 50%;
-      transform: translateX(-50%) translateY(72px);
-      background: rgba(201,168,76,.95);
-      color: #1a0533;
-      padding: 12px 28px;
-      border-radius: 28px;
-      font-size: 14px;
-      font-weight: bold;
-      z-index: 999;
-      transition: transform .3s ease;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-    .toast.show { transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
 
 <canvas id="starCanvas"></canvas>
-<div class="toast" id="toast">コピーしました ✓</div>
 
 <!-- ════ HERO ════ -->
 <div class="screen active" id="scr-hero">
@@ -372,18 +358,20 @@
   <div class="result-catch" id="r-catch"></div>
   <div class="result-desc" id="r-desc"></div>
   <div class="result-rule"></div>
-  <p class="cta-label">詳しい結果とエネルギー画像を受け取る</p>
+  <div class="line-steps">
+    <p class="line-step">① 下のボタンでLINE公式アカウントを友だち追加</p>
+    <div class="line-step-divider"></div>
+    <p class="line-step">② 友だち追加後、トーク画面に</p>
+    <div class="line-step-name" id="inst-name"></div>
+    <p class="line-step">と入力して送信してください</p>
+  </div>
   <a class="btn-line" id="btn-line" href="https://lin.ee/zbT55QS" target="_blank"
      onclick="trackLine()">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="white" aria-hidden="true">
-      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.630 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
     </svg>
-    LINEで詳しい結果を受け取る
+    LINE公式アカウントを友だち追加
   </a>
-  <button class="btn-copy" id="btn-copy" onclick="copyName()">
-    「<span id="copy-lbl"></span>」をコピーしてLINEに送る
-  </button>
-  <p class="copy-hint">LINEが開かない場合は上のボタンで天使名をコピーし、<br>公式LINEのトーク画面に貼り付けて送信してください</p>
 
   <div class="event-section">
     <div class="event-eyebrow">✦ EVENT ✦</div>
@@ -398,6 +386,9 @@
 </div>
 
 <script>
+// ════════════════════════════
+// データ
+// ════════════════════════════
 const QUESTIONS = [
   {
     text: "休日に一人時間ができたら、\n自然とやること",
@@ -460,6 +451,9 @@ const ANGELS = {
   }
 };
 
+// ════════════════════════════
+// 診断ロジック
+// ════════════════════════════
 let cur = 0, answers = [], lastType = null;
 
 function startDiagnosis() {
@@ -508,45 +502,34 @@ function calcResult() {
   document.getElementById("r-name").textContent   = a.name;
   document.getElementById("r-catch").textContent  = a.catch;
   document.getElementById("r-desc").textContent   = a.desc;
-  document.getElementById("copy-lbl").textContent = a.name;
-  document.getElementById("btn-copy").dataset.name = a.name;
+  document.getElementById("inst-name").textContent = a.name;
 
   show("scr-result");
 
+  // Pixel: 診断完了
   if (typeof fbq !== "undefined") fbq("track", "Lead");
 }
 
+// ════════════════════════════
+// 画面切り替え
+// ════════════════════════════
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// ════════════════════════════
+// Meta Pixel: LINE クリック
+// ════════════════════════════
 function trackLine() {
   if (typeof fbq !== "undefined") fbq("track", "Contact");
 }
 
-function copyName() {
-  const name = document.getElementById("btn-copy").dataset.name;
-  navigator.clipboard.writeText(name).then(() => {
-    const t = document.getElementById("toast");
-    t.classList.add("show");
-    setTimeout(() => t.classList.remove("show"), 2200);
-  }).catch(() => {
-    const ta = document.createElement("textarea");
-    ta.value = name;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    const t = document.getElementById("toast");
-    t.classList.add("show");
-    setTimeout(() => t.classList.remove("show"), 2200);
-  });
-}
 
+// ════════════════════════════
+// 星パーティクル
+// ════════════════════════════
 (function () {
   const cv = document.getElementById("starCanvas");
   const cx = cv.getContext("2d");
