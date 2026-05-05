@@ -43,7 +43,6 @@
       z-index: 0;
     }
 
-    /* ── Screens ── */
     .screen {
       display: none;
       position: relative;
@@ -61,7 +60,6 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* ── Hero ── */
     .hero-eyebrow {
       font-size: 11px;
       letter-spacing: 0.35em;
@@ -93,7 +91,6 @@
       margin-bottom: 48px;
     }
 
-    /* ── Buttons ── */
     .btn-gold {
       display: block;
       width: 100%;
@@ -113,7 +110,6 @@
     }
     .btn-gold:active { transform: scale(.96); box-shadow: 0 2px 12px rgba(201,168,76,.3); }
 
-    /* ── Progress ── */
     .progress-wrap {
       width: 100%;
       max-width: 340px;
@@ -139,7 +135,6 @@
       transition: width .4s ease;
     }
 
-    /* ── Question ── */
     .q-text {
       font-size: 17px;
       font-weight: 300;
@@ -184,7 +179,6 @@
       margin-right: 8px;
     }
 
-    /* ── Result ── */
     .result-eyebrow {
       font-size: 11px;
       letter-spacing: 0.3em;
@@ -224,13 +218,6 @@
       height: 1px;
       background: linear-gradient(to right, transparent, #c9a84c, transparent);
       margin: 0 auto 36px;
-    }
-
-    .cta-label {
-      font-size: 12px;
-      color: #8890b8;
-      margin-bottom: 14px;
-      text-align: center;
     }
 
     .btn-line {
@@ -328,7 +315,6 @@
       margin: 14px auto;
     }
 
-    /* ── Event ── */
     .event-section {
       width: 100%;
       max-width: 340px;
@@ -375,7 +361,10 @@
   <div class="hero-eyebrow">✦ ANGEL DIAGNOSIS ✦</div>
   <h1 class="hero-title">4つの質問でわかる、<br>あなたの守護天使</h1>
   <div class="hero-rule"></div>
-  <p class="hero-sub">恋愛・仕事・お金・健康、<br>どの力が今あなたに宿っている？</p>
+  <p class="hero-sub">
+    恋愛・仕事・お金・健康、<br>どの力が今あなたに宿っている？<br><br>
+    <span style="font-size: 11px; color: #c9a84c; border: 1px solid #c9a84c; padding: 4px 8px; border-radius: 4px; display: inline-block; letter-spacing: 0.05em;">マリアンヌ＊ミシェルによるエネルギー封入画像進呈</span>
+  </p>
   <button class="btn-gold" onclick="startDiagnosis()">診断スタート</button>
 </div>
 
@@ -401,11 +390,12 @@
     <div class="cta-benefits-label">✦ LINEで受け取れるもの ✦</div>
     <div class="cta-benefit-item">
       <span class="cta-benefit-icon">🖼</span>
-      <span><strong id="benefit-name"></strong>の特別エネルギー封入画像</span>
+      <span><strong><span id="benefit-name"></span></strong>の特別エネルギー封入画像<br>
+      <small style="font-size: 10px; color: #9aa0c8;">by マリアンヌ＊ミシェル</small></span>
     </div>
     <div class="cta-benefit-item">
       <span class="cta-benefit-icon">✨</span>
-      <span><strong id="benefit-name2"></strong>があなたに伝えるメッセージ</span>
+      <span><strong><span id="benefit-name2"></span></strong>があなたに伝えるメッセージ</span>
     </div>
   </div>
   <p class="cta-coupon-note">🎀 受け取った画像はイベント当日に使えるクーポンとしてもプレゼント！</p>
@@ -438,9 +428,6 @@
 </div>
 
 <script>
-// ════════════════════════════
-// データ
-// ════════════════════════════
 const QUESTIONS = [
   {
     text: "休日に一人時間ができたら、\n自然とやること",
@@ -503,9 +490,6 @@ const ANGELS = {
   }
 };
 
-// ════════════════════════════
-// 診断ロジック
-// ════════════════════════════
 let cur = 0, answers = [], lastType = null;
 
 function startDiagnosis() {
@@ -561,26 +545,16 @@ function calcResult() {
   show("scr-result");
 }
 
-// ════════════════════════════
-// 画面切り替え
-// ════════════════════════════
 function show(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-// ════════════════════════════
-// Meta Pixel: LINE クリック
-// ════════════════════════════
 function trackLine() {
   if (typeof fbq !== "undefined") fbq("track", "Lead");
 }
 
-
-// ════════════════════════════
-// 星パーティクル
-// ════════════════════════════
 (function () {
   const cv = document.getElementById("starCanvas");
   const cx = cv.getContext("2d");
