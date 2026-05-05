@@ -10,7 +10,6 @@
   <meta property="og:type" content="website">
   <meta name="theme-color" content="#1a0533">
 
-  <!-- Meta Pixel -->
   <script>
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -26,7 +25,6 @@
   <noscript><img height="1" width="1" style="display:none"
     src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1"
     /></noscript>
-
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -373,7 +371,6 @@
 
 <canvas id="starCanvas"></canvas>
 
-<!-- ════ HERO ════ -->
 <div class="screen active" id="scr-hero">
   <div class="hero-eyebrow">✦ ANGEL DIAGNOSIS ✦</div>
   <h1 class="hero-title">4つの質問でわかる、<br>あなたの守護天使</h1>
@@ -382,7 +379,6 @@
   <button class="btn-gold" onclick="startDiagnosis()">診断スタート</button>
 </div>
 
-<!-- ════ QUESTION ════ -->
 <div class="screen" id="scr-question">
   <div class="progress-wrap">
     <div class="progress-label" id="prog-label">Q1 / 4</div>
@@ -394,7 +390,6 @@
   <div class="choices" id="choices"></div>
 </div>
 
-<!-- ════ RESULT ════ -->
 <div class="screen" id="scr-result">
   <div class="result-eyebrow">あなたの守護天使</div>
   <div class="result-name" id="r-name"></div>
@@ -450,7 +445,7 @@ const QUESTIONS = [
   {
     text: "休日に一人時間ができたら、\n自然とやること",
     choices: [
-      { l:"A", text:"会いたい人に連絡してみる",                          type:"haniel"  },
+      { l:"A", text:"会いたい人に連絡してみる",                        type:"haniel"  },
       { l:"B", text:"気になっていたことを調べて、将来のことを考える",      type:"uriel"   },
       { l:"C", text:"スキルアップの本を読んだり、やりたいことを計画する",  type:"michael" },
       { l:"D", text:"とにかくゆっくり寝て、体を休める",                   type:"raphael" }
@@ -564,9 +559,6 @@ function calcResult() {
   document.getElementById("benefit-name2").textContent = a.name;
 
   show("scr-result");
-
-  // Pixel: 診断完了
-  if (typeof fbq !== "undefined") fbq("track", "Lead");
 }
 
 // ════════════════════════════
@@ -582,7 +574,7 @@ function show(id) {
 // Meta Pixel: LINE クリック
 // ════════════════════════════
 function trackLine() {
-  if (typeof fbq !== "undefined") fbq("track", "Contact");
+  if (typeof fbq !== "undefined") fbq("track", "Lead");
 }
 
 
