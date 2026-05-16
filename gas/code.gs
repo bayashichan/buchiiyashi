@@ -1698,41 +1698,57 @@ function combinePresentationsCleanup(targetId) {
 }
 /**
  * 指定されたフォルダ内の画像をスキャンして、正規化されたファイル名とIDのマップを返す
+ * サブフォルダも再帰的にスキャンする
  */
 function getFolderImagesList(folderId) {
   try {
     const folder = DriveApp.getFolderById(folderId);
-    const files = folder.getFiles();
     const imageMap = {};
-    
-    while (files.hasNext()) {
-      const file = files.next();
-      const fileName = file.getName();
-      
-      // 拡張子を除去
-      const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
-      
-      // 正規化（記号・スペースを除去して小文字化）
-      const normalized = normalizeName(nameWithoutExt);
-      
-      if (normalized) {
-        // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
-        try {
-          if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
-            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-          }
-        } catch (e) {
-          console.warn('Failed to set sharing for ' + fileName);
-        }
-        
-        imageMap[normalized] = file.getId();
-      }
-    }
-    
+
+    scanFolderRecursive(folder, imageMap);
+
     return { success: true, images: imageMap };
   } catch (error) {
     console.error('getFolderImagesList error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+/**
+ * フォルダを再帰的にスキャンしてimageMapにファイルIDを追記する
+ */
+function scanFolderRecursive(folder, imageMap) {
+  // トップレベルのファイルを処理
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const file = files.next();
+    const fileName = file.getName();
+
+    // 拡張子を除去
+    const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+
+    // 正規化（記号・スペースを除去して小文字化）
+    const normalized = normalizeName(nameWithoutExt);
+
+    if (normalized) {
+      // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
+      try {
+        if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
+          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        }
+      } catch (e) {
+        console.warn('Failed to set sharing for ' + fileName);
+      }
+
+      imageMap[normalized] = file.getId();
+    }
+  }
+
+  // サブフォルダも再帰的にスキャン
+  const subFolders = folder.getFolders();
+  while (subFolders.hasNext()) {
+    const subFolder = subFolders.next();
+    scanFolderRecursive(subFolder, imageMap);
   }
 }
 
