@@ -1716,22 +1716,23 @@ function getFolderImagesList(folderId) {
 
 /**
  * フォルダを再帰的にスキャンしてimageMapにファイルIDを追記する
+ * @param {Folder} folder - スキャン対象フォルダ
+ * @param {Object} imageMap - 結果を格納するマップ
+ * @param {string} prefix - 正規化済みの親フォルダパス（末尾に"/"付き）
  */
-function scanFolderRecursive(folder, imageMap) {
-  // トップレベルのファイルを処理
+function scanFolderRecursive(folder, imageMap, prefix) {
+  prefix = prefix || "";
+
+  // ファイルをスキャン（キー = prefix + 正規化ファイル名）
   const files = folder.getFiles();
   while (files.hasNext()) {
     const file = files.next();
     const fileName = file.getName();
 
-    // 拡張子を除去
     const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
-
-    // 正規化（記号・スペースを除去して小文字化）
-    const normalized = normalizeName(nameWithoutExt);
+    const normalized = prefix + normalizeName(nameWithoutExt);
 
     if (normalized) {
-      // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
       try {
         if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
           file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -1744,11 +1745,12 @@ function scanFolderRecursive(folder, imageMap) {
     }
   }
 
-  // サブフォルダも再帰的にスキャン
+  // サブフォルダも再帰スキャン（フォルダ名を正規化してprefixに追加）
   const subFolders = folder.getFolders();
   while (subFolders.hasNext()) {
     const subFolder = subFolders.next();
-    scanFolderRecursive(subFolder, imageMap);
+    const subPrefix = prefix + normalizeName(subFolder.getName()) + "/";
+    scanFolderRecursive(subFolder, imageMap, subPrefix);
   }
 }
 
