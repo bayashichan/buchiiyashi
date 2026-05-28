@@ -209,6 +209,93 @@
             <input type="hidden" name="category" id="categoryInput" required>
           </div>
 
+          <!-- 得意ジャンル -->
+          <div>
+            <label class="input-label">得意ジャンル<span class="text-xs text-gray-500 ml-2">（複数選択可）</span></label>
+            <p class="text-xs text-gray-500 mb-3">セッションで扱うテーマをすべて選択してください</p>
+            <input type="hidden" name="specialtyGenres" id="specialtyGenresInput">
+            <div class="space-y-3">
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-pink-50">
+                <p class="text-sm font-bold text-pink-700 mb-2">💕 恋愛・パートナーシップ<span class="text-xs font-normal text-gray-500 ml-1">（例: 恋愛、結婚、夫婦関係、出会い）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="恋愛"> 恋愛</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="結婚"> 結婚</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="夫婦関係"> 夫婦関係</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="出会い"> 出会い</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-green-50">
+                <p class="text-sm font-bold text-green-700 mb-2">👨‍👩‍👧 家族・子育て<span class="text-xs font-normal text-gray-500 ml-1">（例: 親子関係、子育て、親との関係、家族の絆）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="親子関係"> 親子関係</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="子育て"> 子育て</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="親との関係"> 親との関係</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="家族の絆"> 家族の絆</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-blue-50">
+                <p class="text-sm font-bold text-blue-700 mb-2">💼 仕事・キャリア<span class="text-xs font-normal text-gray-500 ml-1">（例: 転職、職場環境、天職探し）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="転職"> 転職</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="職場環境"> 職場環境</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="天職探し"> 天職探し</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-yellow-50">
+                <p class="text-sm font-bold text-yellow-700 mb-2">🤝 人間関係<span class="text-xs font-normal text-gray-500 ml-1">（例: 友人関係、職場の人間関係、気疲れ、孤独）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="友人関係"> 友人関係</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="職場の人間関係"> 職場の人間関係</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="気疲れ・人付き合いのしんどさ"> 気疲れ・人付き合いのしんどさ</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="孤独"> 孤独</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-amber-50">
+                <p class="text-sm font-bold text-amber-700 mb-2">💰 お金・豊かさ<span class="text-xs font-normal text-gray-500 ml-1">（例: 金銭ブロック、豊かさ意識、経済的自立）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="金銭ブロック"> 金銭ブロック</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="豊かさ意識"> 豊かさ意識</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="経済的自立"> 経済的自立</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-purple-50">
+                <p class="text-sm font-bold text-purple-700 mb-2">🧠 こころ・メンタル<span class="text-xs font-normal text-gray-500 ml-1">（例: 不安・緊張、自己肯定感、感情のケア、トラウマ）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="不安・緊張"> 不安・緊張</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="自己肯定感"> 自己肯定感</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="感情のケア"> 感情のケア</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="トラウマ・過去の傷"> トラウマ・過去の傷</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-teal-50">
+                <p class="text-sm font-bold text-teal-700 mb-2">✨ からだ・エネルギー<span class="text-xs font-normal text-gray-500 ml-1">（例: 疲労・体の不調、気の流れ、チャクラ）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="疲労・体の不調"> 疲労・体の不調</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="気の流れ"> 気の流れ</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="チャクラ"> チャクラ</label>
+                </div>
+              </div>
+
+              <div class="border border-gray-200 rounded-lg p-3 bg-indigo-50">
+                <p class="text-sm font-bold text-indigo-700 mb-2">🌟 自己探求・スピリチュアル<span class="text-xs font-normal text-gray-500 ml-1">（例: 魂の目的、前世、チャネリング、直感開発）</span></p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="魂の目的"> 魂の目的</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="前世"> 前世</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="チャネリング"> チャネリング</label>
+                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="直感開発"> 直感開発</label>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
           <!-- セッション禁止警告 -->
           <div id="sessionWarning" class="session-warning">
             ⚠️ <strong>ご注意</strong>: 選択されたブースでは「占い・スピリチュアル」「ボディケア・美容」のセッションを行うことができません。物販・飲食のみの出展となります。
@@ -235,6 +322,19 @@
             <textarea name="menuName" class="input-field" rows="3" maxlength="100" placeholder="〇〇ヒーリング　20分　2000円"
               required></textarea>
             <div class="char-counter"><span id="menuNameCount">0</span>/100</div>
+          </div>
+
+          <div>
+            <label class="input-label">事前予約<span class="required">*</span></label>
+            <p class="text-xs text-gray-500 mb-2">お客様からの事前予約を受け付けますか？</p>
+            <div class="flex gap-4 mt-2">
+              <label class="checkbox-label">
+                <input type="radio" name="advanceReservation" value="可" required> 事前予約可
+              </label>
+              <label class="checkbox-label">
+                <input type="radio" name="advanceReservation" value="不可" checked> 事前予約不可（当日受付のみ）
+              </label>
+            </div>
           </div>
 
           <div>
@@ -389,7 +489,11 @@
               </label>
             </div>
             <div id="prizeInputSection" class="mt-3 hidden">
-              <input type="text" name="prizeContent" class="input-field" placeholder="景品内容を入力してください">
+              <input type="text" name="prizeContent" class="input-field" placeholder="物品名をご記入ください（例：クリスタルストーン、ハンドクリームセット、ハンドメイド雑貨など）">
+              <div class="mt-2 text-xs text-gray-600 space-y-1">
+                <p>※ 無料券・割引券などチケットのみのご提供はご遠慮ください。物品のご提供をお願いします。</p>
+                <p>※ 物品と無料チケットを組み合わせてのご提供はOKです。</p>
+              </div>
             </div>
           </div>
 

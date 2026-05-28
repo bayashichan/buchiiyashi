@@ -187,9 +187,11 @@ function searchRepeater(name, email) {
     phone: getColIndex(['電話番号']),
     zip: getColIndex(['郵便番号']),
     address: getColIndex(['住所']),
-    category: getColIndex(['出展カテゴリ']),  // 追加
+    category: getColIndex(['出展カテゴリ']),
+    specialtyGenres: getColIndex(['得意ジャンル']),
     exhibitorName: getColIndex(['出展名']),
     menuName: getColIndex(['出展メニュー']),
+    advanceReservation: getColIndex(['事前予約']),
     selfIntro: getColIndex(['自己紹介']),
     shortPR: getColIndex(['一言PR']),
     photoUrl: getColIndex(['プロフィール写真']),
@@ -246,10 +248,12 @@ function searchRepeater(name, email) {
         phone: getCell(row, idx.phone),
         postalCode: getCell(row, idx.zip),
         address: getCell(row, idx.address),
-        category: getCell(row, idx.category),  // 追加
+        category: getCell(row, idx.category),
+        specialtyGenres: getCell(row, idx.specialtyGenres),
         exhibitorName: getCell(row, idx.exhibitorName),
         boothName: getCell(row, idx.boothName),
         menuName: getCell(row, idx.menuName),
+        advanceReservation: getCell(row, idx.advanceReservation),
         selfIntro: getCell(row, idx.selfIntro),
         shortPR: getCell(row, idx.shortPR),
         equipment: getCell(row, idx.equipment),
@@ -302,11 +306,13 @@ function getExhibitorList(spreadsheetId) {
       email: getColIndex(['メールアドレス']),
       exhibitorName: getColIndex(['出展名']),
       menuName: getColIndex(['出展メニュー']),
+      advanceReservation: getColIndex(['事前予約']),
       selfIntro: getColIndex(['自己紹介']),
       shortPR: getColIndex(['一言PR']),
       boothName: getColIndex(['出展ブース']),
       photoUrl: getColIndex(['プロフィール写真']),
-      sns: getColIndex(['SNS'])
+      sns: getColIndex(['SNS']),
+      specialtyGenres: getColIndex(['得意ジャンル'])
     };
     
     const getCell = (row, colIdx) => {
@@ -332,11 +338,13 @@ function getExhibitorList(spreadsheetId) {
         email: getCell(row, idx.email),
         exhibitorName: exhibitorName,
         menuName: getCell(row, idx.menuName),
+        advanceReservation: getCell(row, idx.advanceReservation),
         selfIntro: getCell(row, idx.selfIntro),
         shortPR: getCell(row, idx.shortPR),
         boothName: getCell(row, idx.boothName),
         photoUrl: getCell(row, idx.photoUrl),
-        snsLinks: parseSnsLinks(getCell(row, idx.sns))
+        snsLinks: parseSnsLinks(getCell(row, idx.sns)),
+        specialtyGenres: getCell(row, idx.specialtyGenres)
       });
     }
     
@@ -719,9 +727,11 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.email,                                  // メールアドレス
       data.phoneNumber || '',                      // 電話番号
       data.category || '',                         // 出展カテゴリ
+      data.specialtyGenres || '',                  // 得意ジャンル
       data.exhibitorName,                          // 出展名
       data.boothName,                              // 出展ブース
       data.menuName,                               // 出展メニュー
+      data.advanceReservation || '不可',           // 事前予約
       data.equipment || '',                        // ボディーブース持ち込み物品
       data.shortPR,                                // 一言PR
       data.selfIntro,                              // 自己紹介
@@ -738,7 +748,7 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.isMember === '1' ? 'はい' : 'いいえ',  // 協会会員
       data.stampRallyPrize || 'ない',              // 景品提供
       data.prizeContent || '',                     // 景品内容
-      data.postalCode || '',                       // 郵便番号  
+      data.postalCode || '',                       // 郵便番号
       data.address,                                // 住所
       data.notes || '',                            // 備考・質問
       '',                                          // スタッフメモ（空欄）
@@ -782,9 +792,11 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.email,                                  // メールアドレス
       data.phoneNumber || '',                      // 電話番号
       data.category || '',                         // 出展カテゴリ
+      data.specialtyGenres || '',                  // 得意ジャンル
       data.exhibitorName,                          // 出展名
       data.boothName,                              // 出展ブース
       data.menuName,                               // 出展メニュー
+      data.advanceReservation || '不可',           // 事前予約
       data.equipment || '',                        // ボディーブース持ち込み物品
       data.shortPR,                                // 一言PR
       data.selfIntro,                              // 自己紹介
@@ -801,7 +813,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.isMember === '1' ? 'はい' : 'いいえ',  // 協会会員
       data.stampRallyPrize || 'ない',              // 景品提供
       data.prizeContent || '',                     // 景品内容
-      data.postalCode || '',                       // 郵便番号  
+      data.postalCode || '',                       // 郵便番号
       data.address,                                // 住所
       data.notes || '',                            // 備考・質問
       '',                                          // スタッフメモ（空欄）
@@ -820,7 +832,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
 function addHeaderRow(sheet) {
   sheet.appendRow([
     '開催回', '申込日時', '氏名', 'フリガナ', 'メールアドレス', '電話番号',
-    '出展カテゴリ', '出展名', '出展ブース', '出展メニュー', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
+    '出展カテゴリ', '得意ジャンル', '出展名', '出展ブース', '出展メニュー', '事前予約', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
     'SNS', '写真掲載可否', 'プロフィール写真', '参加人数追加オプション', 'コンセント', '椅子追加',
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
@@ -833,7 +845,7 @@ function addEventHeaderRow(sheet) {
   sheet.appendRow([
     '座席番号',  // ★運営が後で入力
     '申込日時', '氏名', 'フリガナ', 'メールアドレス', '電話番号',
-    '出展カテゴリ', '出展名', '出展ブース', '出展メニュー', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
+    '出展カテゴリ', '得意ジャンル', '出展名', '出展ブース', '出展メニュー', '事前予約', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
     'SNS', '写真掲載可否', 'プロフィール写真', '参加人数追加オプション', 'コンセント', '椅子追加',
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
@@ -862,10 +874,12 @@ LINE名: ${data.lineDisplayName || '-'}
 ■ 出展情報
 出展名: ${data.exhibitorName}
 カテゴリ: ${data.category}
+得意ジャンル: ${data.specialtyGenres || '未選択'}
 ブース: ${data.boothName}
 持ち込み物品: ${data.equipment || 'なし'}
 出展メニュー名:
 ${data.menuName}
+事前予約: ${data.advanceReservation || '不可'}
 自己紹介:
 ${data.selfIntro}
 一言PR: ${data.shortPR}
@@ -942,9 +956,11 @@ function sendConfirmationEmail(data, calculationResult) {
     '協会会員': isMember ? 'はい' : 'いいえ',
     '出展名（セラピスト名／屋号）': data.exhibitorName,
     '出展カテゴリ': data.category,
+    '得意ジャンル': data.specialtyGenres || '',
     '出展ブース': data.boothName,
     '持ち込み物品': data.equipment || '',
     '出展メニュー名': data.menuName,
+    '事前予約': data.advanceReservation || '不可',
     '自己紹介': data.selfIntro,
     '一言PR': data.shortPR,
     '写真掲載許可': data.photoPermission,

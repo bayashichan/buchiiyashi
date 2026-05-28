@@ -44,15 +44,30 @@ window.addEventListener('configLoaded', () => {
     initPostalCodeSearch();
     initEmailConfirmation();
     initFileSizeCheck();
-    initRepeaterSearch(); // 追加
-    updateHeaderInfo(); // 追加
+    initRepeaterSearch();
+    updateHeaderInfo();
     updateEarlyBirdBanner();
     updateOptionsUI();
     calculatePrice();
+    initSpecialtyGenres();
 
     // LIFF初期化
     initLiff();
 });
+
+// 得意ジャンルのチェックボックス変更時に隠しinputを同期
+function initSpecialtyGenres() {
+    document.querySelectorAll('input[name="specialtyGenre"]').forEach(cb => {
+        cb.addEventListener('change', updateSpecialtyGenresInput);
+    });
+}
+
+function updateSpecialtyGenresInput() {
+    const checked = [...document.querySelectorAll('input[name="specialtyGenre"]:checked')]
+        .map(cb => cb.value).join('、');
+    const hidden = document.getElementById('specialtyGenresInput');
+    if (hidden) hidden.value = checked;
+}
 
 // ========================================
 // LIFF (LINE Front-end Framework)
@@ -866,6 +881,15 @@ async function submitForm() {
         formData.append('partyCount', optionValues.partyCount);
         formData.append('secondaryPartyCount', optionValues.secondaryPartyCount);
 
+        // 得意ジャンルを収集（チェックされた項目をカンマ区切りに）
+        const checkedGenres = [...document.querySelectorAll('input[name="specialtyGenre"]:checked')]
+            .map(cb => cb.value).join('、');
+        formData.set('specialtyGenres', checkedGenres);
+
+        // 事前予約
+        const advanceReservation = document.querySelector('input[name="advanceReservation"]:checked')?.value || '不可';
+        formData.set('advanceReservation', advanceReservation);
+
         // SNSリンクを収集
         const snsLinks = [];
         document.querySelectorAll('.sns-input').forEach((input, index) => {
@@ -1333,6 +1357,21 @@ function fillFormWithData(data) {
     if (data.menuName) document.querySelector('textarea[name="menuName"]').value = data.menuName;
     if (data.selfIntro) document.querySelector('textarea[name="selfIntro"]').value = data.selfIntro;
     if (data.shortPR) document.querySelector('input[name="shortPR"]').value = data.shortPR;
+
+    // 得意ジャンルの復元
+    if (data.specialtyGenres) {
+        const genres = data.specialtyGenres.split(/[、,，]/).map(s => s.trim()).filter(Boolean);
+        document.querySelectorAll('input[name="specialtyGenre"]').forEach(cb => {
+            cb.checked = genres.includes(cb.value);
+        });
+        updateSpecialtyGenresInput();
+    }
+
+    // 事前予約の復元
+    if (data.advanceReservation) {
+        const radio = document.querySelector(`input[name="advanceReservation"][value="${data.advanceReservation}"]`);
+        if (radio) radio.checked = true;
+    }
 
     // 写真再利用（GASは photoUrl で返すので両方対応）
     const imageUrl = data.profileImageUrl || data.photoUrl;
