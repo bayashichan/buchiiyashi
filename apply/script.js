@@ -553,8 +553,12 @@ function hideTerms() {
     const cb = document.getElementById('agreeTermsCheckbox');
     if (cb) {
         cb.disabled = false;
-        cb.closest('label').classList.remove('opacity-40', 'cursor-not-allowed');
-        cb.closest('label').classList.add('cursor-pointer');
+        cb.classList.remove('opacity-30', 'cursor-not-allowed');
+        cb.classList.add('cursor-pointer');
+        const text = document.getElementById('agreeTermsText');
+        if (text) {
+            text.classList.remove('opacity-40', 'cursor-not-allowed');
+        }
         const hint = document.getElementById('termsHint');
         if (hint) hint.classList.add('hidden');
     }

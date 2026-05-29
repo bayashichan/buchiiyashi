@@ -214,7 +214,8 @@
             <label class="input-label">得意ジャンル<span class="text-xs text-gray-500 ml-2">（複数選択可）</span></label>
             <p class="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
               お客様がセッションを選びやすいよう、得意とするテーマのジャンルをお選びください。<br>
-              各ジャンルのカッコ内はテーマの例示です。当てはまるジャンルをすべてチェックしてください。
+              各ジャンルのカッコ内はテーマの例示です。当てはまるジャンルをすべてチェックしてください。<br>
+              なお、お選びいただいたジャンルは、出展者情報としてイベント公式HPおよびSNSに掲載させていただきます。
             </p>
             <input type="hidden" name="specialtyGenres" id="specialtyGenresInput">
             <div class="space-y-2">
@@ -560,11 +561,15 @@
 
         <div class="space-y-4">
           <div class="terms-box">
-            <label class="checkbox-label opacity-40 cursor-not-allowed" id="agreeTermsLabel">
-              <input type="checkbox" name="agreeTerms" id="agreeTermsCheckbox" required disabled>
-              <span><a href="#" class="text-orange-500 underline"
-                  onclick="showTerms(); return false;">出展規約</a>に同意します<span class="required">*</span></span>
-            </label>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" name="agreeTerms" id="agreeTermsCheckbox" required disabled
+                class="opacity-30 cursor-not-allowed">
+              <span>
+                <a href="#" class="text-orange-500 underline font-medium"
+                  onclick="showTerms(); return false;">出展規約</a>
+                <span id="agreeTermsText" class="opacity-40 cursor-not-allowed">に同意します<span class="required">*</span></span>
+              </span>
+            </div>
             <p id="termsHint" class="text-xs text-orange-500 mt-1">※ 上の「出展規約」リンクを開いて内容をご確認後、チェックできるようになります</p>
           </div>
 
