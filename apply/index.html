@@ -316,7 +316,7 @@
 
           <div>
             <label class="input-label">事前予約<span class="required">*</span></label>
-            <p class="text-xs text-gray-500 mb-2">お客様からの事前予約を受け付けますか？</p>
+            <p class="text-xs text-gray-600 mb-2">SNSでのご紹介に、事前予約の可否を掲載させていただきます。事前予約を受け付けるかどうかをお選びください。</p>
             <div class="flex gap-4 mt-2">
               <label class="checkbox-label">
                 <input type="radio" name="advanceReservation" value="可" required> 事前予約可
@@ -483,7 +483,7 @@
               <div class="mt-2 text-xs text-gray-600 space-y-1">
                 <p>※ 無料券・割引券などチケットのみのご提供はご遠慮ください。物品のご提供をお願いします。</p>
                 <p>※ 物品と無料チケットを組み合わせてのご提供はOKです。</p>
-                <p>※ お客様に中身がわかるよう、中身が見える形での提供にご協力ください。</p>
+                <p>※ お客様が選びやすいよう、中身が見えるような形の提供をお願いします。</p>
               </div>
             </div>
           </div>
@@ -560,11 +560,12 @@
 
         <div class="space-y-4">
           <div class="terms-box">
-            <label class="checkbox-label">
-              <input type="checkbox" name="agreeTerms" required>
+            <label class="checkbox-label opacity-40 cursor-not-allowed" id="agreeTermsLabel">
+              <input type="checkbox" name="agreeTerms" id="agreeTermsCheckbox" required disabled>
               <span><a href="#" class="text-orange-500 underline"
                   onclick="showTerms(); return false;">出展規約</a>に同意します<span class="required">*</span></span>
             </label>
+            <p id="termsHint" class="text-xs text-orange-500 mt-1">※ 上の「出展規約」リンクを開いて内容をご確認後、チェックできるようになります</p>
           </div>
 
           <div>
@@ -576,6 +577,13 @@
 
     </form>
   </main>
+
+  <!-- 申し込み前の注意 -->
+  <div class="max-w-2xl mx-auto px-4 pb-2">
+    <p class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+      ⚠️ <strong>お申し込み後の内容変更（画像・メニュー等）は原則できません。</strong>ご確認の上お申し込みください。
+    </p>
+  </div>
 
   <!-- Sticky フッター（料金表示） -->
   <footer class="price-footer">
@@ -716,6 +724,39 @@
               <p>お弁当 / 焼き菓子 / 茶葉 など</p>
             </div>
           </div>
+        </div>
+
+        <!-- 申し込み後の変更について -->
+        <div class="mb-4 bg-red-50 p-3 rounded-lg border border-red-300">
+          <h3 class="font-bold text-red-600 mb-2">【申し込み後の変更について】</h3>
+          <p class="font-bold text-red-600">お申し込み後の内容変更（プロフィール画像・出展メニュー・自己紹介文等）は原則できません。</p>
+          <p class="text-sm mt-1">内容を十分にご確認の上、お申し込みください。</p>
+        </div>
+
+        <!-- 飲食の販売について -->
+        <div class="mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-300">
+          <h3 class="font-bold text-yellow-700 mb-2">【飲食の販売について】</h3>
+          <ul class="space-y-1 list-disc pl-5 text-sm">
+            <li>調理行為（盛り付け、カット、飲料を注ぐなど）は全て禁止です。</li>
+            <li>販売する商品は、事前に包装または瓶詰めされたものに限ります。</li>
+            <li>常温で保存できる商品のみ販売可能です。</li>
+            <li>試食や試飲を希望される場合は、事前に事務局までご連絡ください。提供方法については、保健所の指導内容をお伝えいたします。</li>
+          </ul>
+
+          <p class="font-bold mt-3 mb-1">●以下の条件を満たしている方のみ出展が可能です。</p>
+          <ul class="space-y-1 list-disc pl-5 text-sm">
+            <li>販売する商品は、所管の保健所から必要な営業許可を受けた施設で製造・包装されていること。</li>
+            <li>賞味期限や消費期限が1〜3日以内の、日持ちしない商品を販売する場合は、台東区の保健所に「営業届」の提出が必要です。（出展申込後に営業届申請書コピーの送付が必要です）</li>
+            <li>食品衛生責任者の資格を保持していること。</li>
+            <li>過去に食品衛生法や関連法規に基づく処分を受けたことがないこと。</li>
+            <li>反社会的な団体、またはその構成員や関係者でないこと。</li>
+          </ul>
+
+          <p class="mt-3 text-sm">
+            <a href="https://sites.google.com/view/buchiiyashi/%E9%A3%B2%E9%A3%9F%E3%81%94%E5%87%BA%E5%B1%95%E3%81%AE%E6%96%B9%E3%81%B8" target="_blank" class="text-orange-500 underline font-bold">
+              ※ 飲食販売に関する詳しいご案内はこちら
+            </a>
+          </p>
         </div>
 
         <!-- スタンプラリー -->

@@ -549,6 +549,15 @@ function showTerms() {
 
 function hideTerms() {
     document.getElementById('termsModal').classList.add('hidden');
+    // 規約を開いた後にチェックボックスを有効化
+    const cb = document.getElementById('agreeTermsCheckbox');
+    if (cb) {
+        cb.disabled = false;
+        cb.closest('label').classList.remove('opacity-40', 'cursor-not-allowed');
+        cb.closest('label').classList.add('cursor-pointer');
+        const hint = document.getElementById('termsHint');
+        if (hint) hint.classList.add('hidden');
+    }
 }
 
 // ========================================
