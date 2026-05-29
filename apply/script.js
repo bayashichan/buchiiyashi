@@ -553,7 +553,7 @@ function hideTerms() {
     const cb = document.getElementById('agreeTermsCheckbox');
     if (cb) {
         cb.disabled = false;
-        cb.classList.remove('opacity-30', 'cursor-not-allowed');
+        cb.classList.remove('opacity-50', 'cursor-not-allowed');
         cb.classList.add('cursor-pointer');
         const text = document.getElementById('agreeTermsText');
         if (text) {
