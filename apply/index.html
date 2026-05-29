@@ -212,86 +212,76 @@
           <!-- 得意ジャンル -->
           <div>
             <label class="input-label">得意ジャンル<span class="text-xs text-gray-500 ml-2">（複数選択可）</span></label>
-            <p class="text-xs text-gray-500 mb-3">セッションで扱うテーマをすべて選択してください</p>
+            <p class="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
+              お客様がセッションを選びやすいよう、得意とするテーマのジャンルをお選びください。<br>
+              各ジャンルのカッコ内はテーマの例示です。当てはまるジャンルをすべてチェックしてください。
+            </p>
             <input type="hidden" name="specialtyGenres" id="specialtyGenresInput">
-            <div class="space-y-3">
+            <div class="space-y-2">
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-pink-50">
-                <p class="text-sm font-bold text-pink-700 mb-2">💕 恋愛・パートナーシップ<span class="text-xs font-normal text-gray-500 ml-1">（例: 恋愛、結婚、夫婦関係、出会い）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="恋愛"> 恋愛</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="結婚"> 結婚</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="夫婦関係"> 夫婦関係</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="出会い"> 出会い</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-pink-50 cursor-pointer hover:bg-pink-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="恋愛・パートナーシップ" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-pink-700">💕 恋愛・パートナーシップ</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 恋愛、結婚、夫婦関係、出会い</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-green-50">
-                <p class="text-sm font-bold text-green-700 mb-2">👨‍👩‍👧 家族・子育て<span class="text-xs font-normal text-gray-500 ml-1">（例: 親子関係、子育て、親との関係、家族の絆）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="親子関係"> 親子関係</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="子育て"> 子育て</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="親との関係"> 親との関係</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="家族の絆"> 家族の絆</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-green-50 cursor-pointer hover:bg-green-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="家族・子育て" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-green-700">👨‍👩‍👧 家族・子育て</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 親子関係、子育て、親との関係、家族の絆</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-blue-50">
-                <p class="text-sm font-bold text-blue-700 mb-2">💼 仕事・キャリア<span class="text-xs font-normal text-gray-500 ml-1">（例: 転職、職場環境、天職探し）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="転職"> 転職</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="職場環境"> 職場環境</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="天職探し"> 天職探し</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="仕事・キャリア" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-blue-700">💼 仕事・キャリア</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 転職、職場環境、天職探し</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-yellow-50">
-                <p class="text-sm font-bold text-yellow-700 mb-2">🤝 人間関係<span class="text-xs font-normal text-gray-500 ml-1">（例: 友人関係、職場の人間関係、気疲れ、孤独）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="友人関係"> 友人関係</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="職場の人間関係"> 職場の人間関係</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="気疲れ・人付き合いのしんどさ"> 気疲れ・人付き合いのしんどさ</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="孤独"> 孤独</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-yellow-50 cursor-pointer hover:bg-yellow-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="人間関係" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-yellow-700">🤝 人間関係</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 友人関係、職場の人間関係、気疲れ・人付き合いのしんどさ、孤独</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-amber-50">
-                <p class="text-sm font-bold text-amber-700 mb-2">💰 お金・豊かさ<span class="text-xs font-normal text-gray-500 ml-1">（例: 金銭ブロック、豊かさ意識、経済的自立）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="金銭ブロック"> 金銭ブロック</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="豊かさ意識"> 豊かさ意識</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="経済的自立"> 経済的自立</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-amber-50 cursor-pointer hover:bg-amber-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="お金・豊かさ" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-amber-700">💰 お金・豊かさ</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 金銭ブロック、豊かさ意識、経済的自立</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-purple-50">
-                <p class="text-sm font-bold text-purple-700 mb-2">🧠 こころ・メンタル<span class="text-xs font-normal text-gray-500 ml-1">（例: 不安・緊張、自己肯定感、感情のケア、トラウマ）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="不安・緊張"> 不安・緊張</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="自己肯定感"> 自己肯定感</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="感情のケア"> 感情のケア</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="トラウマ・過去の傷"> トラウマ・過去の傷</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-purple-50 cursor-pointer hover:bg-purple-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="こころ・メンタル" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-purple-700">🧠 こころ・メンタル</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 不安・緊張、自己肯定感、感情のケア、トラウマ・過去の傷</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-teal-50">
-                <p class="text-sm font-bold text-teal-700 mb-2">✨ からだ・エネルギー<span class="text-xs font-normal text-gray-500 ml-1">（例: 疲労・体の不調、気の流れ、チャクラ）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="疲労・体の不調"> 疲労・体の不調</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="気の流れ"> 気の流れ</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="チャクラ"> チャクラ</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-teal-50 cursor-pointer hover:bg-teal-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="からだ・エネルギー" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-teal-700">✨ からだ・エネルギー</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 疲労・体の不調、気の流れ、チャクラ</p>
                 </div>
-              </div>
+              </label>
 
-              <div class="border border-gray-200 rounded-lg p-3 bg-indigo-50">
-                <p class="text-sm font-bold text-indigo-700 mb-2">🌟 自己探求・スピリチュアル<span class="text-xs font-normal text-gray-500 ml-1">（例: 魂の目的、前世、チャネリング、直感開発）</span></p>
-                <div class="flex flex-wrap gap-x-4 gap-y-1">
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="魂の目的"> 魂の目的</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="前世"> 前世</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="チャネリング"> チャネリング</label>
-                  <label class="checkbox-label text-sm"><input type="checkbox" name="specialtyGenre" value="直感開発"> 直感開発</label>
+              <label class="flex items-start gap-3 border border-gray-200 rounded-lg p-3 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors">
+                <input type="checkbox" name="specialtyGenre" value="自己探求・スピリチュアル" class="mt-0.5 shrink-0">
+                <div>
+                  <p class="text-sm font-bold text-indigo-700">🌟 自己探求・スピリチュアル</p>
+                  <p class="text-xs text-gray-500 mt-0.5">例: 魂の目的、前世、チャネリング、直感開発</p>
                 </div>
-              </div>
+              </label>
 
             </div>
           </div>
