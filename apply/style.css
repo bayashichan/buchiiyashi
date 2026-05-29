@@ -423,6 +423,11 @@ textarea.input-field {
   padding: 1rem;
 }
 
+#agreeTermsCheckbox {
+  border: 2px solid #222;
+  outline: 1px solid #444;
+}
+
 /* SNSバッジ */
 .sns-badge {
   display: inline-flex;
