@@ -187,10 +187,14 @@ function initCategories() {
 
 function selectCategory(category, btn) {
     // 全ボタンの選択解除
-    document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.category-btn').forEach(b => {
+        b.classList.remove('selected', 'bg-orange-500', 'text-white');
+        b.classList.add('bg-gray-100');
+    });
 
     // 選択
     btn.classList.add('selected');
+    btn.classList.remove('bg-gray-100');
     selectedCategory = category;
     document.getElementById('categoryInput').value = category;
 
