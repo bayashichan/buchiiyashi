@@ -727,11 +727,9 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.email,                                  // メールアドレス
       data.phoneNumber || '',                      // 電話番号
       data.category || '',                         // 出展カテゴリ
-      data.specialtyGenres || '',                  // 得意ジャンル
       data.exhibitorName,                          // 出展名
       data.boothName,                              // 出展ブース
       data.menuName,                               // 出展メニュー
-      data.advanceReservation || '不可',           // 事前予約
       data.equipment || '',                        // ボディーブース持ち込み物品
       data.shortPR,                                // 一言PR
       data.selfIntro,                              // 自己紹介
@@ -756,7 +754,9 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       '',                                          // 入金確認（空欄）
       '',                                          // 入金日（空欄）
       data.lineUserId || '',                       // LINE UserID
-      data.lineDisplayName || ''                   // LINE DisplayName
+      data.lineDisplayName || '',                  // LINE DisplayName
+      data.specialtyGenres || '',                  // 得意ジャンル
+      data.advanceReservation || '不可'            // 事前予約
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -792,11 +792,9 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.email,                                  // メールアドレス
       data.phoneNumber || '',                      // 電話番号
       data.category || '',                         // 出展カテゴリ
-      data.specialtyGenres || '',                  // 得意ジャンル
       data.exhibitorName,                          // 出展名
       data.boothName,                              // 出展ブース
       data.menuName,                               // 出展メニュー
-      data.advanceReservation || '不可',           // 事前予約
       data.equipment || '',                        // ボディーブース持ち込み物品
       data.shortPR,                                // 一言PR
       data.selfIntro,                              // 自己紹介
@@ -821,7 +819,9 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       '',                                          // 入金確認（空欄）
       '',                                          // 入金日（空欄）
       data.lineUserId || '',                       // LINE UserID
-      data.lineDisplayName || ''                   // LINE DisplayName
+      data.lineDisplayName || '',                  // LINE DisplayName
+      data.specialtyGenres || '',                  // 得意ジャンル
+      data.advanceReservation || '不可'            // 事前予約
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -832,11 +832,12 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
 function addHeaderRow(sheet) {
   sheet.appendRow([
     '開催回', '申込日時', '氏名', 'フリガナ', 'メールアドレス', '電話番号',
-    '出展カテゴリ', '得意ジャンル', '出展名', '出展ブース', '出展メニュー', '事前予約', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
+    '出展カテゴリ', '出展名', '出展ブース', '出展メニュー', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
     'SNS', '写真掲載可否', 'プロフィール写真', '参加人数追加オプション', 'コンセント', '椅子追加',
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
-    'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名'
+    'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
+    '得意ジャンル', '事前予約'
   ]);
 }
 
@@ -845,11 +846,12 @@ function addEventHeaderRow(sheet) {
   sheet.appendRow([
     '座席番号',  // ★運営が後で入力
     '申込日時', '氏名', 'フリガナ', 'メールアドレス', '電話番号',
-    '出展カテゴリ', '得意ジャンル', '出展名', '出展ブース', '出展メニュー', '事前予約', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
+    '出展カテゴリ', '出展名', '出展ブース', '出展メニュー', 'ボディーブース持ち込み物品', '一言PR', '自己紹介',
     'SNS', '写真掲載可否', 'プロフィール写真', '参加人数追加オプション', 'コンセント', '椅子追加',
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
-    'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名'
+    'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
+    '得意ジャンル', '事前予約'
   ]);
 }
 
