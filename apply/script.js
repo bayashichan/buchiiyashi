@@ -25,6 +25,7 @@ const SNS_PATTERNS = [
     { pattern: /youtube\.com|youtu\.be/i, name: 'YouTube', color: '#FF0000' },
     { pattern: /tiktok\.com/i, name: 'TikTok', color: '#000000' },
     { pattern: /ameblo\.jp|ameba\.jp/i, name: 'Ameblo', color: '#1F8742' },
+    { pattern: /note\.com|note\.mu/i, name: 'note', color: '#41C9B4' },
     { pattern: /line\.me|lin\.ee/i, name: '公式LINE', color: '#00B900' },
     { pattern: /twitter\.com|x\.com/i, name: 'X(Twitter)', color: '#1DA1F2' },
     { pattern: /facebook\.com|fb\.com/i, name: 'Facebook', color: '#1877F2' },
