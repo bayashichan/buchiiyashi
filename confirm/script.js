@@ -215,7 +215,7 @@ function getSnsEmoji(type) {
     const map = {
         'Instagram': '📸', 'Facebook': '👤', '公式LINE': '💬',
         'YouTube': '▶️', 'TikTok': '🎵', 'X(Twitter)': '🐦',
-        'Ameblo': '📝', 'HP': '🌐', 'Linktree': '🌐', 'lit.link': '🌐'
+        'Ameblo': '📝', 'note': '✍️', 'HP': '🌐', 'Linktree': '🌐', 'lit.link': '🌐'
     };
     return map[type] || '🔗';
 }

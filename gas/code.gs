@@ -381,6 +381,7 @@ function parseSnsLinks(str) {
       if (url.includes('instagram.com') || url.includes('instagr.am')) type = 'Instagram';
       else if (url.includes('facebook.com') || url.includes('fb.com')) type = 'Facebook';
       else if (url.includes('ameblo.jp') || url.includes('ameba.jp')) type = 'Ameblo';
+      else if (url.includes('note.com') || url.includes('note.mu')) type = 'note';
       else if (url.includes('lin.ee') || url.includes('line.me')) type = '公式LINE';
       else if (url.includes('youtube.com') || url.includes('youtu.be')) type = 'YouTube';
       else if (url.includes('tiktok.com')) type = 'TikTok';
