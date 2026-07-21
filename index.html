@@ -81,10 +81,10 @@
     <script>
     (function () {
         var DEST = 'https://sites.google.com/view/buchiiyashi';
-        // タグの発火を待つ最小待機時間（ms）。短いほどスムーズ、長いほど発火が確実。
-        // PageView は <head> の fbq('track', 'PageView') で発火済み。二重計上を
-        // 避けるため画像ビーコンは使わず、送信の完了を待ってから転送するだけにする。
-        var WAIT_MS = 800;
+        var PIXEL_ID = '1143852114505095';
+        var EVENT = 'PageView';
+        var MAX_WAIT = 2500;         // これ以上は待たずに転送（保険・ms）
+        var BUFFER_AFTER_LOAD = 400; // タグ読込後、送信完了を待つ時間（ms）
 
         var done = false;
         function go() {
@@ -93,7 +93,29 @@
             window.location.replace(DEST);
         }
 
-        setTimeout(go, WAIT_MS);
+        // fbevents.js が読み込めない/ブロックされた時だけの最終手段。
+        // fbq が未送信のケースでのみ呼ぶので二重計上しない。
+        function fireFallbackBeacon() {
+            var img = new Image();
+            img.src = 'https://www.facebook.com/tr?id=' + PIXEL_ID +
+                      '&ev=' + EVENT + '&noscript=1&rnd=' + Date.now();
+        }
+
+        // PageView は <head> の fbq('track', 'PageView') で発火予約済み。
+        // 固定時間ではなく、fbevents.js が実際に読み込まれて送信されるのを
+        // 待ってから転送する（IAB など低速環境でタグが消えるのを防ぐ）。
+        // 読込完了の合図＝ fbq.callMethod がセットされること。
+        var start = Date.now();
+        (function waitAndGo() {
+            if (window.fbq && window.fbq.callMethod) {
+                setTimeout(go, BUFFER_AFTER_LOAD);
+            } else if (Date.now() - start >= MAX_WAIT) {
+                fireFallbackBeacon();
+                setTimeout(go, 300);
+            } else {
+                setTimeout(waitAndGo, 50);
+            }
+        })();
     })();
     </script>
 </body>
