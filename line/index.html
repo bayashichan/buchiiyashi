@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ぶち癒しフェスタ in 東京</title>
+    <title>公式LINE 出展申し込み</title>
 
     <!-- ===================================================================
          トラッキングタグ（計測用）
-         Google サイトには埋め込めないタグをこの中継ページで発火させる。
-         ここに他のタグ（Google 広告 / TikTok 等）を追加する場合は、
-         下の firePixels() 内のビーコン送信も合わせて追記すること。
+         Google サイトのライン登録ボタンからこのページに遷移させ、
+         リード（Lead）を発火させてから公式LINEへ転送する。
+         インスタ等のアプリ内ブラウザでも、自社ドメインの通常ページなので
+         タグが確実に発火する。
          =================================================================== -->
     <!-- Meta Pixel -->
     <script>
@@ -23,6 +24,7 @@
     'https://connect.facebook.net/en_US/fbevents.js');
     fbq('init', '1143852114505095');
     fbq('track', 'PageView');
+    fbq('track', 'Lead');
     </script>
     <!-- End Meta Pixel -->
 
@@ -31,8 +33,8 @@
         html, body { height: 100%; }
         body {
             font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', -apple-system, sans-serif;
-            background-color: #fff5f7;
-            color: #9d174d;
+            background-color: #f0fdf4;
+            color: #06803a;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -50,39 +52,39 @@
         .spinner {
             width: 34px;
             height: 34px;
-            border: 3px solid rgba(190, 24, 93, 0.2);
-            border-top-color: #be185d;
+            border: 3px solid rgba(6, 199, 85, 0.2);
+            border-top-color: #06C755;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .loader-text { font-size: 0.9rem; letter-spacing: 0.05em; color: #be185d; }
+        .loader-text { font-size: 0.9rem; letter-spacing: 0.05em; color: #06803a; }
         .fallback { font-size: 0.8rem; margin-top: 8px; }
-        .fallback a { color: #9d174d; }
+        .fallback a { color: #06803a; }
     </style>
 </head>
 <body>
     <div class="loader">
         <div class="spinner"></div>
-        <div class="loader-text">読み込み中…</div>
+        <div class="loader-text">LINEへ移動しています…</div>
         <div class="fallback">
             自動で移動しない場合は
-            <a href="https://sites.google.com/view/buchiiyashi">こちら</a>
+            <a href="https://lin.ee/43uE1gC">こちら</a>
         </div>
     </div>
 
     <!-- JS が無効な場合のフォールバック（タグは下の img で発火） -->
     <noscript>
-        <meta http-equiv="refresh" content="1;url=https://sites.google.com/view/buchiiyashi">
+        <meta http-equiv="refresh" content="1;url=https://lin.ee/43uE1gC">
         <img height="1" width="1" style="display:none"
-             src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1" alt="">
+             src="https://www.facebook.com/tr?id=1143852114505095&ev=Lead&noscript=1" alt="">
     </noscript>
 
     <script>
     (function () {
-        var DEST = 'https://sites.google.com/view/buchiiyashi';
+        var DEST = 'https://lin.ee/43uE1gC';
         var PIXEL_ID = '1143852114505095';
-        var EVENT = 'PageView';
+        var EVENT = 'Lead';
         // タグ発火に必要な最小待機時間（ms）。短いほどスムーズ、長いほど発火が確実。
         var WAIT_MS = 700;
 
