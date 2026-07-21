@@ -105,18 +105,15 @@
         // 固定時間ではなく、fbevents.js が実際に読み込まれて送信されるのを
         // 待ってから転送する（IAB など低速環境でタグが消えるのを防ぐ）。
         // 読込完了の合図＝ fbq.callMethod がセットされること。
-        // 【テスト用】URL に ?test_event_code=XXXX が付いている場合だけ、その
-        // コード付きの計測ビーコンを即時送信する。IAB 等でテストイベント画面に
-        // 表示させて発火を確認するための仕組み。通常の流入（パラメータ無し）では
-        // 動かないので本番計測には影響しない。
-        var TEST_CODE = (function () {
-            var m = /[?&]test_event_code=([^&#]+)/.exec(window.location.search);
-            return m ? decodeURIComponent(m[1]) : '';
-        })();
-        if (TEST_CODE) {
-            var timg = new Image();
-            timg.src = 'https://www.facebook.com/tr?id=' + PIXEL_ID + '&ev=' + EVENT +
-                       '&test_event_code=' + encodeURIComponent(TEST_CODE) + '&rnd=' + Date.now();
+        // 【テスト用】URL に ?test_event_code=XXXX がある場合は「転送せずに留まる」。
+        // fbevents.js は URL のテストコードを自動で fbq イベントに付与するため、
+        // このページを開くだけでテストイベント画面に表示される（手動ビーコンは不要
+        // ＝二重計上しない）。転送を止めることで、IAB で「タグ自体が発火するか」を
+        // 転送の影響を切り離して確認できる。通常の流入では動かず本番に影響しない。
+        if (/[?&]test_event_code=/.test(window.location.search)) {
+            var msg = document.querySelector('.loader-text');
+            if (msg) msg.textContent = 'テスト計測を送信しました（確認用のため転送は停止中）';
+            return;
         }
 
         var start = Date.now();
