@@ -80,8 +80,9 @@
         row('online', '② オンライン状態');
         row('fbq', '③ fbq 定義');
         row('fbevents', '④ fbevents.js 読み込み（connect.facebook.net）');
-        row('tr', '⑤ facebook.com/tr への到達');
-        row('beacon', '⑥ テストビーコン送信');
+        row('tr', '⑤ facebook.com/tr への到達（画像）');
+        row('trfetch', '⑥ facebook.com/tr への到達（fetch・より正確）');
+        row('beacon', '⑦ テストビーコン送信');
 
         // ① UA
         var ua = navigator.userAgent || '(取得不可)';
@@ -113,7 +114,19 @@
         trImg.onerror = function () { set('tr', false, '到達失敗（IABが facebook.com をブロックしている可能性大）'); };
         trImg.src = 'https://www.facebook.com/tr?id=' + PIXEL_ID + '&ev=PageView&rnd=' + Date.now();
 
-        // ⑥ テストビーコン送信（URL に ?test_event_code=XXXX があればコードを付与）
+        // ⑥ fetch(no-cors) での到達確認（画像より確実にネット到達を判定できる）
+        // 成功＝リクエストはネットワークに出ている（ブロックされていない）
+        // 失敗＝ネットワークレベルで遮断されている
+        if (window.fetch) {
+            fetch('https://www.facebook.com/tr?id=' + PIXEL_ID + '&ev=PageView&fq=1&rnd=' + Date.now(),
+                  { mode: 'no-cors', cache: 'no-store' })
+                .then(function () { set('trfetch', true, 'fetch成功＝リクエストはネットワークに到達（ブロックされていない）'); })
+                .catch(function (e) { set('trfetch', false, 'fetch失敗＝ネットワークで遮断: ' + (e && e.message ? e.message : e)); });
+        } else {
+            set('trfetch', null, 'このブラウザは fetch 非対応');
+        }
+
+        // ⑦ テストビーコン送信（URL に ?test_event_code=XXXX があればコードを付与）
         var m = /[?&]test_event_code=([^&#]+)/.exec(window.location.search);
         var code = m ? decodeURIComponent(m[1]) : '';
         var beaconUrl = 'https://www.facebook.com/tr?id=' + PIXEL_ID + '&ev=Lead' +
