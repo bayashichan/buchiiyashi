@@ -83,18 +83,10 @@
     <script>
     (function () {
         var DEST = 'https://lin.ee/43uE1gC';
-        var PIXEL_ID = '1143852114505095';
-        var EVENT = 'Lead';
-        // タグ発火に必要な最小待機時間（ms）。短いほどスムーズ、長いほど発火が確実。
-        var WAIT_MS = 700;
-
-        // 計測ビーコンを即時送信（img.src をセットした瞬間にリクエストが飛ぶ）
-        function firePixels() {
-            var img = new Image();
-            img.src = 'https://www.facebook.com/tr?id=' + PIXEL_ID +
-                      '&ev=' + EVENT + '&noscript=1&rnd=' + Date.now();
-            // ▼ 他タグを追加する場合はここに同様のビーコンを追記
-        }
+        // タグの発火を待つ最小待機時間（ms）。短いほどスムーズ、長いほど発火が確実。
+        // Lead は <head> の fbq('track', 'Lead') で発火済み。二重計上を避けるため
+        // 画像ビーコンは使わず、送信が完了するのを待ってから転送するだけにする。
+        var WAIT_MS = 1000;
 
         var done = false;
         function go() {
@@ -103,7 +95,6 @@
             window.location.replace(DEST);
         }
 
-        firePixels();
         setTimeout(go, WAIT_MS);
     })();
     </script>
