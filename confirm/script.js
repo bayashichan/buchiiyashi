@@ -136,6 +136,7 @@ function renderCaption() {
     caption = caption.replace(/\{\{メニュー\}\}/g, currentExhibitor.menuName || '');
     caption = caption.replace(/\{\{一言PR\}\}/g, currentExhibitor.shortPR || '');
     caption = caption.replace(/\{\{自己紹介\}\}/g, currentExhibitor.selfIntro || '');
+    caption = caption.replace(/\{\{事前予約\}\}/g, currentExhibitor.advanceReservation || '');
 
     // SNS処理
     if (currentPlatform === 'instagram') {

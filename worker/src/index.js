@@ -992,7 +992,8 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
                 snsLinks: ex.snsLinks,
                 photoUrl: ex.photoUrl,
                 introImageId: imagesData.images[normalizedName] || null, // フォルダ内の画像ID
-                seatNumber: ex.seatNumber
+                seatNumber: ex.seatNumber,
+                advanceReservation: ex.advanceReservation // 事前予約の有無（AK列）
             };
         });
 
