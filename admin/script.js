@@ -1139,6 +1139,7 @@ function generateCaption(platform) {
     caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
     caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
     caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
+    caption = caption.replace(/\{\{事前予約\}\}/g, exhibitor.advanceReservation || '');
 
     // SNS処理
     if (platform === 'instagram') {
@@ -1330,6 +1331,7 @@ function _triggerCaptionDownload(platform, dateStr) {
         caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
         caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
         caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
+        caption = caption.replace(/\{\{事前予約\}\}/g, exhibitor.advanceReservation || '');
 
         if (platform === 'instagram') {
             const handles = extractAllInstagramHandles(exhibitor.snsLinks);
