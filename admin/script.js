@@ -47,6 +47,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // スプレッドシート作成
     document.getElementById('createSpreadsheetBtn').addEventListener('click', createSpreadsheet);
 
+    // 確認ページ参照フォルダ
+    document.getElementById('refreshFoldersBtn')?.addEventListener('click', () => loadImageFolders(true));
+    document.getElementById('introImagesFolderSelect')?.addEventListener('change', (e) => {
+        // プルダウンの選択をID入力欄（保存時のソース）へ反映
+        document.getElementById('introImagesFolderId').value = e.target.value;
+    });
+    document.getElementById('introImagesFolderId')?.addEventListener('input', (e) => {
+        // 手入力に合わせてプルダウンの選択状態も同期
+        syncFolderSelect(e.target.value);
+    });
+
     // 画像生成関連
     document.getElementById('loadExhibitorsBtn')?.addEventListener('click', loadExhibitors);
     document.getElementById('selectAllExhibitors')?.addEventListener('change', toggleAllExhibitors);
@@ -349,6 +360,9 @@ function renderBasicSettings() {
     document.getElementById('databaseSpreadsheetId').value = config.databaseSpreadsheetId || '';
     document.getElementById('introImagesFolderId').value = config.introImagesFolderId || '';
 
+    // 確認ページ参照フォルダのプルダウンを読み込み（現在の設定を選択状態にする）
+    loadImageFolders();
+
     // 確認ページURLの生成
     const confirmUrlInput = document.getElementById('confirmPageUrl');
     if (confirmUrlInput) {
@@ -363,6 +377,76 @@ function renderBasicSettings() {
     } else {
         openBtn.style.display = 'none';
     }
+}
+
+// 確認ページ参照フォルダの候補一覧を取得してプルダウンを描画
+async function loadImageFolders(forceReload = false) {
+    const select = document.getElementById('introImagesFolderSelect');
+    if (!select) return;
+
+    // 二重読み込み防止（更新ボタン以外での再取得はスキップ）
+    if (!forceReload && select.dataset.loaded === 'true') {
+        syncFolderSelect(document.getElementById('introImagesFolderId').value);
+        return;
+    }
+
+    const currentId = document.getElementById('introImagesFolderId').value || '';
+    select.innerHTML = '<option value="">読み込み中...</option>';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/image-folders`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const result = await response.json();
+
+        const folders = (result && result.success && Array.isArray(result.folders)) ? result.folders : [];
+
+        // 選択肢を構築
+        const options = ['<option value="">-- フォルダを選択 --</option>'];
+        let matched = false;
+        folders.forEach(f => {
+            const selected = f.id === currentId ? ' selected' : '';
+            if (selected) matched = true;
+            const count = (typeof f.imageCount === 'number') ? `（${f.imageCount}枚）` : '';
+            options.push(`<option value="${f.id}"${selected}>${escapeHtml(f.name)}${count}</option>`);
+        });
+
+        // 現在の設定が一覧にない場合は、その旨のオプションを追加して選択状態にする
+        if (currentId && !matched) {
+            options.push(`<option value="${currentId}" selected>現在の設定（一覧外のフォルダ）</option>`);
+        }
+
+        select.innerHTML = options.join('');
+        select.dataset.loaded = 'true';
+    } catch (error) {
+        console.error('Load image folders error:', error);
+        // 取得失敗時はプルダウンを使わず手入力にフォールバックできるようにする
+        select.innerHTML = '<option value="">（フォルダ一覧の取得に失敗）</option>';
+        if (currentId) {
+            select.innerHTML += `<option value="${currentId}" selected>現在の設定: ${currentId}</option>`;
+        }
+    }
+}
+
+// ID入力欄の値に合わせてプルダウンの選択状態を同期する
+function syncFolderSelect(id) {
+    const select = document.getElementById('introImagesFolderSelect');
+    if (!select) return;
+    const hasOption = Array.from(select.options).some(o => o.value === id);
+    if (hasOption) {
+        select.value = id;
+    } else {
+        select.value = '';
+    }
+}
+
+// HTMLエスケープ（フォルダ名の表示用）
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 function renderBooths() {

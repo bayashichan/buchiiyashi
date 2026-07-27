@@ -142,7 +142,16 @@ function doGet(e) {
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
+    // 確認サイト参照先の候補フォルダ一覧を返す（管理画面用）
+    if (action === 'list_image_folders') {
+      const result = listImageFolders();
+
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     return ContentService
       .createTextOutput(JSON.stringify({ error: `Invalid action (GAS): ${action}` }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -1751,6 +1760,47 @@ function getFolderImagesList(folderId) {
     return { success: true, images: imageMap };
   } catch (error) {
     console.error('getFolderImagesList error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 確認サイトの参照先候補フォルダ一覧を返す（管理画面用）
+ * 画像保存ルート(CONFIG.DRIVE_FOLDER_ID)直下のサブフォルダを列挙し、
+ * 各フォルダ内の画像枚数と最終更新日時も返す。
+ * 管理者が「どのフォルダを確認ページで参照するか」をIDの手入力なしで選べるようにする。
+ */
+function listImageFolders() {
+  try {
+    const root = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const folders = root.getFolders();
+    const list = [];
+
+    while (folders.hasNext()) {
+      const folder = folders.next();
+
+      // フォルダ直下の画像ファイル数をカウント
+      let imageCount = 0;
+      const files = folder.getFiles();
+      while (files.hasNext()) {
+        const mime = files.next().getMimeType();
+        if (mime && mime.indexOf('image/') === 0) imageCount++;
+      }
+
+      list.push({
+        id: folder.getId(),
+        name: folder.getName(),
+        imageCount: imageCount,
+        updated: folder.getLastUpdated().getTime()
+      });
+    }
+
+    // 最終更新日時の新しい順に並べる
+    list.sort(function (a, b) { return b.updated - a.updated; });
+
+    return { success: true, folders: list, rootId: CONFIG.DRIVE_FOLDER_ID };
+  } catch (error) {
+    console.error('listImageFolders error:', error);
     return { success: false, error: error.message };
   }
 }

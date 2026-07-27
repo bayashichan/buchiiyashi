@@ -80,9 +80,19 @@
                 </div>
 
                 <div class="form-group mt-4">
-                    <label>出展者紹介画像フォルダID (Google Drive)</label>
-                    <input type="text" id="introImagesFolderId" placeholder="フォルダIDを入力">
-                    <p class="hint">「出展名.jpg/png」が保存されているフォルダのIDを入力してください。</p>
+                    <label>確認ページで表示する画像フォルダ (Google Drive)</label>
+                    <div class="flex-row">
+                        <select id="introImagesFolderSelect" style="flex-grow: 1;">
+                            <option value="">読み込み中...</option>
+                        </select>
+                        <button type="button" id="refreshFoldersBtn" class="btn-secondary small">🔄 更新</button>
+                    </div>
+                    <p class="hint">確認ページに表示する画像フォルダを選んでください。（「申込画像」直下のサブフォルダを表示。カッコ内は画像枚数）</p>
+                    <details class="mt-2">
+                        <summary class="hint" style="cursor: pointer;">フォルダIDを直接指定する</summary>
+                        <input type="text" id="introImagesFolderId" placeholder="フォルダIDを入力" class="mt-2">
+                        <p class="hint">上の一覧にないフォルダを使う場合のみ、IDを直接入力してください。</p>
+                    </details>
                 </div>
 
                 <div class="card mt-4">

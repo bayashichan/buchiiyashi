@@ -81,6 +81,11 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
             return await getExhibitors(env, spreadsheetId, corsHeaders);
         }
 
+        // GET /api/admin/image-folders - 確認サイト参照先の候補フォルダ一覧取得
+        if (url.pathname === '/api/admin/image-folders' && request.method === 'GET') {
+            return await getImageFolders(env, corsHeaders);
+        }
+
         // POST /api/admin/generate-image - 画像生成
         if (url.pathname === '/api/admin/generate-image' && request.method === 'POST') {
             const body = await request.json();
@@ -594,6 +599,31 @@ async function getExhibitors(env, spreadsheetId, corsHeaders) {
         });
     } catch (error) {
         console.error('Get exhibitors error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// 確認サイト参照先の候補フォルダ一覧取得（GASへ中継）
+async function getImageFolders(env, corsHeaders) {
+    try {
+        const gasUrl = new URL(env.GAS_URL);
+        gasUrl.searchParams.append('action', 'list_image_folders');
+
+        const response = await fetch(gasUrl.toString(), {
+            method: 'GET',
+            headers: { 'User-Agent': 'Cloudflare-Worker' },
+            redirect: 'follow'
+        });
+
+        const data = await response.text();
+        return new Response(data, {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Get image folders error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
