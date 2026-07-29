@@ -1023,7 +1023,8 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
                 photoUrl: ex.photoUrl,
                 introImageId: imagesData.images[normalizedName] || null, // フォルダ内の画像ID
                 seatNumber: ex.seatNumber,
-                advanceReservation: ex.advanceReservation // 事前予約の有無（AK列）
+                advanceReservation: ex.advanceReservation, // 事前予約の有無（AK列）
+                specialtyGenres: ex.specialtyGenres // 取扱いジャンル（AJ列＝得意ジャンル）
             };
         });
 
