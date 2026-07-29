@@ -1314,8 +1314,8 @@ function getSnsEmoji(type) {
 // 事前予約(AK列)の値を表示用に整形: 可→○可 / 不可→×不可 / それ以外はそのまま
 function formatReservation(value) {
     const v = String(value || '').trim();
-    if (v === '可') return '○可';
-    if (v === '不可') return '×不可';
+    if (v === '可') return '○可\n（ご予約の際は直接，出展者様にお問い合わせください。）';
+    if (v === '不可') return '×不可（当日受付のみ）';
     return v;
 }
 
