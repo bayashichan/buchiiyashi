@@ -445,8 +445,21 @@ textarea.input-field {
 
 .sns-link-row {
   display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sns-link-main {
+  display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.sns-fullwidth-warning {
+  font-size: 0.75rem;
+  color: var(--error);
+  margin: 0;
+  padding-left: 0.25rem;
 }
 
 /* 住所検索ボタン */
