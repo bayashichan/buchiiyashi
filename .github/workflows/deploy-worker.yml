@@ -1,0 +1,40 @@
+name: Deploy Worker
+
+# main に worker 配下（または本ワークフロー）が変更されたら
+# Cloudflare Workers へ自動デプロイする。
+# 手動実行（workflow_dispatch）も可能。
+#
+# 必要な GitHub Secrets（Settings > Secrets and variables > Actions で登録）:
+#   - CLOUDFLARE_API_TOKEN : "Edit Cloudflare Workers" 権限を持つ API トークン
+#   - CLOUDFLARE_ACCOUNT_ID: 対象アカウントの Account ID
+#
+# 注意:
+#   Worker のシークレット（ADMIN_PASSWORD / GITHUB_TOKEN / GOOGLE_SA_KEY /
+#   GAS_SCRIPT_ID）は Cloudflare 側に保存済みで、deploy では消えません。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+# 同時実行を抑止（後発の push を優先）
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
