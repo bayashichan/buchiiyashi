@@ -33,12 +33,14 @@ const SNS_PATTERNS = [
     { pattern: /linktr\.ee/i, name: 'Linktree', color: '#43E55E' }
 ];
 
-// 全角文字（全角英数字・記号・全角スペース）の検出パターン
-// URL/SNSリンクはすべて半角で入力する必要があるため、全角が混じっていたら警告する
-const FULLWIDTH_PATTERN = /[！-｠　]/;
+// リンクに使えない文字の検出パターン
+// - 全角英数字・記号（！-｠）… IMEのまま入力するとリンクが機能しない
+// - 全角スペース（　）
+// - 半角コンマ（,）… SNSリンクでは使わないため
+const INVALID_LINK_CHAR_PATTERN = /[！-｠　,]/;
 
-function hasFullwidth(str) {
-    return FULLWIDTH_PATTERN.test(str);
+function hasInvalidLinkChar(str) {
+    return INVALID_LINK_CHAR_PATTERN.test(str);
 }
 
 // ========================================
@@ -660,7 +662,7 @@ function initSnsInputs() {
         <input type="url" name="snsLink${snsLinkCount}" class="input-field flex-1 sns-input" data-index="${snsLinkCount - 1}" placeholder="https://...">
         <button type="button" class="text-red-500 hover:text-red-700 px-2" onclick="removeSnsRow(this)">✕</button>
       </div>
-      <p class="sns-fullwidth-warning" data-index="${snsLinkCount - 1}" style="display:none;">⚠️ 全角文字が含まれています。リンクは半角で入力してください。</p>
+      <p class="sns-fullwidth-warning" data-index="${snsLinkCount - 1}" style="display:none;">⚠️ 使えない文字（全角文字・コンマ）が含まれています。リンクは半角で入力してください。</p>
     `;
         container.appendChild(row);
 
@@ -679,9 +681,9 @@ function handleSnsInput(e) {
     const badge = document.querySelector(`.sns-badge[data-index="${index}"]`);
     const warning = document.querySelector(`.sns-fullwidth-warning[data-index="${index}"]`);
 
-    // 全角文字チェック（リンクはすべて半角で入力してもらう）
+    // リンクに使えない文字（全角文字・半角コンマ）のチェック
     if (warning) {
-        if (hasFullwidth(url)) {
+        if (hasInvalidLinkChar(url)) {
             warning.style.display = 'block';
             e.target.classList.add('border-red-500');
         } else {
@@ -740,7 +742,7 @@ function addSnsLinkInput(url = '') {
         <input type="url" name="snsLink${snsLinkCount}" class="input-field flex-1 sns-input" data-index="${snsLinkCount - 1}" placeholder="https://..." value="${url}">
         <button type="button" class="text-red-500 hover:text-red-700 px-2" onclick="removeSnsRow(this)">✕</button>
       </div>
-      <p class="sns-fullwidth-warning" data-index="${snsLinkCount - 1}" style="display:none;">⚠️ 全角文字が含まれています。リンクは半角で入力してください。</p>
+      <p class="sns-fullwidth-warning" data-index="${snsLinkCount - 1}" style="display:none;">⚠️ 使えない文字（全角文字・コンマ）が含まれています。リンクは半角で入力してください。</p>
     `;
     container.appendChild(row);
 
@@ -875,16 +877,16 @@ function validateForm() {
         errors.push('一言PRは35文字以内で入力してください');
     }
 
-    // SNSリンクの全角文字チェック（リンクはすべて半角）
-    let hasFullwidthLink = false;
+    // SNSリンクに使えない文字（全角文字・半角コンマ）のチェック
+    let hasInvalidLink = false;
     form.querySelectorAll('.sns-input').forEach(input => {
-        if (input.value && hasFullwidth(input.value)) {
-            hasFullwidthLink = true;
+        if (input.value && hasInvalidLinkChar(input.value)) {
+            hasInvalidLink = true;
             input.classList.add('border-red-500');
         }
     });
-    if (hasFullwidthLink) {
-        errors.push('SNSリンクに全角文字が含まれています。半角で入力してください');
+    if (hasInvalidLink) {
+        errors.push('SNSリンクに使えない文字（全角文字・コンマ）が含まれています。半角で入力してください');
     }
 
     return errors;
