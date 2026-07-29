@@ -1223,7 +1223,7 @@ function generateCaption(platform) {
     caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
     caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
     caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
-    caption = caption.replace(/\{\{事前予約\}\}/g, exhibitor.advanceReservation || '');
+    caption = caption.replace(/\{\{事前予約\}\}/g, formatReservation(exhibitor.advanceReservation));
 
     // SNS処理
     if (platform === 'instagram') {
@@ -1309,6 +1309,14 @@ function getSnsEmoji(type) {
         'Ameblo': '📝', 'note': '✍️', 'HP': '🌐', 'Linktree': '🌐', 'lit.link': '🌐'
     };
     return map[type] || '🔗';
+}
+
+// 事前予約(AK列)の値を表示用に整形: 可→○可 / 不可→×不可 / それ以外はそのまま
+function formatReservation(value) {
+    const v = String(value || '').trim();
+    if (v === '可') return '○可';
+    if (v === '不可') return '×不可';
+    return v;
 }
 
 // デフォルトテンプレート
@@ -1415,7 +1423,7 @@ function _triggerCaptionDownload(platform, dateStr) {
         caption = caption.replace(/\{\{メニュー\}\}/g, exhibitor.menuName || '');
         caption = caption.replace(/\{\{一言PR\}\}/g, exhibitor.shortPR || '');
         caption = caption.replace(/\{\{自己紹介\}\}/g, exhibitor.selfIntro || '');
-        caption = caption.replace(/\{\{事前予約\}\}/g, exhibitor.advanceReservation || '');
+        caption = caption.replace(/\{\{事前予約\}\}/g, formatReservation(exhibitor.advanceReservation));
 
         if (platform === 'instagram') {
             const handles = extractAllInstagramHandles(exhibitor.snsLinks);
