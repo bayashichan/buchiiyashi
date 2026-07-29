@@ -400,10 +400,15 @@
         <p class="text-sm text-gray-600 mb-4">URLを入力すると自動でSNS種別を判別します</p>
 
         <div id="snsLinksContainer" class="space-y-3">
-          <div class="sns-link-row flex gap-2">
-            <span class="sns-badge" data-index="0">未入力</span>
-            <input type="url" name="snsLink1" class="input-field flex-1 sns-input" data-index="0"
-              placeholder="https://...">
+          <div class="sns-link-row">
+            <div class="sns-link-main flex gap-2">
+              <span class="sns-badge" data-index="0">未入力</span>
+              <input type="url" name="snsLink1" class="input-field flex-1 sns-input" data-index="0"
+                placeholder="https://...">
+            </div>
+            <p class="sns-fullwidth-warning" data-index="0" style="display:none;">
+              ⚠️ 全角文字が含まれています。リンクは半角で入力してください。
+            </p>
           </div>
         </div>
 
