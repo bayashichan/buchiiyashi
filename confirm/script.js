@@ -136,7 +136,7 @@ function renderCaption() {
     caption = caption.replace(/\{\{メニュー\}\}/g, currentExhibitor.menuName || '');
     caption = caption.replace(/\{\{一言PR\}\}/g, currentExhibitor.shortPR || '');
     caption = caption.replace(/\{\{自己紹介\}\}/g, currentExhibitor.selfIntro || '');
-    caption = caption.replace(/\{\{事前予約\}\}/g, currentExhibitor.advanceReservation || '');
+    caption = caption.replace(/\{\{事前予約\}\}/g, formatReservation(currentExhibitor.advanceReservation));
 
     // SNS処理
     if (currentPlatform === 'instagram') {
@@ -148,6 +148,14 @@ function renderCaption() {
     }
 
     captionTextEl.value = caption.trim();
+}
+
+// 事前予約(AK列)の値を表示用に整形: 可→○可 / 不可→×不可 / それ以外はそのまま
+function formatReservation(value) {
+    const v = String(value || '').trim();
+    if (v === '可') return '○可';
+    if (v === '不可') return '×不可';
+    return v;
 }
 
 // クリップボードコピー
