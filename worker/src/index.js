@@ -1007,10 +1007,11 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
 
         // 4. 個人情報の除外と画像IDの紐付け
         const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
-            // 出展名から正規化キーを作成 (GAS側のnormalizeNameと合わせる)
+            // 出展名から正規化キーを作成 (GAS側のnormalizeNameと必ず一致させること)
+            // ｜(全角)・|(半角) も除去：画像出力側が｜を除いた名前で保存するため
             const normalizedName = ex.exhibitorName
                 .normalize('NFC')
-                .replace(/[ 　\-_.\(\)（）!！?？]/g, "")
+                .replace(/[ 　\-_.\(\)（）!！?？｜|]/g, "")
                 .toLowerCase();
             
             return {

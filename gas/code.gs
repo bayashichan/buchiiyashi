@@ -1813,6 +1813,7 @@ function normalizeName(name) {
   if (!name) return "";
   return String(name)
     .normalize('NFC') // Unicode正規化を追加（濁点・半濁点の差異を吸収）
-    .replace(/[ 　\-_.\(\)（）!！?？]/g, "") // 一般的な記号とスペースを削除
+    .replace(/[ 　\-_.\(\)（）!！?？｜|]/g, "") // 一般的な記号とスペースを削除（全角｜・半角|含む。画像出力側が｜を除去して保存するため照合キーからも除去）
     .toLowerCase();
+  // ※ この正規表現は worker/src/index.js の出展名正規化と必ず一致させること
 }
