@@ -1255,10 +1255,13 @@ function initRepeaterSearch() {
         verifyBtn.addEventListener('click', async () => {
             const name = document.getElementById('repeaterName').value;
             const email = document.getElementById('repeaterEmail').value;
-            const code = document.getElementById('repeaterAuthCode').value;
+            const codeInput = document.getElementById('repeaterAuthCode');
+            // 全角数字・空白・記号が混ざっていても認証できるように正規化する
+            const code = normalizeAuthCode(codeInput.value);
+            codeInput.value = code; // 実際に送信される値を画面にも反映
             const statusEl = document.getElementById('repeaterSearchStatus');
 
-            if (!code || code.length < 4) {
+            if (code.length !== 4) {
                 statusEl.textContent = '❌ 4桁の認証コードを入力してください';
                 statusEl.className = 'mt-2 text-sm font-medium text-red-600';
                 return;
@@ -1304,16 +1307,24 @@ function initRepeaterSearch() {
                 } else {
                     statusEl.textContent = `❌ ${result.error || '認証に失敗しました'}`;
                     statusEl.className = 'mt-2 text-sm font-medium text-red-600';
-                    verifyBtn.disabled = false;
                 }
             } catch (error) {
                 console.error('Verify auth code error:', error);
                 statusEl.textContent = '❌ エラーが発生しました。通信環境を確認してください。';
                 statusEl.className = 'mt-2 text-sm font-medium text-red-600';
+            } finally {
+                // 成功・キャンセル後も必ず再認証できるようにボタンを復帰させる
                 verifyBtn.disabled = false;
             }
         });
     }
+}
+
+// 認証コードの正規化（全角数字→半角、数字以外は除去）
+function normalizeAuthCode(raw) {
+    return String(raw || '')
+        .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[^0-9]/g, '');
 }
 
 // リピーター選択モーダル表示
