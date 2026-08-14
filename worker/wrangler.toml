@@ -11,7 +11,7 @@ GITHUB_REPO = "bayashichan/buchiiyashi"
 # LINE管理アプリ(line-manager)連携。未設定なら連携をスキップする
 LINE_MANAGER_URL = "https://line-manager-omega.vercel.app"
 LINE_MANAGER_SOURCE = "buchiiyashi-apply"
-# LINE_MANAGER_CHANNEL_ID = ""   # line-managerのchannelsテーブルのUUIDを設定する
+LINE_MANAGER_CHANNEL_ID = "e5fae09e-25e3-44dd-9e61-3c5dbbb8afe0"
 
 # 以下はwrangler secretで設定が必要:
 # - ADMIN_PASSWORD: 管理画面ログインパスワード
