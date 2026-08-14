@@ -850,6 +850,9 @@ async function handleFormSubmission(request, env, corsHeaders) {
         const gasResult = await gasResponse.json();
         console.log('GAS response JSON:', gasResult);
 
+        // LINE管理アプリへ申込者を連携する（申込受付とは独立。失敗しても申込は成功扱い）
+        await registerApplicantToLineManager(data, env);
+
         return new Response(JSON.stringify({
             success: true,
             message: 'Application submitted successfully',
@@ -867,6 +870,56 @@ async function handleFormSubmission(request, env, corsHeaders) {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
+    }
+}
+
+/**
+ * LINE管理アプリ(line-manager)へ申込者を連携する。
+ *
+ * ブラウザからではなくWorkerから呼ぶ。シークレットをクライアントに晒さないため。
+ * 管理アプリ側で Messaging API を使って友だち判定を行い、友だちなら友だち一覧に、
+ * 友だちでなければ「未友だち申込者」として記録される。
+ *
+ * ここでの失敗は申込受付を巻き添えにしない（ログのみ）。申込自体は既にGASへ保存済み。
+ */
+async function registerApplicantToLineManager(data, env) {
+    if (!env.LINE_MANAGER_URL || !env.LINE_MANAGER_SECRET || !env.LINE_MANAGER_CHANNEL_ID) {
+        console.log('line-manager連携: 未設定のためスキップ');
+        return;
+    }
+
+    // LINE情報が取れていない申込は連携できない（誰の申込か特定できないため）
+    if (!data.lineUserId) {
+        console.warn(`line-manager連携: lineUserIdが空のためスキップ (lineLinkStatus: ${data.lineLinkStatus || '不明'})`);
+        return;
+    }
+
+    try {
+        const response = await fetch(`${env.LINE_MANAGER_URL}/api/applicants/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${env.LINE_MANAGER_SECRET}`,
+            },
+            body: JSON.stringify({
+                channelId: env.LINE_MANAGER_CHANNEL_ID,
+                lineUserId: data.lineUserId,
+                displayName: data.lineDisplayName || null,
+                source: env.LINE_MANAGER_SOURCE || 'buchiiyashi-apply',
+                appliedAt: data.submittedAt,
+            }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`line-manager連携に失敗: ${response.status} ${errorText}`);
+            return;
+        }
+
+        const result = await response.json();
+        console.log(`line-manager連携成功: isFriend=${result.isFriend}`);
+    } catch (error) {
+        console.error('line-manager連携エラー:', error);
     }
 }
 

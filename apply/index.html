@@ -52,9 +52,12 @@
   <!-- メインフォーム -->
   <main class="form-container max-w-2xl mx-auto px-4 py-6">
     <form id="applicationForm" novalidate>
-      <!-- LINE用户信息（LIFF用） -->
+      <!-- LINEユーザー情報（LIFF用） -->
       <input type="hidden" name="lineUserId" id="lineUserId">
       <input type="hidden" name="lineDisplayName" id="lineDisplayName">
+
+      <!-- LINE連携の状態表示（script.js の renderLiffStatus が描画する） -->
+      <div id="liffStatus"></div>
 
       <!-- 入力にあたっての協力依頼 -->
       <section class="form-section p-6 mb-6 bg-yellow-50 border-2 border-yellow-200">
@@ -825,8 +828,7 @@
   </div>
 
   <!-- Scripts -->
-  <!-- LIFF SDK -->
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- LIFF SDKは<head>で読み込み済みなのでここでは読まない -->
   <script src="config.js"></script>
   <script src="script.js"></script>
 </body>

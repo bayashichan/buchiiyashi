@@ -62,7 +62,8 @@ window.addEventListener('configLoaded', () => {
     calculatePrice();
     initSpecialtyGenres();
 
-    // LIFF初期化
+    // LIFF初期化（取得中の表示を先に出してから開始する）
+    renderLiffStatus();
     initLiff();
 });
 
@@ -83,29 +84,111 @@ function updateSpecialtyGenresInput() {
 // ========================================
 // LIFF (LINE Front-end Framework)
 // ========================================
+/**
+ * LINE連携の状態。
+ * status: 'pending'（取得中） | 'linked'（取得成功） | 'unlinked'（未ログイン） | 'error'（失敗）
+ *
+ * 以前はLIFFの取得に失敗しても黙って申込を通していたため、
+ * LINE情報が空のままスプレッドシートに記録され、申込者も運営も気づけなかった。
+ * 失敗を必ず状態として保持し、画面と送信データの両方に反映する。
+ */
+let liffState = { status: 'pending', userId: '', displayName: '', error: '' };
+
+function setLiffState(next) {
+    liffState = { ...liffState, ...next };
+
+    // 隠しフィールドは送信データの入口なので、状態と必ず同期させる
+    const userIdInput = document.getElementById('lineUserId');
+    const displayNameInput = document.getElementById('lineDisplayName');
+    if (userIdInput) userIdInput.value = liffState.userId || '';
+    if (displayNameInput) displayNameInput.value = liffState.displayName || '';
+
+    renderLiffStatus();
+}
+
 async function initLiff() {
     // LIFF IDが設定されていない場合はスキップ（通常のブラウザ動作）
-    if (!CONFIG.liffId) return;
-
-    try {
-        await liff.init({ liffId: CONFIG.liffId });
-
-        // LINE内ブラウザ、または外部ブラウザでログイン済みの場合
-        if (liff.isLoggedIn()) {
-            const profile = await liff.getProfile();
-
-            // 隠しフィールドにセット
-            document.getElementById('lineUserId').value = profile.userId;
-            document.getElementById('lineDisplayName').value = profile.displayName;
-
-            console.log('LIFF initialized. User:', profile.displayName);
-        } else {
-            // 外部ブラウザで未ログインの場合は何もしない（強制ログインはさせない）
-            console.log('LIFF initialized but not logged in.');
-        }
-    } catch (err) {
-        console.error('LIFF initialization failed', err);
+    if (!CONFIG.liffId) {
+        setLiffState({ status: 'error', error: 'liffId未設定' });
+        return;
     }
+
+    // 通信状況によっては一度失敗するため1回だけリトライする
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            await liff.init({ liffId: CONFIG.liffId });
+
+            // 未ログインなら自動でLINEログインへ送る。
+            // ここはページ読み込み直後で入力内容がまだ無いため、リダイレクトしても失うものがない。
+            if (!liff.isLoggedIn()) {
+                console.log('LIFF: 未ログインのためLINEログインへ遷移します');
+                setLiffState({ status: 'unlinked', userId: '', displayName: '' });
+                liff.login({ redirectUri: window.location.href });
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            if (!profile || !profile.userId) {
+                throw new Error('プロフィールにuserIdが含まれていません');
+            }
+
+            setLiffState({
+                status: 'linked',
+                userId: profile.userId,
+                displayName: profile.displayName || '',
+                error: '',
+            });
+            console.log('LIFF initialized. User:', profile.displayName);
+            return;
+        } catch (err) {
+            console.error(`LIFF initialization failed (attempt ${attempt})`, err);
+            if (attempt === 2) {
+                setLiffState({
+                    status: 'error',
+                    userId: '',
+                    displayName: '',
+                    error: String(err && err.message ? err.message : err).slice(0, 200),
+                });
+            }
+        }
+    }
+}
+
+/**
+ * LINE連携の状態をフォーム冒頭に表示する。
+ * 連携できていないことを申込者自身が気づける状態にするのが目的。
+ */
+function renderLiffStatus() {
+    const box = document.getElementById('liffStatus');
+    if (!box) return;
+
+    if (liffState.status === 'linked') {
+        box.className = 'mb-6 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm';
+        box.innerHTML = `✓ LINE連携済み：<strong>${escapeHtml(liffState.displayName)}</strong> さん`;
+        return;
+    }
+
+    if (liffState.status === 'pending') {
+        box.className = 'mb-6 p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-600 text-sm';
+        box.textContent = 'LINE情報を確認しています...';
+        return;
+    }
+
+    // unlinked / error
+    const reopenUrl = CONFIG.liffId ? `https://liff.line.me/${CONFIG.liffId}` : '';
+    box.className = 'mb-6 p-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-sm';
+    box.innerHTML = `
+        <p class="font-bold">⚠ LINE情報を取得できていません</p>
+        <p class="mt-1 leading-relaxed">このまま申し込むと、当日のご案内をLINEでお送りできません。
+        公式LINEのリッチメニューから開き直してください。</p>
+        ${reopenUrl ? `<a href="${reopenUrl}" class="inline-block mt-2 px-4 py-2 rounded-lg bg-[#06C755] text-white font-bold">LINEアプリで開き直す</a>` : ''}
+    `;
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
 }
 
 /**
@@ -914,6 +997,19 @@ async function submitForm() {
         if (!confirmed) return;
     }
 
+    // LINE連携が取れていない場合の確認。
+    // 申込自体はブロックしない（連携失敗で申込機会を失う方が損失が大きい）が、
+    // 無言で通していた従来と違い、申込者に必ず自覚してもらう。
+    if (liffState.status !== 'linked') {
+        const proceed = confirm(
+            '⚠️ LINE情報を取得できていません\n\n' +
+            'このまま申し込むと、当日のご案内をLINEでお送りできません。\n' +
+            '公式LINEのリッチメニューから開き直すことをおすすめします。\n\n' +
+            'このまま送信しますか？'
+        );
+        if (!proceed) return;
+    }
+
     // ローディング表示
     document.getElementById('loadingOverlay').classList.add('visible');
     document.getElementById('submitBtn').disabled = true;
@@ -989,8 +1085,11 @@ async function submitForm() {
         }
 
         // LIFFデータ
-        formData.append('lineUserId', document.getElementById('lineUserId').value);
-        formData.append('lineDisplayName', document.getElementById('lineDisplayName').value);
+        // 連携状態も一緒に送る。空で届いたときに「どこで失敗したか」が残るようにするため。
+        formData.append('lineUserId', liffState.userId || '');
+        formData.append('lineDisplayName', liffState.displayName || '');
+        formData.append('lineLinkStatus', liffState.status);
+        formData.append('lineLinkError', liffState.error || '');
 
         // APIへ送信（タイムアウト付き）
         const controller = new AbortController();

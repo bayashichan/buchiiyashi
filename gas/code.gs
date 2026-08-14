@@ -766,7 +766,8 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.lineUserId || '',                       // LINE UserID
       data.lineDisplayName || '',                  // LINE DisplayName
       data.specialtyGenres || '',                  // 得意ジャンル
-      data.advanceReservation || '不可'            // 事前予約
+      data.advanceReservation || '不可',           // 事前予約
+      formatLineLinkStatus(data)                   // LINE連携状態（空欄で届いた原因の切り分け用）
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -831,7 +832,8 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.lineUserId || '',                       // LINE UserID
       data.lineDisplayName || '',                  // LINE DisplayName
       data.specialtyGenres || '',                  // 得意ジャンル
-      data.advanceReservation || '不可'            // 事前予約
+      data.advanceReservation || '不可',           // 事前予約
+      formatLineLinkStatus(data)                   // LINE連携状態（空欄で届いた原因の切り分け用）
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -847,7 +849,7 @@ function addHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約'
+    '得意ジャンル', '事前予約', 'LINE連携状態'
   ]);
 }
 
@@ -861,13 +863,32 @@ function addEventHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約'
+    '得意ジャンル', '事前予約', 'LINE連携状態'
   ]);
+}
+
+/**
+ * LINE連携の状態を人が読める文字列にする。
+ *
+ * 申込フォーム側から lineLinkStatus（linked / unlinked / error）が送られてくる。
+ * LINEユーザーIDが空で届いたとき、それがどの段階で失敗したのかを後から追えるようにする。
+ */
+function formatLineLinkStatus(data) {
+  if (data.lineUserId) return '連携済み';
+
+  const status = data.lineLinkStatus || '不明';
+  const detail = data.lineLinkError ? `: ${data.lineLinkError}` : '';
+
+  if (status === 'unlinked') return '未連携（LINE未ログイン）';
+  if (status === 'error') return `未連携（取得エラー${detail}）`;
+  return `未連携（${status}${detail}）`;
 }
 
 // 管理者へメール通知（HTMLメール）
 function sendAdminEmail(data, calculationResult) {
-  const subject = `【出展申込】${data.name}様 (${data.exhibitorName})`;
+  // LINE情報が取れていない申込は件名で分かるようにする（後追いの案内が必要なため）
+  const linkPrefix = data.lineUserId ? '' : '【LINE未連携】';
+  const subject = `${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
   
   // テキスト版（HTMLが表示できないクライアント用）
   const textBody = `
