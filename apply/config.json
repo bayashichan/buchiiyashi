@@ -219,7 +219,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "body_large",
@@ -234,7 +234,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     }
   ],
   "eventDate": "2026年9月19日（土）　10:30~16:30",
