@@ -1043,14 +1043,27 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
 }
 
 /**
+ * 「キャンセル」を含む文章かどうかを判定
+ * 完全一致ではなく部分一致。「8/20キャンセル連絡あり」「A-3（キャンセル済）」なども対象。
+ * 半角カナ・全角英数・ひらがな・英語表記の揺れも吸収する。
+ */
+function containsCancelKeyword(value) {
+    const normalized = String(value || '')
+        .normalize('NFKC')          // ｷｬﾝｾﾙ → キャンセル、ＣＡＮＣＥＬ → CANCEL
+        .replace(/[\s　]/g, '') // 空白・改行を除去（「キャン セル」対策）
+        .toLowerCase();
+    if (!normalized) return false;
+    return ['キャンセル', 'きゃんせる', 'cancel'].some(kw => normalized.includes(kw));
+}
+
+/**
  * キャンセル判定
- * 元データのスプレッドシートA列に「キャンセル」を含む行は確認ページに表示しない。
+ * 元データのスプレッドシートA列に「キャンセル」が含まれる行は確認ページに表示しない。
  * statusA はGAS側が返すA列の生値。GASが未更新の場合に備え、
  * A列に相当する座席番号(seatNumber)も判定対象にする。
  */
 function isCancelledExhibitor(ex) {
-    const candidates = [ex.statusA, ex.seatNumber];
-    return candidates.some(v => String(v || '').replace(/\s|　/g, '').includes('キャンセル'));
+    return [ex.statusA, ex.seatNumber].some(containsCancelKeyword);
 }
 
 /**
