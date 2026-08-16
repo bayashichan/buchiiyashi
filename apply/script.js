@@ -17,6 +17,24 @@ let optionValues = {
 };
 let snsLinkCount = 1;
 
+// 画像アップロードを断念した理由。
+// HEIC・容量超過・変換失敗など「画像だけが原因」で申込ごと弾かれるのを防ぐため、
+// 理由が入っているときは写真なしでの送信を許可し、後から公式LINEで受け取る運用に切り替える。
+let photoFallbackReason = '';
+
+// 圧縮済みの画像（選択時に作り、送信時に使い回す）
+let compressedPhoto = null;
+// 圧縮処理の進行中Promise（圧縮完了前に送信されるのを防ぐ）
+let photoProcessing = null;
+
+// 送信できる画像サイズの上限。原本ではなく「圧縮後」のサイズに対して判定する。
+const MAX_UPLOAD_SIZE = 8 * 1024 * 1024;
+// デコードを試みる原本サイズの上限（端末のメモリ保護のための安全弁）
+const MAX_DECODE_SIZE = 50 * 1024 * 1024;
+
+// 公式LINE（画像を送っていただく窓口）
+const OFFICIAL_LINE_URL = 'https://lin.ee/uqhsDx3';
+
 // ========================================
 // SNS判別パターン
 // ========================================
@@ -912,12 +930,12 @@ function validateForm() {
     // 写真再利用の場合はチェックを緩和
     const usePrevious = form.querySelector('[name="usePreviousPhoto"]')?.checked;
 
-    if (!usePrevious) {
+    // 画像を取り込めなかった場合（photoFallbackReason）は、写真なしでの申込を許可する。
+    // 写真は後から公式LINEで回収できるが、申込機会は取り戻せないため。
+    // サイズ上限は選択時に「圧縮後のサイズ」で判定済みなので、ここでは選択の有無だけ見る。
+    if (!usePrevious && !photoFallbackReason) {
         if (!photoInput.files || photoInput.files.length === 0) {
             errors.push('ご自身の写真をアップロードしてください');
-        } else if (photoInput.files[0].size > 8 * 1024 * 1024) {
-            errors.push('画像ファイルのサイズは8MB以下にしてください');
-            photoInput.classList.add('border-red-500');
         }
     }
 
@@ -1070,19 +1088,48 @@ async function submitForm() {
         }
 
         // 画像処理 (Base64変換)
+        // 画像の失敗で申込ごと落とさない。変換に失敗しても理由を添えて送信を続行し、
+        // 写真は後から公式LINEで受け取る運用に切り替える。
+        let imageUploadError = photoFallbackReason;
         const photoInput = form.querySelector('[name="profileImage"]');
+
         if (photoInput.files && photoInput.files.length > 0) {
-            const file = photoInput.files[0];
-            try {
-                const base64Data = await convertFileToBase64(file);
-                formData.append('profileImageBase64', base64Data.base64);
-                formData.append('profileImageMimeType', base64Data.mimeType);
-                formData.append('profileImageName', base64Data.name);
-            } catch (imageError) {
-                console.error('Image processing error:', imageError);
-                throw new Error('画像の処理に失敗しました。別の画像を選択するか、画像サイズを小さくしてお試しください。');
+            // 選択時の圧縮がまだ終わっていなければ待つ
+            if (photoProcessing) {
+                await photoProcessing;
+                imageUploadError = photoFallbackReason;
+            }
+
+            if (compressedPhoto) {
+                // 選択時に圧縮済み（サイズ判定もその結果に対して実施済み）
+                formData.append('profileImageBase64', compressedPhoto.base64);
+                formData.append('profileImageMimeType', compressedPhoto.mimeType);
+                formData.append('profileImageName', compressedPhoto.name);
+                imageUploadError = '';
+                // 圧縮版を送るので原本は不要。載せたままだと回線を二重に使い、
+                // 通信タイムアウトの原因になる。
+                formData.delete('profileImage');
+            } else if (!imageUploadError) {
+                // 選択イベントを経ずにファイルが入っている場合の保険
+                // 元ファイルは formData に残るので、Worker 側の変換にフォールバックできる
+                try {
+                    const base64Data = await convertFileToBase64(photoInput.files[0]);
+                    formData.append('profileImageBase64', base64Data.base64);
+                    formData.append('profileImageMimeType', base64Data.mimeType);
+                    formData.append('profileImageName', base64Data.name);
+                } catch (imageError) {
+                    console.error('Image processing error:', imageError);
+                    imageUploadError = `ブラウザでの画像変換に失敗: ${imageError.message || '不明なエラー'}`;
+                }
+            }
+
+            // 圧縮できなかった場合、原本はWorker側の変換にフォールバックさせる。
+            // ただしWorkerが扱えないサイズの原本は送っても捨てられるだけなので外す。
+            if (imageUploadError && photoInput.files[0].size > MAX_UPLOAD_SIZE) {
+                formData.delete('profileImage');
             }
         }
+        formData.append('imageUploadError', imageUploadError);
 
         // LIFFデータ
         // 連携状態も一緒に送る。空で届いたときに「どこで失敗したか」が残るようにするため。
@@ -1123,8 +1170,8 @@ async function submitForm() {
         }
 
         if (result.success) {
-            // 完了モーダル表示
-            document.getElementById('completeModal').classList.remove('hidden');
+            // 完了モーダル表示（画像が登録できていない場合は案内を添える）
+            showCompleteModal(result, imageUploadError);
         } else {
             throw new Error(result.error || '送信に失敗しました。再度お試しください。');
         }
@@ -1137,6 +1184,39 @@ async function submitForm() {
         document.getElementById('loadingOverlay').classList.remove('visible');
         document.getElementById('submitBtn').disabled = false;
     }
+}
+
+/**
+ * 完了モーダルを表示する。
+ * 画像が登録できていない場合（result.imageStatus !== 'ok'）は、
+ * 出展名を添えて公式LINEへ画像を送っていただくよう案内する。
+ */
+function showCompleteModal(result, clientImageError) {
+    const modal = document.getElementById('completeModal');
+    const warning = document.getElementById('imageMissingWarning');
+
+    // サーバーの判定を優先する（ブラウザ側が失敗してもWorker側の変換で救えている場合があるため）。
+    // 古いGASデプロイで imageStatus が返らない場合のみ、ブラウザ側の結果で判断する。
+    const imageMissing = result.imageStatus
+        ? result.imageStatus !== 'ok'
+        : !!clientImageError;
+
+    if (warning) {
+        if (imageMissing) {
+            const exhibitorName = document.querySelector('input[name="exhibitorName"]')?.value || '';
+            const nameEl = document.getElementById('imageMissingExhibitorName');
+            if (nameEl) nameEl.textContent = exhibitorName || '（ご記入の出展名）';
+
+            const lineLink = document.getElementById('imageMissingLineLink');
+            if (lineLink) lineLink.href = OFFICIAL_LINE_URL;
+
+            warning.classList.remove('hidden');
+        } else {
+            warning.classList.add('hidden');
+        }
+    }
+
+    modal.classList.remove('hidden');
 }
 
 // ========================================
@@ -1269,22 +1349,133 @@ function initFileSizeCheck() {
 
     photoInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
+
+        // 新しく選び直したので、前回の結果はリセットする
+        clearPhotoFallback();
+        compressedPhoto = null;
         if (!file) return;
 
         // HEIC/HEIFチェック
         const fileName = file.name.toLowerCase();
         if (fileName.endsWith('.heic') || fileName.endsWith('.heif')) {
-            alert('HEIC形式の画像はサポートされていません。\nJPGまたはPNG形式の画像を選択してください。\n\niPhoneの場合は「設定 > カメラ > フォーマット」を「互換性優先」にするか、スクリーンショットを撮ってそれをアップロードしてください。');
             e.target.value = '';
+            setPhotoFallback(
+                'HEIC/HEIF形式のため取り込めませんでした',
+                'HEIC形式の画像はこのフォームでは取り込めませんでした。\n\n' +
+                'JPGまたはPNGの画像を選び直していただくか、\n' +
+                'このまま申し込みを進めて、写真だけ後から公式LINEへお送りいただくこともできます。'
+            );
             return;
         }
 
-        // サイズチェック
-        if (file.size > 8 * 1024 * 1024) {
-            alert('画像ファイルのサイズは8MB以下にしてください。\n現在のサイズ: ' + (file.size / 1024 / 1024).toFixed(2) + 'MB');
-            e.target.value = ''; // 選択をクリア
-        }
+        // 選択直後に圧縮まで済ませ、圧縮後のサイズで上限を判定する。
+        // 送信時の待ち時間も減らせる。
+        photoProcessing = prepareSelectedPhoto(file, e.target);
     });
+}
+
+/**
+ * 選択された画像を圧縮し、圧縮後のサイズで上限判定を行う。
+ *
+ * 原本のサイズで弾くと、縮小すれば余裕で収まる写真まで申込できなくなる。
+ * 判定は実際に送信するデータ（圧縮後）に対して行う。
+ */
+async function prepareSelectedPhoto(file, inputEl) {
+    // デコード自体を試さない安全弁。これを超える画像はブラウザがメモリ不足で固まりやすい。
+    if (file.size > MAX_DECODE_SIZE) {
+        inputEl.value = '';
+        setPhotoFallback(
+            `ファイルが大きすぎます（${formatMB(file.size)}MB）`,
+            `画像のサイズが大きすぎるため取り込めませんでした（${formatMB(file.size)}MB）。\n\n` +
+            '小さい画像を選び直していただくか、\n' +
+            'このまま申し込みを進めて、写真だけ後から公式LINEへお送りいただくこともできます。'
+        );
+        return;
+    }
+
+    showPhotoProcessing(true);
+    try {
+        const result = await convertFileToBase64(file);
+
+        // 圧縮しても上限を超える場合のみ断念する
+        if (result.bytes > MAX_UPLOAD_SIZE) {
+            inputEl.value = '';
+            setPhotoFallback(
+                `圧縮後も上限超過（${formatMB(result.bytes)}MB）`,
+                `画像を縮小しましたが、まだサイズが大きすぎます（${formatMB(result.bytes)}MB）。\n\n` +
+                '別の画像を選び直していただくか、\n' +
+                'このまま申し込みを進めて、写真だけ後から公式LINEへお送りいただくこともできます。'
+            );
+            return;
+        }
+
+        compressedPhoto = result;
+    } catch (imageError) {
+        console.error('Image processing error:', imageError);
+        // 原本は input に残しておく（送信時にWorker側の変換へフォールバックできる）
+        setPhotoFallback(
+            `ブラウザでの画像変換に失敗: ${imageError.message || '不明なエラー'}`,
+            '画像を読み込めませんでした。\n\n' +
+            '別の画像を選び直していただくか、\n' +
+            'このまま申し込みを進めて、写真だけ後から公式LINEへお送りいただくこともできます。'
+        );
+    } finally {
+        showPhotoProcessing(false);
+    }
+}
+
+function formatMB(bytes) {
+    return (bytes / 1024 / 1024).toFixed(2);
+}
+
+// 圧縮中の表示（数秒かかる端末があるため、無反応に見えないようにする）
+function showPhotoProcessing(processing) {
+    const el = document.getElementById('photoProcessingNotice');
+    if (el) el.classList.toggle('hidden', !processing);
+}
+
+/**
+ * 画像を取り込めなかったことを記録し、写真なしでも申込を進められる状態にする。
+ * 画面上にも案内を出し、「送信ボタンを押しても何も起きない」状態を作らない。
+ */
+function setPhotoFallback(reason, alertMessage) {
+    photoFallbackReason = reason;
+
+    const photoInput = document.getElementById('profileImage');
+    if (photoInput) {
+        photoInput.required = false;
+    }
+
+    const notice = document.getElementById('photoFallbackNotice');
+    if (notice) {
+        const reasonEl = document.getElementById('photoFallbackReason');
+        if (reasonEl) reasonEl.textContent = reason;
+        notice.classList.remove('hidden');
+    }
+
+    const requiredTag = document.getElementById('photoRequiredTag');
+    if (requiredTag) requiredTag.style.display = 'none';
+
+    if (alertMessage) alert(alertMessage);
+}
+
+// 画像を選び直せたときに案内を引っ込める
+function clearPhotoFallback() {
+    if (!photoFallbackReason) return;
+    photoFallbackReason = '';
+
+    const photoInput = document.getElementById('profileImage');
+    if (photoInput && !photoInput.disabled) {
+        photoInput.required = true;
+    }
+
+    const notice = document.getElementById('photoFallbackNotice');
+    if (notice) notice.classList.add('hidden');
+
+    const requiredTag = document.getElementById('photoRequiredTag');
+    if (requiredTag && !document.getElementById('usePreviousPhoto')?.checked) {
+        requiredTag.style.display = 'inline';
+    }
 }
 
 // ========================================
@@ -1626,7 +1817,9 @@ function togglePhotoUpload() {
     const hiddenUrl = document.getElementById('profileImageUrl');
 
     if (checkbox.checked) {
-        // 前回写真を使用
+        // 前回写真を使用（前回画像があるので、取り込み失敗の案内は不要）
+        clearPhotoFallback();
+        compressedPhoto = null;
         fileInput.disabled = true;
         fileInput.required = false;
         fileInput.value = ''; // ファイル選択解除
@@ -1640,9 +1833,10 @@ function togglePhotoUpload() {
     } else {
         // 新規アップロード
         fileInput.disabled = false;
-        fileInput.required = true;
+        // 取り込みに失敗している最中は必須に戻さない（申込ごと止めないため）
+        fileInput.required = !photoFallbackReason;
         preview.classList.add('hidden');
-        requiredTag.style.display = 'inline';
+        requiredTag.style.display = photoFallbackReason ? 'none' : 'inline';
         // URLはクリアしなくてよい（送信時にcheckboxを見て判定するなら）
     }
 }
@@ -1703,12 +1897,17 @@ function convertFileToBase64(file) {
                         return;
                     }
 
-                    console.log(`Image compressed: ${width}x${height}, Quality: 0.8, Size: ${Math.round(base64Only.length / 1024)}KB`);
+                    // Base64は元データの約4/3の長さになる。上限判定に使う実バイト数を求める。
+                    const padding = (base64Only.endsWith('==') ? 2 : base64Only.endsWith('=') ? 1 : 0);
+                    const bytes = Math.floor(base64Only.length * 3 / 4) - padding;
+
+                    console.log(`Image compressed: ${width}x${height}, Quality: 0.8, Size: ${Math.round(bytes / 1024)}KB`);
 
                     resolve({
                         base64: base64Only,
                         mimeType: 'image/jpeg',
-                        name: file.name.replace(/\.[^/.]+$/, "") + ".jpg" // 拡張子をjpgに変更
+                        name: file.name.replace(/\.[^/.]+$/, "") + ".jpg", // 拡張子をjpgに変更
+                        bytes: bytes
                     });
                 } catch (canvasError) {
                     console.error('Canvas processing error:', canvasError);

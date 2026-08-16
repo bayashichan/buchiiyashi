@@ -166,6 +166,33 @@
         <p>この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。</p>
         <p>以下の内容でお申し込みを受け付けました。</p>
 
+        <? if (!imageUploadOk) { ?>
+        <!-- 画像が登録できなかった場合のお願い -->
+        <div style="background:#fff8e1; border:2px solid #ffb300; border-radius:8px; padding:16px; margin:20px 0;">
+            <p style="margin:0 0 10px; font-weight:bold; color:#e65100; font-size:16px;">
+                ⚠️ お写真のご送付のお願い
+            </p>
+            <p style="margin:0 0 12px; font-size:14px; line-height:1.7;">
+                システムの不具合により、<strong>プロフィールのお写真のみ登録できておりません。</strong><br>
+                お申し込み自体は正常に受け付けておりますのでご安心ください。<br>
+                お手数をおかけしますが、お写真は下記の公式LINEへ直接お送りください。
+            </p>
+            <div style="background:#ffffff; border:1px solid #ffb300; border-radius:6px; padding:12px; margin-bottom:12px;">
+                <p style="margin:0 0 4px; font-size:12px; color:#777;">ご送信の際は、必ず下記の出展名をお書き添えください</p>
+                <p style="margin:0; font-size:15px;">出展名: <strong style="color:#e65100;"><?= exhibitorName ?></strong></p>
+            </div>
+            <p style="margin:0;">
+                <a href="<?= CONFIG.OFFICIAL_LINE_URL ?>"
+                    style="display:inline-block; background:#00b900; color:#ffffff; text-decoration:none; font-weight:bold; padding:12px 20px; border-radius:6px;">
+                    公式LINEを開いて写真を送る
+                </a>
+            </p>
+            <p style="margin:8px 0 0; font-size:12px; color:#777;">
+                リンクが開けない場合: <?= CONFIG.OFFICIAL_LINE_URL ?>
+            </p>
+        </div>
+        <? } ?>
+
         <h3 class="section-title">■ お申し込み内容</h3>
         <table class="info-table">
             <tr>

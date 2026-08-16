@@ -246,7 +246,15 @@
                     <small><a href="<?= data.profileImageUrl ?>" target="_blank">画像URLを開く</a></small>
                 </p>
                 <? } else { ?>
-                <p>（画像なし）</p>
+                <p
+                    style="background:#fff8e1; border:2px solid #ffb300; border-radius:6px; padding:12px; margin:0;">
+                    <strong style="color:#e65100;">⚠️ 画像が登録できませんでした（要対応）</strong><br>
+                    <span style="font-size:13px; color:#555;">状態: <?= imageStatusText ?></span><br>
+                    <span style="font-size:13px;">
+                        申込者には「公式LINEへ<strong>出展名</strong>を添えて画像を直接お送りください」と案内済みです。<br>
+                        届かない場合はこちらから催促してください（出展名: <strong><?= data.exhibitorName ?></strong>）。
+                    </span>
+                </p>
                 <? } ?>
             </div>
 
