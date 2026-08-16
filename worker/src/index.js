@@ -807,18 +807,39 @@ async function handleFormSubmission(request, env, corsHeaders) {
             console.error('Failed to parse spreadsheet IDs', e);
         }
 
+        // ブラウザ側で圧縮＆Base64化に成功していれば、そちらを使う。
+        // 原本をWorkerで再変換すると容量・CPUを二重に消費し、大きい写真では
+        // CPU時間上限に当たって申込ごと失敗するため。
+        const hasClientBase64 = !!formData.get('profileImageBase64');
+
+        // 画像の取り込みに失敗した理由（ブラウザ側で失敗していれば引き継ぐ）
+        let imageUploadError = formData.get('imageUploadError') || '';
+
         // フォームデータを抽出
         for (const [key, value] of formData.entries()) {
             if (key === 'profileImage' && value instanceof File && value.size > 0) {
-                // 画像をBase64に変換してGASに送信
-                const imageData = await convertImageToBase64(value);
-                data['profileImageBase64'] = imageData.base64;
-                data['profileImageMimeType'] = imageData.mimeType;
-                data['profileImageName'] = imageData.fileName;
+                // ブラウザ側の変換が失敗したときのフォールバック。
+                // ここで失敗しても申込は通す（画像は後から公式LINEで回収する運用）。
+                if (hasClientBase64) continue;
+
+                try {
+                    const imageData = await convertImageToBase64(value);
+                    data['profileImageBase64'] = imageData.base64;
+                    data['profileImageMimeType'] = imageData.mimeType;
+                    data['profileImageName'] = imageData.fileName;
+                    imageUploadError = '';
+                } catch (imageError) {
+                    console.error('Image conversion failed (continuing without image):', imageError);
+                    imageUploadError = imageUploadError
+                        ? `${imageUploadError} / サーバー側の変換も失敗: ${imageError.message}`
+                        : `サーバー側の画像変換に失敗: ${imageError.message}`;
+                }
             } else {
                 data[key] = value;
             }
         }
+
+        data['imageUploadError'] = imageUploadError;
 
         // タイムスタンプ追加
         data['submittedAt'] = new Date().toISOString();

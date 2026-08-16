@@ -18,6 +18,9 @@ const CONFIG = {
   // メール設定
   ADMIN_EMAIL: 'buchi.iyashi.tokyo.info@gmail.com',
   REPLY_TO_EMAIL: 'buchi.iyashi.tokyo.info@gmail.com',
+
+  // 公式LINE（画像が登録できなかった場合の受け取り窓口）
+  OFFICIAL_LINE_URL: 'https://lin.ee/uqhsDx3',
   
   // 会員割引
   MEMBER_DISCOUNT: 2000,
@@ -522,24 +525,35 @@ function doPost(e) {
     }
     
     // 画像アップロード処理
+    // 画像の失敗で申込ごと落とさない。Drive保存に失敗しても申込は受け付け、
+    // 「画像だけ未登録」であることを管理者・申込者の双方に伝える。
     let profileImageUrl = params.profileImageUrl || ''; // 既存のURLがあればそれを使用
-    
+    let imageUploadError = params.imageUploadError || ''; // フロント／Worker側で既に失敗している場合
+
     if (params.profileImageBase64) {
        // 新しい画像がアップロードされた場合は上書き
-       profileImageUrl = saveImageToDrive(
-         params.profileImageBase64,
-         params.profileImageMimeType,
-         params.profileImageName,
-         params.eventName,
-         params.name
-       );
+       try {
+         profileImageUrl = saveImageToDrive(
+           params.profileImageBase64,
+           params.profileImageMimeType,
+           params.profileImageName,
+           params.eventName,
+           params.name
+         );
+         imageUploadError = '';
+       } catch (imageError) {
+         console.error('Image upload failed (continuing without image):', imageError);
+         imageUploadError = `Driveへの保存に失敗: ${imageError.message}`;
+       }
     }
-    
+
     // データの整理
     const data = {
       submittedAt: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
       ...params,
-      profileImageUrl: profileImageUrl
+      profileImageUrl: profileImageUrl,
+      imageUploadError: imageUploadError,
+      imageUploadOk: !!profileImageUrl
     };
     
     // 料金再計算 (改ざん防止)
@@ -554,10 +568,16 @@ function doPost(e) {
     // 管理者へメール通知
     sendAdminEmail(data, calculationResult);
     
+    // imageStatus は申込フォーム側で「公式LINEへ画像を送ってください」の案内を出すために使う
     return ContentService
-      .createTextOutput(JSON.stringify({ success: true, totalFee: calculationResult.totalFee }))
+      .createTextOutput(JSON.stringify({
+        success: true,
+        totalFee: calculationResult.totalFee,
+        imageStatus: data.imageUploadOk ? 'ok' : 'missing',
+        imageStatusText: formatImageUploadStatus(data)
+      }))
       .setMimeType(ContentService.MimeType.JSON);
-      
+
   } catch (error) {
     return ContentService
       .createTextOutput(JSON.stringify({ success: false, error: error.message }))
@@ -724,6 +744,7 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
     if (sheet.getLastRow() === 0) {
        addEventHeaderRow(sheet);
     }
+    ensureImageStatusHeader(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -767,7 +788,8 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.lineDisplayName || '',                  // LINE DisplayName
       data.specialtyGenres || '',                  // 得意ジャンル
       data.advanceReservation || '不可',           // 事前予約
-      formatLineLinkStatus(data)                   // LINE連携状態（空欄で届いた原因の切り分け用）
+      formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
+      formatImageUploadStatus(data)                // 画像アップロード状態（未登録なら公式LINEで回収）
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -790,6 +812,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
     if (sheet.getLastRow() === 0) {
        addHeaderRow(sheet);
     }
+    ensureImageStatusHeader(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -833,10 +856,34 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.lineDisplayName || '',                  // LINE DisplayName
       data.specialtyGenres || '',                  // 得意ジャンル
       data.advanceReservation || '不可',           // 事前予約
-      formatLineLinkStatus(data)                   // LINE連携状態（空欄で届いた原因の切り分け用）
+      formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
+      formatImageUploadStatus(data)                // 画像アップロード状態（未登録なら公式LINEで回収）
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
+  }
+}
+
+/**
+ * 既存シートに「画像アップロード状態」列の見出しを補う。
+ *
+ * ヘッダー行は新規シート作成時にしか書かれないため、運用中のシートでは
+ * 値だけが入って見出しが空になってしまう。運営が列の意味を追えるようにする。
+ */
+function ensureImageStatusHeader(sheet) {
+  try {
+    if (sheet.getLastRow() === 0) return;
+
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    if (headers.indexOf('画像アップロード状態') > -1) return;
+
+    // 定位置は「LINE連携状態」の隣。見つからない古いシートは末尾に追加する。
+    const lineIdx = headers.indexOf('LINE連携状態');
+    const col = lineIdx > -1 ? lineIdx + 2 : lastCol + 1;
+    sheet.getRange(1, col).setValue('画像アップロード状態');
+  } catch (e) {
+    console.warn('Failed to add image status header: ' + e.message);
   }
 }
 
@@ -849,7 +896,7 @@ function addHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態'
   ]);
 }
 
@@ -863,7 +910,7 @@ function addEventHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態'
   ]);
 }
 
@@ -884,11 +931,32 @@ function formatLineLinkStatus(data) {
   return `未連携（${status}${detail}）`;
 }
 
+/**
+ * 画像アップロードの状態を人が読める文字列にする。
+ *
+ * 画像が登録できていない申込は、後から公式LINEで写真を受け取る必要がある。
+ * どの申込に対応が必要かをシート・メールから一目で分かるようにする。
+ */
+function formatImageUploadStatus(data) {
+  if (data.profileImageUrl) return '登録済み';
+
+  // 失敗理由にはスタックトレースが混ざることがある。
+  // シートやメールに流し込むので1行に潰し、長すぎるものは切り詰める（詳細は実行ログに残る）。
+  let reason = '';
+  if (data.imageUploadError) {
+    const oneLine = String(data.imageUploadError).replace(/\s+/g, ' ').trim();
+    reason = `: ${oneLine.length > 120 ? oneLine.slice(0, 120) + '…' : oneLine}`;
+  }
+  return `未登録（要LINE回収${reason}）`;
+}
+
 // 管理者へメール通知（HTMLメール）
 function sendAdminEmail(data, calculationResult) {
   // LINE情報が取れていない申込は件名で分かるようにする（後追いの案内が必要なため）
   const linkPrefix = data.lineUserId ? '' : '【LINE未連携】';
-  const subject = `${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
+  // 画像が登録できなかった申込も件名で分かるようにする（公式LINEで写真を受け取る必要があるため）
+  const imagePrefix = data.profileImageUrl ? '' : '【画像未登録】';
+  const subject = `${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
   
   // テキスト版（HTMLが表示できないクライアント用）
   const textBody = `
@@ -919,7 +987,11 @@ ${data.selfIntro}
 写真掲載許可: ${data.photoPermission}
 
 ■ カタログ掲載画像
-画像URL: ${data.profileImageUrl || '取得失敗'}
+状態: ${formatImageUploadStatus(data)}
+${data.profileImageUrl
+  ? `画像URL: ${data.profileImageUrl}`
+  : `※画像が登録できていません。申込者には「公式LINEへ出展名を添えて画像を送ってください」と案内済みです。
+　 届かない場合はこちらから催促してください（出展名: ${data.exhibitorName}）。`}
 
 ■ オプション
 追加スタッフ: ${data.extraStaff || 0}名
@@ -951,6 +1023,7 @@ ${data.notes || 'なし'}
   template.data = data;
   template.calculationResult = calculationResult;
   template.snsLinksFormatted = formatSnsLinks(data.snsLinks);
+  template.imageStatusText = formatImageUploadStatus(data);
   
   // 料金内訳の表示用リスト作成
   const breakdownList = [
@@ -1029,6 +1102,9 @@ function sendConfirmationEmail(data, calculationResult) {
   template.breakdownList = breakdownList; // 追加
   template.isMember = isMember;
   template.CONFIG = CONFIG;
+  // 画像が登録できなかった場合、公式LINEでの送付をお願いする案内を出す
+  template.imageUploadOk = !!data.profileImageUrl;
+  template.exhibitorName = data.exhibitorName || '';
   
   // HTMLを評価
   const htmlBody = template.evaluate().getContent();
@@ -1039,12 +1115,31 @@ function sendConfirmationEmail(data, calculationResult) {
     memberMessage = '\n※アーキエンジェルハピネス協会会員様は早割適用外となりますが、会員様特別割引（-2,000円）を適用しております。\n';
   }
 
+  // 画像が登録できなかった場合の案内（公式LINEへ出展名を添えて送っていただく）
+  let imageMessage = '';
+  if (!data.profileImageUrl) {
+    imageMessage = `
+━━━━━━━━━━━━━━━━━━━━
+⚠️ お写真のご送付のお願い
+━━━━━━━━━━━━━━━━━━━━
+システムの不具合により、プロフィールのお写真のみ登録できておりません。
+お申し込み自体は正常に受け付けておりますのでご安心ください。
+
+お手数ですが、お写真は下記の公式LINEへ直接お送りください。
+${CONFIG.OFFICIAL_LINE_URL}
+
+★その際、必ず下記の出展名をお書き添えください。
+　出展名: ${data.exhibitorName}
+━━━━━━━━━━━━━━━━━━━━
+`;
+  }
+
   const textBody = `
 ${data.name} 様
 
 この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
 以下の内容でお申し込みを受け付けました。
-
+${imageMessage}
 ■ お申し込み内容
 お名前: ${data.name}
 ふりがな: ${data.furigana}
