@@ -948,9 +948,12 @@ async function registerApplicantToLineManager(data, env) {
  * 画像をBase64に変換
  */
 async function convertImageToBase64(file) {
-    // ファイルサイズチェック (8MB以下)
+    // ここに来るのはブラウザ側の圧縮が失敗したときの原本のみ。
+    // 大きすぎる原本の変換はWorkerのCPU時間を使い切り、申込全体を巻き添えにするため断念する
+    // （申込自体は画像なしで成立し、写真は公式LINEで回収する）。
     if (file.size > 8 * 1024 * 1024) {
-        throw new Error('Image file too large (max 8MB)');
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        throw new Error(`原本のサイズが大きく変換できませんでした (${sizeMB}MB / 上限8MB)`);
     }
 
     // 許可された拡張子チェック

@@ -397,6 +397,11 @@
               required>
             <input type="hidden" name="profileImageUrl" id="profileImageUrl">
 
+            <!-- 圧縮中の表示（JSで表示切替） -->
+            <p id="photoProcessingNotice" class="hidden mt-2 text-sm text-blue-600">
+              画像を準備しています…（大きい写真は少し時間がかかります）
+            </p>
+
             <!-- 画像を取り込めなかったときの案内（JSで表示切替） -->
             <div id="photoFallbackNotice" class="hidden mt-2 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
               <p class="text-sm font-bold text-yellow-800">⚠️ 画像を取り込めませんでした</p>
@@ -412,7 +417,7 @@
             </div>
             <p class="text-sm text-gray-500 mt-1">
               ※顔出しをしたくない場合は、似顔絵やイラスト、風景画など、お好きな画像を設定してください。<br>
-              ※ JPG/PNG 形式、8MB以下、正方形推奨
+              ※ JPG/PNG 形式、正方形推奨（大きい写真は自動で縮小してアップロードします）
             </p>
           </div>
 
