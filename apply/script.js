@@ -1216,6 +1216,10 @@ function showCompleteModal(result, clientImageError) {
         }
     }
 
+    // 登録できた場合も、その旨をはっきり伝える（無表示だと成否が分からないため）
+    const okNotice = document.getElementById('imageOkNotice');
+    if (okNotice) okNotice.classList.toggle('hidden', imageMissing);
+
     modal.classList.remove('hidden');
 }
 
@@ -1352,6 +1356,7 @@ function initFileSizeCheck() {
 
         // 新しく選び直したので、前回の結果はリセットする
         clearPhotoFallback();
+        hidePhotoReady();
         compressedPhoto = null;
         if (!file) return;
 
@@ -1410,6 +1415,9 @@ async function prepareSelectedPhoto(file, inputEl) {
         }
 
         compressedPhoto = result;
+        // 実際に送信される画像そのものを見せる。
+        // 「準備しています…」が消えるだけだと、登録できたのか分からないため。
+        showPhotoReady(result, file.size);
     } catch (imageError) {
         console.error('Image processing error:', imageError);
         // 原本は input に残しておく（送信時にWorker側の変換へフォールバックできる）
@@ -1435,11 +1443,45 @@ function showPhotoProcessing(processing) {
 }
 
 /**
+ * 取り込めた写真を、送信される状態そのままでプレビュー表示する。
+ * 申込者が「どの写真が登録されるのか」を送信前に確認できるようにする。
+ */
+function showPhotoReady(result, originalBytes) {
+    const notice = document.getElementById('photoReadyNotice');
+    if (!notice) return;
+
+    const preview = document.getElementById('photoReadyPreview');
+    if (preview) preview.src = `data:${result.mimeType};base64,${result.base64}`;
+
+    const detail = document.getElementById('photoReadyDetail');
+    if (detail) {
+        // 縮小が効いた場合だけ、その旨も伝える（「勝手に画質が変わった」と驚かせないため）
+        detail.textContent = originalBytes > result.bytes * 1.2
+            ? `大きい写真のため自動で縮小しました（${formatKB(result.bytes)}）`
+            : `送信サイズ: ${formatKB(result.bytes)}`;
+    }
+
+    notice.classList.remove('hidden');
+}
+
+function hidePhotoReady() {
+    const notice = document.getElementById('photoReadyNotice');
+    if (notice) notice.classList.add('hidden');
+}
+
+function formatKB(bytes) {
+    return bytes >= 1024 * 1024
+        ? `${formatMB(bytes)}MB`
+        : `${Math.round(bytes / 1024)}KB`;
+}
+
+/**
  * 画像を取り込めなかったことを記録し、写真なしでも申込を進められる状態にする。
  * 画面上にも案内を出し、「送信ボタンを押しても何も起きない」状態を作らない。
  */
 function setPhotoFallback(reason, alertMessage) {
     photoFallbackReason = reason;
+    hidePhotoReady();
 
     const photoInput = document.getElementById('profileImage');
     if (photoInput) {
@@ -1819,6 +1861,7 @@ function togglePhotoUpload() {
     if (checkbox.checked) {
         // 前回写真を使用（前回画像があるので、取り込み失敗の案内は不要）
         clearPhotoFallback();
+        hidePhotoReady();
         compressedPhoto = null;
         fileInput.disabled = true;
         fileInput.required = false;
