@@ -329,10 +329,36 @@
           <!-- ブース選択 -->
           <div>
             <label class="input-label">出展ブースタイプ<span class="required">*</span></label>
+
+            <!-- キャンセル待ちの説明（満枠ブースも申し込めることを先に伝える） -->
+            <div class="text-sm text-amber-900 bg-amber-50 border-2 border-amber-300 rounded-lg p-4 mt-2 leading-relaxed">
+              <p class="font-bold mb-1">🟡「キャンセル待ち」と表示されているブースについて</p>
+              <p>
+                満枠のブースも<strong>キャンセル待ちとしてお申し込みいただけます。</strong><br>
+                空きが出た場合に、お申し込み順に事務局よりご連絡いたします。<br>
+                <span class="font-bold text-red-600">キャンセル待ちの時点では出展確定ではありません。出展料のお振込みは、確定のご連絡があるまでお待ちください。</span>
+              </p>
+            </div>
+
             <div id="boothAccordion" class="space-y-2 mt-2">
               <!-- ブースアコーディオンはJSで生成 -->
             </div>
             <input type="hidden" name="boothId" id="boothIdInput" required>
+
+            <!-- キャンセル待ちブース選択時の案内（JSで表示切替） -->
+            <div id="waitlistNotice" class="waitlist-panel hidden">
+              <p class="waitlist-panel-title">⚠️ キャンセル待ちでのお申し込みになります</p>
+              <p class="text-sm leading-relaxed">
+                選択中のブース：<strong id="waitlistBoothName"></strong><br>
+                こちらのブースは満枠のため、<strong>キャンセル待ちでの受付</strong>となります。<br>
+                空きが出た場合のみ、お申し込み順に事務局よりご連絡いたします。<br>
+                （必ずご出展いただけるとは限りません。あらかじめご了承ください。）
+              </p>
+              <span class="waitlist-payment">
+                💰 出展料のお振込みは、まだなさらないでください。<br>
+                出展が確定した際に、事務局よりお振込先とお支払い期限をご案内いたします。
+              </span>
+            </div>
           </div>
 
           <!-- ボディケアブース用：持ち込み物品 -->
@@ -672,6 +698,10 @@
       <div>
         <div class="price-breakdown" id="priceBreakdown">ブースを選択してください</div>
         <div class="total-price">合計: <span id="totalPrice">¥0</span></div>
+        <!-- キャンセル待ち選択時のみ表示（JSで表示切替） -->
+        <div id="waitlistPriceNote" class="waitlist-price-note hidden">
+          ※キャンセル待ちのため、今はお振込み不要です
+        </div>
       </div>
       <button type="button" id="submitBtn" class="submit-btn" onclick="submitForm()">
         申し込む
@@ -683,11 +713,25 @@
   <div id="completeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
     <div class="bg-white rounded-2xl p-8 max-w-md mx-4 text-center">
       <div class="text-6xl mb-4">🎊</div>
-      <h2 class="text-2xl font-bold text-orange-500 mb-4">お申し込みありがとうございます！</h2>
-      <p class="text-gray-600 mb-6">
+      <h2 id="completeTitle" class="text-2xl font-bold text-orange-500 mb-4">お申し込みありがとうございます！</h2>
+      <p id="completeMessage" class="text-gray-600 mb-6">
         ご登録いただいたメールアドレスに確認メールをお送りしました。<br>
         内容をご確認ください。
       </p>
+
+      <!-- キャンセル待ちの場合の案内（JSで表示切替） -->
+      <div id="waitlistCompleteNotice" class="waitlist-panel hidden text-left mb-6">
+        <p class="waitlist-panel-title">⚠️ キャンセル待ちでの受付です</p>
+        <p class="text-sm leading-relaxed">
+          <strong id="waitlistCompleteBoothName"></strong> は満枠のため、<br>
+          <strong>キャンセル待ちとしてお申し込みを承りました。</strong><br>
+          空きが出た場合のみ、お申し込み順に事務局よりご連絡いたします。
+        </p>
+        <span class="waitlist-payment">
+          💰 出展料のお振込みは、まだなさらないでください。<br>
+          出展確定のご連絡後に、お振込先をご案内いたします。
+        </span>
+      </div>
 
       <!-- 画像が登録できた場合の確認（JSで表示切替） -->
       <p id="imageOkNotice" class="hidden mb-6 text-sm font-bold text-green-700">
@@ -775,6 +819,19 @@
             <li>2週間以内のご入金をお願いしておりますが、ご事情によりどうしても遅れる場合は必ず入金予定日をご連絡ください。※入金予定日お知らせ後、早目のご入金のご協力をお願い致します。</li>
             <li>なお、イベントを1か月切ってからのお申し込みの場合は、<span class="font-bold text-red-500">3日以内</span>のお振込みをお願いいたします。</li>
             <li>金融機関の振込明細書または振込完了画面をもって領収書に代えさせていただきます。別途、領収書の発行は行っておりませんのでご了承ください。</li>
+            <li class="font-bold text-orange-600">キャンセル待ちでお申し込みの場合は、出展確定のご連絡があるまでお振込みは不要です。お支払い期限は、確定のご連絡日からの起算となります。</li>
+          </ul>
+        </div>
+
+        <!-- キャンセル待ちについて -->
+        <div class="mb-4 bg-amber-50 p-3 rounded-lg border border-amber-300">
+          <h3 class="font-bold text-amber-700 mb-2">【キャンセル待ちについて】</h3>
+          <ul class="space-y-1 list-disc pl-5 text-sm">
+            <li>満枠のブースは「キャンセル待ち」としてお申し込みいただけます。</li>
+            <li>キャンセル待ちの時点では<span class="font-bold">出展確定ではありません。</span>空きが出た場合のみ、お申し込み順に事務局よりご連絡いたします。</li>
+            <li>ご希望に添えない場合もございますので、あらかじめご了承ください。</li>
+            <li class="font-bold text-red-600">確定のご連絡があるまで、出展料のお振込みはなさらないでください。</li>
+            <li>キャンセル待ちの期間中は、キャンセル料は発生いたしません（キャンセルポリシーは出展確定後に適用されます）。</li>
           </ul>
         </div>
 

@@ -111,6 +111,24 @@
         </div>
 
         <div class="content">
+            <? if (isWaitlist) { ?>
+            <!-- キャンセル待ち申込。入金案内をしていないため、対応が通常申込と異なる -->
+            <div
+                style="border:4px solid #e67e22; background-color:#fff4e5; border-radius:8px; padding:16px; margin-bottom:20px;">
+                <p style="margin:0 0 10px; font-size:20px; font-weight:bold; color:#d35400;">
+                    ⚠️ キャンセル待ちでの申込です
+                </p>
+                <p style="margin:0; font-size:14px; line-height:1.8;">
+                    対象ブース: <strong>
+                        <?= data.boothName ?>
+                    </strong>（満枠）<br>
+                    申込者へは「<strong>出展確定ではない</strong>」「<strong>お振込みはまだしないでください</strong>」と案内済みです。<br>
+                    自動返信メールには<strong>振込先を記載していません。</strong><br>
+                    空きが出た場合は、申込順に確定のご連絡とお振込案内をお願いします。
+                </p>
+            </div>
+            <? } ?>
+
             <!-- 申込者情報 -->
             <div class="section">
                 <div class="section-title">申込者情報</div>
@@ -194,6 +212,9 @@
                         <th>ブース</th>
                         <td>
                             <?= data.boothName ?>
+                            <? if (isWaitlist) { ?>
+                            <strong style="color:#d35400;">（キャンセル待ち）</strong>
+                            <? } ?>
                         </td>
                     </tr>
                     <? if (data.equipment) { ?>
@@ -365,7 +386,7 @@
             </div>
 
             <div class="total-box">
-                <div>お振込金額合計</div>
+                <div><?= isWaitlist ? '確定時のご請求予定額（未案内）' : 'お振込金額合計' ?></div>
                 <div class="amount">¥
                     <?= calculationResult.totalFee.toLocaleString() ?>
                 </div>

@@ -548,12 +548,15 @@ function doPost(e) {
     }
 
     // データの整理
+    // isWaitlist はフォーム側で「満枠ブースを選んだ」ことを表す。
+    // 料金には影響しない（確定時に同額を請求する）ため、文面と管理側の区分にのみ使う。
     const data = {
       submittedAt: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
       ...params,
       profileImageUrl: profileImageUrl,
       imageUploadError: imageUploadError,
-      imageUploadOk: !!profileImageUrl
+      imageUploadOk: !!profileImageUrl,
+      isWaitlist: params.isWaitlist === '1' || params.isWaitlist === true
     };
     
     // 料金再計算 (改ざん防止)
@@ -574,7 +577,8 @@ function doPost(e) {
         success: true,
         totalFee: calculationResult.totalFee,
         imageStatus: data.imageUploadOk ? 'ok' : 'missing',
-        imageStatusText: formatImageUploadStatus(data)
+        imageStatusText: formatImageUploadStatus(data),
+        isWaitlist: data.isWaitlist
       }))
       .setMimeType(ContentService.MimeType.JSON);
 
@@ -744,7 +748,7 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
     if (sheet.getLastRow() === 0) {
        addEventHeaderRow(sheet);
     }
-    ensureImageStatusHeader(sheet);
+    ensureExtraHeaders(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -789,7 +793,8 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.specialtyGenres || '',                  // 得意ジャンル
       data.advanceReservation || '不可',           // 事前予約
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
-      formatImageUploadStatus(data)                // 画像アップロード状態（未登録なら公式LINEで回収）
+      formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
+      formatApplicationStatus(data)                // 申込区分（キャンセル待ちは入金案内前の扱い）
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -812,7 +817,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
     if (sheet.getLastRow() === 0) {
        addHeaderRow(sheet);
     }
-    ensureImageStatusHeader(sheet);
+    ensureExtraHeaders(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -857,7 +862,8 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.specialtyGenres || '',                  // 得意ジャンル
       data.advanceReservation || '不可',           // 事前予約
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
-      formatImageUploadStatus(data)                // 画像アップロード状態（未登録なら公式LINEで回収）
+      formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
+      formatApplicationStatus(data)                // 申込区分（キャンセル待ちは入金案内前の扱い）
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -865,26 +871,46 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
 }
 
 /**
- * 既存シートに「画像アップロード状態」列の見出しを補う。
+ * 既存シートに、後から増えた列の見出しを補う。
  *
  * ヘッダー行は新規シート作成時にしか書かれないため、運用中のシートでは
  * 値だけが入って見出しが空になってしまう。運営が列の意味を追えるようにする。
  */
-function ensureImageStatusHeader(sheet) {
+function ensureExtraHeaders(sheet) {
+  ensureHeaderAfter(sheet, '画像アップロード状態', 'LINE連携状態');
+  ensureHeaderAfter(sheet, '申込区分', '画像アップロード状態');
+}
+
+function ensureHeaderAfter(sheet, headerName, afterHeaderName) {
   try {
     if (sheet.getLastRow() === 0) return;
 
     const lastCol = Math.max(sheet.getLastColumn(), 1);
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
-    if (headers.indexOf('画像アップロード状態') > -1) return;
+    if (headers.indexOf(headerName) > -1) return;
 
-    // 定位置は「LINE連携状態」の隣。見つからない古いシートは末尾に追加する。
-    const lineIdx = headers.indexOf('LINE連携状態');
-    const col = lineIdx > -1 ? lineIdx + 2 : lastCol + 1;
-    sheet.getRange(1, col).setValue('画像アップロード状態');
+    // 定位置は基準となる列の隣。見つからない古いシートは末尾に追加する。
+    const baseIdx = headers.indexOf(afterHeaderName);
+    let col = baseIdx > -1 ? baseIdx + 2 : lastCol + 1;
+
+    // 隣が既に他の見出しで埋まっている場合は、上書きせず末尾へ回す
+    if (col <= lastCol && headers[col - 1]) {
+      col = lastCol + 1;
+    }
+    sheet.getRange(1, col).setValue(headerName);
   } catch (e) {
-    console.warn('Failed to add image status header: ' + e.message);
+    console.warn(`Failed to add header "${headerName}": ` + e.message);
   }
+}
+
+/**
+ * 申込の区分（通常申込 / キャンセル待ち）を人が読める文字列にする。
+ *
+ * キャンセル待ちの申込は入金案内をしていないため、入金確認の対象から外して
+ * 扱う必要がある。シート上で一目で区別できるようにする。
+ */
+function formatApplicationStatus(data) {
+  return data.isWaitlist ? 'キャンセル待ち（入金案内前）' : '通常申込';
 }
 
 // マスターDB用ヘッダー行（開催回列あり）
@@ -896,7 +922,7 @@ function addHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', '申込区分'
   ]);
 }
 
@@ -910,7 +936,7 @@ function addEventHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', '申込区分'
   ]);
 }
 
@@ -956,12 +982,23 @@ function sendAdminEmail(data, calculationResult) {
   const linkPrefix = data.lineUserId ? '' : '【LINE未連携】';
   // 画像が登録できなかった申込も件名で分かるようにする（公式LINEで写真を受け取る必要があるため）
   const imagePrefix = data.profileImageUrl ? '' : '【画像未登録】';
-  const subject = `${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
-  
+  // キャンセル待ちは入金案内をしていないため、通常申込と取り違えないよう件名の先頭に出す
+  const waitlistPrefix = data.isWaitlist ? '【キャンセル待ち】' : '';
+  const subject = `${waitlistPrefix}${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
+
+  const adminWaitlistNote = data.isWaitlist ? `
+━━━━━━━━━━━━━━━━━━━━
+★ キャンセル待ちでの申込です（${data.boothName}）
+　 申込者には「出展確定ではない」「振込はまだしないでください」と案内済みです。
+　 振込先は自動返信メールに記載していません。
+　 空きが出た場合は、申込順に確定のご連絡＋振込案内をお願いします。
+━━━━━━━━━━━━━━━━━━━━
+` : '';
+
   // テキスト版（HTMLが表示できないクライアント用）
   const textBody = `
 新しい出展申込がありました。
-
+${adminWaitlistNote}
 ■ 申込者情報
 お名前: ${data.name}
 ふりがな: ${data.furigana}
@@ -1012,10 +1049,11 @@ ${formatSnsLinks(data.snsLinks)}
 ■ 備考
 ${data.notes || 'なし'}
 
-■ 料金
+■ 料金${data.isWaitlist ? '（キャンセル待ちのため未案内・確定時の予定額）' : ''}
 合計: ¥${calculationResult.totalFee.toLocaleString()}
 
 申込日時: ${data.submittedAt}
+申込区分: ${formatApplicationStatus(data)}
   `.trim();
 
   // HTMLテンプレートを読み込み
@@ -1037,6 +1075,7 @@ ${data.notes || 'なし'}
 
   template.breakdownList = breakdownList;
   template.isMember = data.isMember === '1';
+  template.isWaitlist = !!data.isWaitlist;
 
   const htmlBody = template.evaluate().getContent();
   
@@ -1105,6 +1144,9 @@ function sendConfirmationEmail(data, calculationResult) {
   // 画像が登録できなかった場合、公式LINEでの送付をお願いする案内を出す
   template.imageUploadOk = !!data.profileImageUrl;
   template.exhibitorName = data.exhibitorName || '';
+  // キャンセル待ちの場合は、振込案内ではなく「まだ入金しないでください」の案内を出す
+  template.isWaitlist = !!data.isWaitlist;
+  template.boothName = data.boothName || '';
   
   // HTMLを評価
   const htmlBody = template.evaluate().getContent();
@@ -1134,34 +1176,68 @@ ${CONFIG.OFFICIAL_LINE_URL}
 `;
   }
 
+  // キャンセル待ちの案内（テキスト版でも冒頭で必ず目に入るようにする）
+  const isWaitlist = !!data.isWaitlist;
+  const waitlistMessage = isWaitlist ? `
+■■■■■■■■■■■■■■■■■■■■
+■　【重要】キャンセル待ちでの受付です
+■■■■■■■■■■■■■■■■■■■■
+
+ご希望の「${data.boothName}」は満枠のため、
+キャンセル待ちとしてお申し込みを承りました。
+
+・現時点では出展確定ではありません。
+・空きが出た場合のみ、お申し込み順に事務局よりご連絡いたします。
+
+★★★ 出展料のお振込みは、まだなさらないでください ★★★
+出展が確定した際に、改めてお振込先とお支払い期限をご案内いたします。
+下記の金額は、出展が確定した場合のご請求予定額です。
+━━━━━━━━━━━━━━━━━━━━
+` : '';
+
+  // 振込案内はキャンセル待ちには出さない（誤って入金されるのを防ぐ）
+  const paymentMessage = isWaitlist ? '' : `
+■ お振込みについて
+お申し込み後1週間以内に、下記口座へお振り込みください。
+（イベント1ヶ月前を切ってからのお申し込みは3日以内）
+　銀行名: GMOあおぞらネット銀行
+　支店名: にじ支店（３０２）
+　口座種別: 普通
+　口座番号: 3249690
+　口座名義: スズキ　カズコ
+`;
+
   const textBody = `
 ${data.name} 様
 
 この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
 以下の内容でお申し込みを受け付けました。
-${imageMessage}
+${waitlistMessage}${imageMessage}
 ■ お申し込み内容
 お名前: ${data.name}
 ふりがな: ${data.furigana}
 ご住所: ${data.address}
 メールアドレス: ${data.email}
 出展名: ${data.exhibitorName}
-出展ブース: ${data.boothName}
+出展ブース: ${data.boothName}${isWaitlist ? '（キャンセル待ち）' : ''}
 出展メニュー: ${data.menuName}
 
-■ 料金
+■ 料金${isWaitlist ? '（出展確定時のご請求予定額）' : ''}
 合計: ¥${calculationResult.totalFee.toLocaleString()}
-${memberMessage}
+${memberMessage}${paymentMessage}
 詳細はHTML版メールをご確認ください。
 
 -----
 ぶち癒やしフェスタin東京 事務局
 Email: ${CONFIG.REPLY_TO_EMAIL}
   `.trim();
-  
+
   // メール送信
-  const subject = `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
-  
+  // 件名でもキャンセル待ちと分かるようにする（メール一覧の時点で誤解を防ぐ）
+  const subject = isWaitlist
+    ? `【キャンセル待ちで受付】ぶち癒やしフェスタin東京 お申し込みありがとうございます（お振込みはお待ちください）`
+    : `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
+
   GmailApp.sendEmail(data.email, subject, textBody, {
     name: 'ぶち癒やしフェスタin東京事務局',
     replyTo: CONFIG.REPLY_TO_EMAIL,

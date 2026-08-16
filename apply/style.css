@@ -133,7 +133,8 @@ body {
 }
 
 .accordion-content.open {
-  max-height: 500px;
+  /* キャンセル待ち表示のブースは1件あたりの高さが増えるため、余裕をもたせる */
+  max-height: 900px;
 }
 
 /* ブース選択ラジオボタン */
@@ -565,25 +566,88 @@ textarea.input-field {
   }
 }
 
-/* 満枠時のスタイル */
-.booth-option.sold-out {
-  opacity: 0.7;
-  background-color: #f3f4f6;
-  border-color: #d1d5db;
-  cursor: not-allowed;
+/* キャンセル待ち（満枠）ブースのスタイル
+   満枠でも申し込み自体は受け付けるため、選択できる見た目のまま
+   「通常枠とは違う」ことが一目で分かるようにする */
+.booth-option.waitlist {
+  background-color: #fffbeb;
+  border-color: var(--warning);
 }
 
-.booth-option.sold-out:hover {
-  background-color: #f3f4f6;
-  border-color: #d1d5db;
+.booth-option.waitlist:hover {
+  background-color: #fef3c7;
+  border-color: var(--warning);
 }
 
-.sold-out-badge {
-  background-color: var(--error);
+.booth-option.waitlist.selected {
+  border-color: var(--warning);
+  background: linear-gradient(135deg, #fef3c7 0%, white 100%);
+}
+
+.waitlist-badge {
+  display: inline-block;
+  background-color: var(--warning);
   color: white;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  padding: 0.25rem 0.75rem;
+  padding: 0.15rem 0.6rem;
   border-radius: 9999px;
-  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ブース名はバッジの下に置く（横並びだと狭い画面で名前が潰れる） */
+.booth-name-wrap {
+  display: block;
+  min-width: 0;
+}
+
+.booth-name-wrap .waitlist-badge {
+  margin-bottom: 0.2rem;
+}
+
+.booth-name-text {
+  display: block;
+}
+
+.waitlist-note {
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: #b45309;
+  margin-top: 0.15rem;
+}
+
+/* キャンセル待ちの説明パネル（ブース選択直下・完了モーダル） */
+.waitlist-panel {
+  border: 3px solid var(--warning);
+  background-color: #fffbeb;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.waitlist-panel-title {
+  font-weight: 700;
+  color: #b45309;
+  font-size: 1.05rem;
+  margin-bottom: 0.5rem;
+}
+
+.waitlist-panel .waitlist-payment {
+  display: block;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background-color: #fff;
+  border: 2px solid var(--error);
+  border-radius: 0.5rem;
+  color: var(--error);
+  font-weight: 700;
+}
+
+/* フッター料金欄のキャンセル待ち注意書き */
+.waitlist-price-note {
+  color: #b45309;
+  font-weight: 700;
+  font-size: 0.75rem;
 }

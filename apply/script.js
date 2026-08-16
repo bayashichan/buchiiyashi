@@ -327,10 +327,18 @@ function initBoothAccordion() {
         const booths = CONFIG.booths.filter(b => b.location === location);
 
         // アコーディオンヘッダー
+        // 折りたたまれた状態でも、キャンセル待ちのブースが含まれることが分かるようにする
+        const waitlistCount = booths.filter(b => b.soldOut).length;
+        let waitlistHeaderBadge = '';
+        if (waitlistCount > 0) {
+            const label = waitlistCount === booths.length ? 'キャンセル待ち' : '一部キャンセル待ち';
+            waitlistHeaderBadge = `<span class="waitlist-badge ml-2">${label}</span>`;
+        }
+
         const header = document.createElement('div');
         header.className = 'accordion-header';
         header.innerHTML = `
-      <span class="font-bold">${location}</span>
+      <span class="font-bold">${location}${waitlistHeaderBadge}</span>
       <span class="accordion-icon">▼</span>
     `;
 
@@ -355,14 +363,21 @@ function initBoothAccordion() {
             }
 
             const option = document.createElement('label');
-            option.className = 'booth-option' + (booth.soldOut ? ' sold-out' : '');
+            option.className = 'booth-option' + (booth.soldOut ? ' waitlist' : '');
 
             if (booth.soldOut) {
-                // 満枠の場合は選択不可
+                // 満枠のブースも「キャンセル待ち」として申し込めるようにする。
+                // 選択不可にすると申込機会そのものが失われるため、
+                // 選べる状態のまま通常枠との違いを明示する。
+                // バッジは名前の上に置く（横並びにすると狭い画面でブース名が潰れるため）
                 option.innerHTML = `
-        <input type="radio" name="boothRadio" value="${booth.id}" disabled>
-        <span class="ml-2 flex-1">${booth.name}</span>
-        <span class="sold-out-badge">満枠</span>
+        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
+        <span class="ml-2 flex-1 booth-name-wrap">
+          <span class="waitlist-badge">キャンセル待ち</span>
+          <span class="booth-name-text">${booth.name}</span>
+          <span class="waitlist-note">満枠のため、キャンセル待ちでの受付となります</span>
+        </span>
+        <span class="booth-price">${priceDisplay}</span>
       `;
             } else {
                 option.innerHTML = `
@@ -427,7 +442,36 @@ function selectBooth(boothId) {
     // UIとセッション警告を更新
     updateOptionsUI();
     updateSessionWarning();
+    updateWaitlistNotice();
     calculatePrice();
+}
+
+// ========================================
+// キャンセル待ちの案内
+// ========================================
+/**
+ * 選択中のブースがキャンセル待ち（満枠）かどうか。
+ */
+function isWaitlistSelected() {
+    return !!(selectedBooth && selectedBooth.soldOut);
+}
+
+/**
+ * キャンセル待ちブースを選んだときの案内を表示する。
+ * 「申し込めた ＝ 出展確定」と誤解されると入金トラブルになるため、
+ * 選択直後に、確定ではないこと・入金はまだ不要なことをはっきり伝える。
+ */
+function updateWaitlistNotice() {
+    const notice = document.getElementById('waitlistNotice');
+    if (!notice) return;
+
+    if (isWaitlistSelected()) {
+        const nameEl = document.getElementById('waitlistBoothName');
+        if (nameEl) nameEl.textContent = selectedBooth.name;
+        notice.classList.remove('hidden');
+    } else {
+        notice.classList.add('hidden');
+    }
 }
 
 // ========================================
@@ -736,6 +780,11 @@ function calculatePrice() {
         ? breakdown.join(' + ')
         : 'ブースを選択してください';
     document.getElementById('totalPrice').textContent = `¥${total.toLocaleString()}`;
+
+    // キャンセル待ちの場合、合計金額は「確定した場合の金額」でしかない。
+    // フッターは常に見えているので、ここでも入金不要であることを添える。
+    const priceNote = document.getElementById('waitlistPriceNote');
+    if (priceNote) priceNote.classList.toggle('hidden', !isWaitlistSelected());
 }
 
 // ========================================
@@ -1015,6 +1064,21 @@ async function submitForm() {
         if (!confirmed) return;
     }
 
+    // キャンセル待ちのブースを選んでいる場合の確認。
+    // 画面の案内を読み飛ばしたまま送信されると「出展確定した」と誤解されるため、
+    // 送信前に必ず一度、確定ではないこと・入金がまだ不要なことに同意してもらう。
+    if (isWaitlistSelected()) {
+        const proceedWaitlist = confirm(
+            '⚠️ キャンセル待ちでのお申し込みです\n\n' +
+            `「${selectedBooth.name}」は満枠のため、キャンセル待ちでの受付となります。\n\n` +
+            '・現時点では出展確定ではありません\n' +
+            '・空きが出た場合のみ、事務局から順番にご連絡いたします\n' +
+            '・出展料のお振込みは、確定のご連絡があるまで行わないでください\n\n' +
+            'この内容でお申し込みを進めますか？'
+        );
+        if (!proceedWaitlist) return;
+    }
+
     // LINE連携が取れていない場合の確認。
     // 申込自体はブロックしない（連携失敗で申込機会を失う方が損失が大きい）が、
     // 無言で通していた従来と違い、申込者に必ず自覚してもらう。
@@ -1041,6 +1105,8 @@ async function submitForm() {
         formData.append('boothName', selectedBooth.name);
         formData.append('category', selectedCategory);
         formData.append('isEarlyBird', isEarlyBird() ? '1' : '0');
+        // キャンセル待ちかどうか（メール文面・管理シートの区分に使う）
+        formData.append('isWaitlist', isWaitlistSelected() ? '1' : '0');
 
         // 料金計算結果
         const boothPrice = isEarlyBird()
@@ -1194,6 +1260,23 @@ async function submitForm() {
 function showCompleteModal(result, clientImageError) {
     const modal = document.getElementById('completeModal');
     const warning = document.getElementById('imageMissingWarning');
+
+    // キャンセル待ちの場合は、完了画面の見出しから「確定ではない」と分かるようにする
+    const waitlist = isWaitlistSelected();
+    const completeTitle = document.getElementById('completeTitle');
+    const completeMessage = document.getElementById('completeMessage');
+    const waitlistComplete = document.getElementById('waitlistCompleteNotice');
+
+    if (waitlist) {
+        if (completeTitle) completeTitle.textContent = 'キャンセル待ちで受け付けました';
+        if (completeMessage) {
+            completeMessage.innerHTML =
+                'ご登録いただいたメールアドレスに<br>キャンセル待ちの受付メールをお送りしました。<br>内容をご確認ください。';
+        }
+        const nameEl = document.getElementById('waitlistCompleteBoothName');
+        if (nameEl && selectedBooth) nameEl.textContent = selectedBooth.name;
+    }
+    if (waitlistComplete) waitlistComplete.classList.toggle('hidden', !waitlist);
 
     // サーバーの判定を優先する（ブラウザ側が失敗してもWorker側の変換で救えている場合があるため）。
     // 古いGASデプロイで imageStatus が返らない場合のみ、ブラウザ側の結果で判断する。

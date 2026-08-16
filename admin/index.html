@@ -31,7 +31,7 @@
             <button class="tab active" data-tab="basic">📝 基本設定</button>
             <button class="tab" data-tab="pricing">💰 料金設定</button>
             <button class="tab" data-tab="booths">🪑 ブース設定</button>
-            <button class="tab" data-tab="availability">📊 満枠設定</button>
+            <button class="tab" data-tab="availability">📊 満枠／キャンセル待ち設定</button>
             <button class="tab" data-tab="images">📷 画像生成</button>
             <button class="tab" data-tab="captions">✍️ キャプション</button>
             <button class="tab" data-tab="deploy">🚀 デプロイ</button>
@@ -144,10 +144,12 @@
                 <div id="boothList"></div>
             </section>
 
-            <!-- 満枠設定タブ -->
+            <!-- 満枠／キャンセル待ち設定タブ -->
             <section id="tab-availability" class="tab-content hidden">
-                <h2>満枠設定</h2>
-                <p class="hint">満枠にしたいブースにチェックを入れてください。</p>
+                <h2>満枠／キャンセル待ち設定</h2>
+                <p class="hint">満枠にしたいブースにチェックを入れてください。<br>
+                    チェックしたブースは申込フォームで「キャンセル待ち」と表示され、<strong>申し込み自体は受け付けます</strong>（選択できなくなるわけではありません）。<br>
+                    キャンセル待ちで申し込まれた方には、自動返信メールで「出展確定ではない」「お振込みはまだしないでください」と案内され、振込先は記載されません。</p>
                 <div id="availabilityList"></div>
             </section>
 
