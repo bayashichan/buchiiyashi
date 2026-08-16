@@ -344,6 +344,7 @@ function getExhibitorList(spreadsheetId) {
       
       exhibitors.push({
         id: i, // 行番号をIDとして使用
+        statusA: getCell(row, 0), // A列の生値（「キャンセル」判定用）
         seatNumber: getCell(row, idx.seatNumber),
         submittedAt: getCell(row, idx.submittedAt),
         name: getCell(row, idx.name),

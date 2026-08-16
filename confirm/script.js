@@ -63,7 +63,8 @@ async function loadData() {
         const result = await response.json();
 
         if (result.success) {
-            exhibitors = result.exhibitors;
+            // キャンセル行（元データのA列に「キャンセル」）は表示しない
+            exhibitors = (result.exhibitors || []).filter(ex => !isCancelled(ex));
             templates = result.captionTemplates;
             if (result.eventName) eventNameEl.textContent = result.eventName;
             
@@ -76,6 +77,14 @@ async function loadData() {
         console.error('Load data error:', err);
         showError(err.message);
     }
+}
+
+// キャンセル判定（元データのスプレッドシートA列に「キャンセル」を含む出展者）
+// サーバー側(Worker)でも除外しているが、念のためクライアント側でも弾く
+function isCancelled(ex) {
+    if (!ex) return false;
+    return [ex.statusA, ex.seatNumber]
+        .some(v => String(v || '').replace(/\s|　/g, '').includes('キャンセル'));
 }
 
 // セレクトボックス描画

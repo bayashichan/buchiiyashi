@@ -1043,6 +1043,17 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
 }
 
 /**
+ * キャンセル判定
+ * 元データのスプレッドシートA列に「キャンセル」を含む行は確認ページに表示しない。
+ * statusA はGAS側が返すA列の生値。GASが未更新の場合に備え、
+ * A列に相当する座席番号(seatNumber)も判定対象にする。
+ */
+function isCancelledExhibitor(ex) {
+    const candidates = [ex.statusA, ex.seatNumber];
+    return candidates.some(v => String(v || '').replace(/\s|　/g, '').includes('キャンセル'));
+}
+
+/**
  * 公開用確認データ取得（個人情報を除外）
  */
 async function handlePublicExhibitorData(request, env, corsHeaders, url) {
@@ -1082,8 +1093,11 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
             imagesData = await imagesRes.json();
         }
 
-        // 4. 個人情報の除外と画像IDの紐付け
-        const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
+        // 4. キャンセル行の除外（元データのスプレッドシートA列に「キャンセル」と入っている行）
+        const activeExhibitors = exhibitorsData.exhibitors.filter(ex => !isCancelledExhibitor(ex));
+
+        // 5. 個人情報の除外と画像IDの紐付け
+        const safeExhibitors = activeExhibitors.map(ex => {
             // 出展名から正規化キーを作成 (GAS側のnormalizeNameと必ず一致させること)
             // ファイル名に使えない記号（/ \ : * ? " < > |）は画像保存時に除去または
             // 「_」へ置換されるため、照合キーからも除去して一致させる
