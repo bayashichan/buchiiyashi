@@ -33,7 +33,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "inner_1",
