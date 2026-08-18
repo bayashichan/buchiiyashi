@@ -871,8 +871,9 @@ async function handleFormSubmission(request, env, corsHeaders) {
         const gasResult = await gasResponse.json();
         console.log('GAS response JSON:', gasResult);
 
-        // LINE管理アプリへ申込者を連携する（申込受付とは独立。失敗しても申込は成功扱い）
-        await registerApplicantToLineManager(data, env);
+        // LINE管理アプリへ申込者を連携し、受付内容をLINEでも通知する
+        // （申込受付とは独立。失敗しても申込は成功扱い）
+        await registerApplicantToLineManager(data, env, gasResult);
 
         return new Response(JSON.stringify({
             success: true,
@@ -901,9 +902,12 @@ async function handleFormSubmission(request, env, corsHeaders) {
  * 管理アプリ側で Messaging API を使って友だち判定を行い、友だちなら友だち一覧に、
  * 友だちでなければ「未友だち申込者」として記録される。
  *
+ * あわせて受付内容のLINE通知(notify)も依頼する。友だちでない場合や送信に失敗した
+ * 場合は管理アプリ側でスキップされる（メールが正規の通知手段で、LINEは補助）。
+ *
  * ここでの失敗は申込受付を巻き添えにしない（ログのみ）。申込自体は既にGASへ保存済み。
  */
-async function registerApplicantToLineManager(data, env) {
+async function registerApplicantToLineManager(data, env, gasResult) {
     if (!env.LINE_MANAGER_URL || !env.LINE_MANAGER_SECRET || !env.LINE_MANAGER_CHANNEL_ID) {
         console.log('line-manager連携: 未設定のためスキップ');
         return;
@@ -928,6 +932,7 @@ async function registerApplicantToLineManager(data, env) {
                 displayName: data.lineDisplayName || null,
                 source: env.LINE_MANAGER_SOURCE || 'buchiiyashi-apply',
                 appliedAt: data.submittedAt,
+                notify: { messages: buildApplicationLineMessages(data, gasResult) },
             }),
         });
 
@@ -938,10 +943,142 @@ async function registerApplicantToLineManager(data, env) {
         }
 
         const result = await response.json();
-        console.log(`line-manager連携成功: isFriend=${result.isFriend}`);
+        console.log(
+            `line-manager連携成功: isFriend=${result.isFriend}, notified=${result.notified}` +
+            (result.notifyError ? ` (通知エラー: ${result.notifyError})` : '')
+        );
     } catch (error) {
         console.error('line-manager連携エラー:', error);
     }
+}
+
+/**
+ * 申込受付をLINEで通知するメッセージを組み立てる。
+ *
+ * メールが正規の通知（振込先・規約・全項目を含む）で、LINEはその要約。
+ * 特にキャンセル待ちは「申し込めた＝出展確定」と誤解されると入金トラブルになるため、
+ * トーク一覧のプレビュー(altText)の時点で区別が付くようにする。
+ *
+ * 通数を無駄に消費しないよう、必ず1メッセージに収める
+ * （LINEはメッセージオブジェクトの数だけ通数がカウントされるため）。
+ */
+function buildApplicationLineMessages(data, gasResult) {
+    const isWaitlist = data.isWaitlist === '1';
+    const totalFee = Number(gasResult && gasResult.totalFee) || 0;
+    const feeText = `¥${totalFee.toLocaleString('ja-JP')}`;
+
+    const accent = isWaitlist ? '#F59E0B' : '#06C755';
+    const title = isWaitlist ? '⚠️ キャンセル待ちで受付' : '✅ お申し込みを受け付けました';
+    const altText = isWaitlist
+        ? '【キャンセル待ちで受付】出展確定ではありません。お振込みはまだお待ちください'
+        : 'お申し込みを受け付けました。詳細は自動返信メールをご確認ください';
+
+    // 金額の意味合いはキャンセル待ちかどうかで変わる（確定していないものは請求ではない）
+    const feeLabel = isWaitlist ? '確定した場合の金額' : 'お振込金額';
+
+    const paymentBox = isWaitlist
+        ? {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#FFF7ED',
+            cornerRadius: 'md',
+            paddingAll: 'md',
+            margin: 'lg',
+            contents: [
+                {
+                    type: 'text',
+                    text: '💰 お振込みはまだなさらないでください',
+                    weight: 'bold',
+                    size: 'md',
+                    color: '#C0392B',
+                    wrap: true,
+                },
+                {
+                    type: 'text',
+                    text: '満枠のためキャンセル待ちでの受付です。現時点では出展確定ではありません。空きが出た場合のみ、お申し込み順にご連絡し、その際にお振込先をご案内します。',
+                    size: 'sm',
+                    color: '#7C4A03',
+                    wrap: true,
+                    margin: 'sm',
+                },
+            ],
+        }
+        : {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#F0FFF4',
+            cornerRadius: 'md',
+            paddingAll: 'md',
+            margin: 'lg',
+            contents: [
+                {
+                    type: 'text',
+                    text: '💰 お振込みのお願い',
+                    weight: 'bold',
+                    size: 'md',
+                    color: '#1B7F4B',
+                    wrap: true,
+                },
+                {
+                    type: 'text',
+                    text: 'お申し込みから1週間以内（イベント1ヶ月前を切ってからのお申し込みは3日以内）に、メール記載の口座へお振り込みください。ご入金確認をもって出展確定となります。',
+                    size: 'sm',
+                    color: '#22543D',
+                    wrap: true,
+                    margin: 'sm',
+                },
+            ],
+        };
+
+    // baseline レイアウトは wrap が効かない環境があるため horizontal を使う
+    const row = (label, value) => ({
+        type: 'box',
+        layout: 'horizontal',
+        spacing: 'sm',
+        margin: 'md',
+        contents: [
+            { type: 'text', text: label, size: 'sm', color: '#8C8C8C', flex: 2 },
+            { type: 'text', text: value || '-', size: 'sm', color: '#333333', flex: 5, wrap: true },
+        ],
+    });
+
+    return [
+        {
+            type: 'flex',
+            altText: altText,
+            contents: {
+                type: 'bubble',
+                header: {
+                    type: 'box',
+                    layout: 'vertical',
+                    backgroundColor: accent,
+                    paddingAll: 'lg',
+                    contents: [
+                        { type: 'text', text: title, weight: 'bold', size: 'lg', color: '#FFFFFF', wrap: true },
+                        { type: 'text', text: 'ぶち癒しフェスタin東京', size: 'xs', color: '#FFFFFF', margin: 'sm' },
+                    ],
+                },
+                body: {
+                    type: 'box',
+                    layout: 'vertical',
+                    contents: [
+                        row('出展名', data.exhibitorName),
+                        row('ブース', isWaitlist ? `${data.boothName || ''}（キャンセル待ち）` : data.boothName),
+                        row(feeLabel, feeText),
+                        paymentBox,
+                        {
+                            type: 'text',
+                            text: 'お申し込み内容の詳細は、ご登録のメールアドレス宛にお送りした自動返信メールをご確認ください。ご不明な点はこのトークにそのままご返信ください。',
+                            size: 'xs',
+                            color: '#8C8C8C',
+                            wrap: true,
+                            margin: 'lg',
+                        },
+                    ],
+                },
+            },
+        },
+    ];
 }
 
 /**

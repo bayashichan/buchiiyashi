@@ -306,7 +306,7 @@ function renderConfig() {
     // ブース設定
     renderBooths();
 
-    // 満枠設定
+    // 満枠／キャンセル待ち設定
     renderAvailability();
 
     // 基本設定
@@ -493,9 +493,10 @@ function renderAvailability() {
         const item = document.createElement('div');
         item.className = 'availability-item';
         const isSoldOut = booth.soldOut || false;
+        // チェック済み ＝ 満枠。フォームでは「キャンセル待ち」として申込可能になる
         item.innerHTML = `
             <input type="checkbox" id="soldout_${index}" ${isSoldOut ? 'checked' : ''}>
-            <label for="soldout_${index}">${booth.name}</label>
+            <label for="soldout_${index}">${booth.name}${isSoldOut ? ' <span style="color:#b45309; font-weight:bold;">（キャンセル待ちで受付中）</span>' : ''}</label>
         `;
         container.appendChild(item);
     });
@@ -607,7 +608,7 @@ function collectConfigFromUI() {
         booth.limits.maxChairs = parseInt(document.getElementById(`booth_${index}_maxChairs`).value) || 0;
     });
 
-    // 満枠設定
+    // 満枠／キャンセル待ち設定（soldOut = フォームではキャンセル待ちとして受付）
     config.booths.forEach((booth, index) => {
         booth.soldOut = document.getElementById(`soldout_${index}`).checked;
     });
