@@ -874,6 +874,9 @@ async function handleFormSubmission(request, env, corsHeaders) {
         // LINE管理アプリへ申込者を連携する（申込受付とは独立。失敗しても申込は成功扱い）
         await registerApplicantToLineManager(data, env);
 
+        // 申込内容をLINEでも本人へ通知する（メールと二本立て。失敗しても申込は成功扱い）
+        await sendLineConfirmation(data, gasResult, env);
+
         return new Response(JSON.stringify({
             success: true,
             message: 'Application submitted successfully',
@@ -942,6 +945,149 @@ async function registerApplicantToLineManager(data, env) {
     } catch (error) {
         console.error('line-manager連携エラー:', error);
     }
+}
+
+/**
+ * 申込内容をLINEでも申込者本人へ通知する（確認メールと二本立て）。
+ *
+ * Messaging APIのpushを直接叩く。GASでの保存・確認メール送信が成功した後にだけ呼ぶ。
+ * ここでの失敗は申込受付を巻き添えにしない（ログのみ）。申込は既にGASへ保存済みで
+ * 確認メールも送信済みのため、LINEが届かなくても申込者への案内は成立する。
+ *
+ * 送れない条件（トークン未設定・LINE未連携・友だち未追加）は例外にせずスキップする。
+ */
+async function sendLineConfirmation(data, gasResult, env) {
+    if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
+        console.log('LINE通知: LINE_CHANNEL_ACCESS_TOKEN未設定のためスキップ');
+        return;
+    }
+
+    // LIFFログインが取れていない申込は送り先が分からない（メールのみで案内する）
+    if (!data.lineUserId) {
+        console.warn(`LINE通知: lineUserIdが空のためスキップ (lineLinkStatus: ${data.lineLinkStatus || '不明'})`);
+        return;
+    }
+
+    const body = JSON.stringify({
+        to: data.lineUserId,
+        messages: [{ type: 'text', text: buildLineConfirmationMessage(data, gasResult) }]
+    });
+
+    // 同じリトライキーで送る限り、LINE側が重複配信を防いでくれる
+    const retryKey = crypto.randomUUID();
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+            const response = await fetch('https://api.line.me/v2/bot/message/push', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`,
+                    'X-Line-Retry-Key': retryKey,
+                },
+                body
+            });
+
+            if (response.ok) {
+                console.log('LINE通知: 送信成功');
+                return;
+            }
+
+            const errorText = await response.text();
+
+            // 友だち未追加・ブロック中。再送しても結果は変わらない（案内はメールで届いている）
+            if (response.status === 403) {
+                console.warn(`LINE通知: 友だち未追加またはブロック中のため送信できません: ${errorText}`);
+                return;
+            }
+
+            // 認証エラーやリクエスト不備は再送しても直らない
+            if (response.status !== 429 && response.status < 500) {
+                console.error(`LINE通知に失敗: ${response.status} ${errorText}`);
+                return;
+            }
+
+            console.warn(`LINE通知が一時的に失敗 (${attempt}回目): ${response.status} ${errorText}`);
+        } catch (error) {
+            console.warn(`LINE通知でエラー (${attempt}回目):`, error);
+        }
+
+        // 一時的な失敗のときだけ、少し待って1回だけ再送する
+        if (attempt === 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
+
+    console.error('LINE通知: リトライしても送信できませんでした');
+}
+
+/**
+ * LINEで送る申込完了メッセージを組み立てる。
+ *
+ * 金額の内訳や振込先の詳細は確認メールが正なので、ここは受付内容の要約に絞る。
+ * 同じ内容を二箇所で管理すると、片方だけ更新されて食い違うため。
+ */
+function buildLineConfirmationMessage(data, gasResult) {
+    const eventName = data.eventName || 'ぶち癒やしフェスタin東京';
+    const result = gasResult || {};
+
+    const lines = [
+        `${data.name || ''} 様`.trim(),
+        '',
+        `この度は「${eventName}」へのお申し込み、誠にありがとうございます。`,
+        '以下の内容でお申し込みを受け付けました。'
+    ];
+
+    // 値が取れなかった項目は行ごと出さない（「出展名: 」のような空行を送らないため）
+    const detailLines = [
+        data.exhibitorName ? `出展名: ${data.exhibitorName}` : '',
+        data.boothName ? `出展ブース: ${data.boothName}` : '',
+        data.menuName ? `出展メニュー: ${data.menuName}` : ''
+    ].filter(Boolean);
+
+    if (detailLines.length > 0) {
+        lines.push('');
+        lines.push('■ お申し込み内容');
+        lines.push(...detailLines);
+    }
+
+    // GASが再計算した金額。取れなかったときは金額に触れない（誤った額を送らないため）
+    const rawFee = result.totalFee;
+    const totalFee = (rawFee === undefined || rawFee === null || rawFee === '') ? NaN : Number(rawFee);
+    if (Number.isFinite(totalFee)) {
+        lines.push('');
+        lines.push('■ お振込金額合計');
+        lines.push(`¥${formatYen(totalFee)}`);
+        lines.push('');
+        lines.push('お申し込みから1週間以内に、メールに記載のお振込先へお振り込みください。');
+        lines.push('ご入金の確認をもって、正式な出展確定とさせていただきます。');
+    }
+
+    // 画像が登録できなかった申込は、後から公式LINEで写真を受け取る必要がある
+    if (result.imageStatus === 'missing') {
+        lines.push('');
+        lines.push('※プロフィールのお写真のみ登録できておりません。お申し込み自体は正常に受け付けております。');
+        lines.push('お手数ですが、お写真はこのトークへ直接お送りください。');
+        if (data.exhibitorName) {
+            lines.push(`その際、出展名（${data.exhibitorName}）をお書き添えください。`);
+        }
+    }
+
+    lines.push('');
+    lines.push(`お申し込み内容の詳細とお振込先は、ご登録のメールアドレス${data.email ? `（${data.email}）` : ''}宛にお送りしています。`);
+    lines.push('メールが見当たらない場合は、迷惑メールフォルダもご確認ください。');
+    lines.push('');
+    lines.push('ぶち癒やしフェスタin東京 事務局');
+
+    const message = lines.join('\n');
+
+    // LINEのテキストメッセージは5000文字まで。超える場合は末尾を落とす
+    return message.length > 4900 ? `${message.slice(0, 4900)}…` : message;
+}
+
+// 3桁区切り（Intlのロケール差に左右されず同じ結果にする）
+function formatYen(value) {
+    return Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 /**
