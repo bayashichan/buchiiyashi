@@ -204,7 +204,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "body_small",
