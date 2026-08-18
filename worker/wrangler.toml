@@ -19,6 +19,8 @@ LINE_MANAGER_CHANNEL_ID = "e5fae09e-25e3-44dd-9e61-3c5dbbb8afe0"
 # - GOOGLE_SA_KEY: サービスアカウントJSON (Base64エンコード)
 # - GAS_SCRIPT_ID: Apps ScriptのスクリプトID
 # - LINE_MANAGER_SECRET: line-manager側のAPPLICANT_INGEST_SECRETと同じ値
+# - LINE_CHANNEL_ACCESS_TOKEN: 公式LINE(Messaging API)のチャネルアクセストークン。
+#   申込完了をLINEでも本人へ通知するために使う。未設定なら通知をスキップする（メールのみ）。
 #   （このファイルはpublicリポジトリにあるため平文で書かないこと）
 
 # R2バケットバインディング
