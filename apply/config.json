@@ -33,7 +33,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": true
+      "soldOut": false
     },
     {
       "id": "inner_1",
@@ -48,7 +48,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "inner_2",
@@ -63,7 +63,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "inner_prod_half",
@@ -79,7 +79,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "inner_prod_1",
@@ -95,7 +95,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "inner_prod_2",
@@ -111,7 +111,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_half",
@@ -126,7 +126,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_1",
@@ -141,7 +141,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_2",
@@ -156,7 +156,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_prod_half",
@@ -172,7 +172,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_prod_1",
@@ -188,7 +188,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_prod_2",
@@ -204,7 +204,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "body_small",
@@ -219,7 +219,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "body_large",
@@ -234,7 +234,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     }
   ],
   "eventDate": "2026年9月19日（土）　10:30~16:30",
