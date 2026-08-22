@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>守護明王診断 | 第6回 ぶち癒しフェスタin東京</title>
+  <meta name="description" content="7つの質問でわかる、あなたを守る明王。五大明王のうち、四方に座す一体があなたの明王です。">
+  <meta property="og:title" content="7つの質問でわかる、あなたを守る明王">
+  <meta property="og:description" content="五大明王のうち、四方に座す一体があなたの明王。中央の不動明王は、受け取る側にいます。">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#1a0a06">
+
+  <!-- ===================================================================
+       Meta Pixel（計測用）
+       ぶち癒しフェスタ共通ピクセル。index.html / line/ / angel/ と同一ID。
+       このページの独自イベントは trackCustom で送る。イベント名一覧は
+       myouou/README.md「計測イベント」を参照。
+       =================================================================== -->
+  <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1143852114505095');
+    fbq('track', 'PageView');
+  </script>
+  <noscript><img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1"
+    /></noscript>
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+      background: linear-gradient(168deg, #1a0a06 0%, #2b0d0a 48%, #120609 100%);
+      min-height: 100vh;
+      color: #f2e8de;
+      overflow-x: hidden;
+    }
+
+    /* 日本語を文節単位で折り返す。未対応ブラウザでは通常の折り返しに戻るだけ。
+       行末に一文字だけ取り残される見え方を減らすために入れている。 */
+    .funnu-note, .q-text, .result-catch, .result-desc,
+    .fudo-bridge p, .cta-benefit-item, .cta-stamp-note, .hero-badge {
+      word-break: auto-phrase;
+    }
+
+    #emberCanvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .screen {
+      display: none;
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      padding: 48px 24px 60px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .screen.active { display: flex; animation: fadeUp 0.45s ease both; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.35em;
+      color: #d9a441;
+      margin-bottom: 20px;
+    }
+
+    .hero-title {
+      font-size: 22px;
+      font-weight: 300;
+      line-height: 1.7;
+      text-align: center;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+
+    .hero-rule {
+      width: 56px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #d9a441, transparent);
+      margin: 20px auto 24px;
+    }
+
+    .hero-sub {
+      font-size: 13px;
+      color: #b7a294;
+      text-align: center;
+      line-height: 1.9;
+      margin-bottom: 28px;
+      max-width: 320px;
+    }
+
+    /* 忿怒相の説明。結果を前向きに読ませるための前提なので、
+       診断開始より必ず上に置く。位置を下げないこと。 */
+    .funnu-note {
+      max-width: 330px;
+      background: rgba(224, 81, 47, 0.07);
+      border-left: 2px solid #e0512f;
+      border-radius: 0 10px 10px 0;
+      padding: 16px 18px;
+      margin-bottom: 34px;
+      font-size: 13px;
+      line-height: 1.95;
+      color: #ddd0c4;
+      text-align: left;
+    }
+    .funnu-note strong { color: #f2cf7a; font-weight: 600; }
+
+    .btn-gold {
+      display: block;
+      width: 100%;
+      max-width: 320px;
+      padding: 18px;
+      background: linear-gradient(135deg, #c9852f 0%, #f2cf7a 100%);
+      color: #24100a;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      text-align: center;
+      letter-spacing: 0.06em;
+      box-shadow: 0 4px 28px rgba(217,164,65,0.42);
+      transition: transform .18s, box-shadow .18s;
+    }
+    .btn-gold:active { transform: scale(.96); box-shadow: 0 2px 12px rgba(217,164,65,.3); }
+
+    .hero-badge {
+      display: inline-block;
+      font-size: 11px;
+      color: #f2cf7a;
+      border: 1px solid rgba(242,207,122,.55);
+      padding: 5px 12px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      line-height: 1.7;
+      margin-top: 22px;
+      max-width: 320px;
+    }
+
+    .progress-wrap {
+      width: 100%;
+      max-width: 340px;
+      margin-bottom: 40px;
+    }
+    .progress-label {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: #d9a441;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .progress-track {
+      height: 2px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(to right, #e0512f, #f2cf7a);
+      border-radius: 2px;
+      transition: width .4s ease;
+    }
+
+    .q-text {
+      font-size: 17px;
+      font-weight: 300;
+      text-align: center;
+      line-height: 1.75;
+      letter-spacing: 0.03em;
+      max-width: 300px;
+      margin-bottom: 32px;
+      white-space: pre-line;
+    }
+
+    .choices {
+      width: 100%;
+      max-width: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .choice {
+      width: 100%;
+      padding: 15px 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(217,164,65,0.25);
+      border-radius: 12px;
+      color: #e6dbd0;
+      font-size: 14px;
+      line-height: 1.55;
+      text-align: left;
+      cursor: pointer;
+      transition: background .2s, border-color .2s, color .2s;
+    }
+    .choice:active, .choice:hover {
+      background: rgba(217,164,65,0.14);
+      border-color: #d9a441;
+      color: #fff;
+    }
+    .choice-lbl {
+      color: #d9a441;
+      font-weight: bold;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+
+    .btn-back {
+      margin-top: 26px;
+      background: none;
+      border: none;
+      color: #8d7a6c;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      padding: 8px 16px;
+    }
+    .btn-back:active { color: #d9a441; }
+    .btn-back[hidden] { display: none; }
+
+    .result-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.3em;
+      color: #d9a441;
+      margin-bottom: 14px;
+    }
+
+    .result-name {
+      font-size: 32px;
+      font-weight: 200;
+      letter-spacing: 0.12em;
+      text-shadow: 0 0 48px rgba(224,81,47,.75);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .result-yomi {
+      font-size: 11px;
+      color: #9d8879;
+      letter-spacing: 0.18em;
+      margin-bottom: 16px;
+    }
+
+    .result-catch {
+      font-size: 14px;
+      color: #f2cf7a;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+      text-align: center;
+      max-width: 320px;
+      line-height: 1.7;
+    }
+
+    .result-meta {
+      font-size: 11px;
+      color: #9d8879;
+      letter-spacing: 0.08em;
+      margin-bottom: 26px;
+      text-align: center;
+    }
+
+    .result-desc {
+      font-size: 14px;
+      color: #ddd0c4;
+      line-height: 2.0;
+      text-align: left;
+      max-width: 310px;
+      white-space: pre-line;
+      margin-bottom: 30px;
+    }
+
+    .result-rule {
+      width: 72px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #d9a441, transparent);
+      margin: 0 auto 32px;
+    }
+
+    /* 中央＝不動明王のブリッジ。四方の結果と特典画像を構造で繋ぐ部分。 */
+    .fudo-bridge {
+      width: 100%;
+      max-width: 320px;
+      text-align: center;
+      background: rgba(224,81,47,.06);
+      border: 1px solid rgba(224,81,47,.3);
+      border-radius: 16px;
+      padding: 22px 20px;
+      margin-bottom: 26px;
+    }
+    .fudo-bridge-label {
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: #e0512f;
+      margin-bottom: 12px;
+    }
+    .fudo-bridge p {
+      font-size: 13px;
+      line-height: 2.0;
+      color: #ddd0c4;
+    }
+    .fudo-bridge strong { color: #f2cf7a; font-weight: 600; }
+
+    .cta-benefits {
+      width: 100%;
+      max-width: 320px;
+      background: linear-gradient(135deg, rgba(217,164,65,.13) 0%, rgba(217,164,65,.04) 100%);
+      border: 1px solid rgba(217,164,65,.42);
+      border-radius: 16px;
+      padding: 20px 20px 16px;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .cta-benefits-label {
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: #d9a441;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .cta-benefit-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: #e6dbd0;
+      line-height: 1.75;
+      margin-bottom: 12px;
+    }
+    .cta-benefit-item:last-child { margin-bottom: 0; }
+    .cta-benefit-icon { font-size: 17px; flex-shrink: 0; line-height: 1.5; }
+    .cta-benefit-item strong { color: #f2cf7a; }
+    .cta-benefit-item small { font-size: 11px; color: #a8927f; }
+
+    .cta-stamp-note {
+      width: 100%;
+      max-width: 320px;
+      font-size: 12px;
+      color: #f2cf7a;
+      text-align: center;
+      line-height: 1.9;
+      margin-bottom: 22px;
+      padding: 12px 16px;
+      border: 1px dashed rgba(217,164,65,.45);
+      border-radius: 10px;
+    }
+    .cta-stamp-note small { display: block; font-size: 10px; color: #a8927f; margin-top: 4px; }
+
+    .line-steps {
+      width: 100%;
+      max-width: 320px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(217,164,65,.3);
+      border-radius: 16px;
+      padding: 22px 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .line-step {
+      font-size: 12px;
+      color: #9d8879;
+      line-height: 1.8;
+    }
+    .line-step-name {
+      font-size: 22px;
+      font-weight: 300;
+      letter-spacing: 0.14em;
+      color: #fff;
+      text-shadow: 0 0 24px rgba(224,81,47,.6);
+      margin: 10px 0;
+    }
+    .line-step-divider {
+      width: 40px;
+      height: 1px;
+      background: rgba(217,164,65,.3);
+      margin: 14px auto;
+    }
+
+    .btn-line {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      max-width: 320px;
+      padding: 18px;
+      background: #06C755;
+      color: #fff;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 4px 24px rgba(6,199,85,.38);
+      transition: transform .18s;
+      margin-bottom: 40px;
+    }
+    .btn-line:active { transform: scale(.96); }
+
+    .event-section {
+      width: 100%;
+      max-width: 340px;
+      border-top: 1px solid rgba(255,255,255,.1);
+      padding-top: 40px;
+      text-align: center;
+    }
+    .event-eyebrow {
+      font-size: 11px;
+      letter-spacing: 0.25em;
+      color: #d9a441;
+      margin-bottom: 18px;
+    }
+    .event-name {
+      font-size: 17px;
+      font-weight: 300;
+      line-height: 1.6;
+      letter-spacing: 0.04em;
+      margin-bottom: 20px;
+    }
+    .event-detail {
+      font-size: 13px;
+      color: #9d8879;
+      line-height: 2.1;
+    }
+    .event-badge {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 5px 20px;
+      border: 1px solid #d9a441;
+      border-radius: 20px;
+      color: #d9a441;
+      font-size: 12px;
+      letter-spacing: 0.12em;
+    }
+
+    /* 宗派による異説の注記。小さく、ただし必ず出す。 */
+    .sect-note {
+      max-width: 330px;
+      margin-top: 36px;
+      font-size: 10px;
+      line-height: 1.9;
+      color: #7d6d61;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="emberCanvas"></canvas>
+
+<!-- ============================ LP ============================ -->
+<div class="screen active" id="scr-hero">
+  <div class="hero-eyebrow">✦ MYO-O DIAGNOSIS ✦</div>
+  <h1 class="hero-title">7つの質問でわかる、<br>あなたを守る明王</h1>
+  <div class="hero-rule"></div>
+  <p class="hero-sub">
+    五大明王は、中央に不動明王、<br>
+    その四方を四体が固める形をとります。<br>
+    あなたの明王は、その四方のどれか。
+  </p>
+
+  <div class="funnu-note">
+    明王のあの怖い顔は、怒っているわけではありません。迷いや執着をそのまま断ち切って、<strong>力に変えていく</strong>——その働きを、そのまま姿にしたものです。忿怒の相も、手にした武器も、そういう意味の記号です。
+  </div>
+
+  <button class="btn-gold" onclick="startDiagnosis()">診断をはじめる</button>
+
+  <div class="hero-badge">
+    診断のあと、かんめいさんが不動明王のエネルギーを込めた画像をLINEでお渡しします
+  </div>
+
+  <p class="sect-note">
+    ※五大明王の構成は宗派により異説があります。天台宗系では金剛夜叉明王のかわりに烏枢沙摩明王を数えます。本診断は真言系（東密）の四尊で構成しています。
+  </p>
+</div>
+
+<!-- ========================= 設問（1問1画面） ========================= -->
+<div class="screen" id="scr-question">
+  <div class="progress-wrap">
+    <div class="progress-label" id="prog-label">Q1 / 7</div>
+    <div class="progress-track">
+      <div class="progress-fill" id="prog-fill" style="width:14%"></div>
+    </div>
+  </div>
+  <p class="q-text" id="q-text"></p>
+  <div class="choices" id="choices"></div>
+  <button class="btn-back" id="btn-back" onclick="goBack()" hidden>← ひとつ前にもどる</button>
+</div>
+
+<!-- ===================== 簡易結果（その場で表示） ===================== -->
+<div class="screen" id="scr-result">
+  <div class="result-eyebrow">あなたを守る明王</div>
+  <div class="result-name" id="r-name"></div>
+  <div class="result-yomi" id="r-yomi"></div>
+  <div class="result-catch" id="r-catch"></div>
+  <div class="result-meta" id="r-meta"></div>
+  <div class="result-desc" id="r-desc"></div>
+  <div class="result-rule"></div>
+
+  <div class="fudo-bridge">
+    <div class="fudo-bridge-label">✦ そして中央に ✦</div>
+    <p>
+      四方を固める四体を、まんなかで束ねているのが<strong>不動明王</strong>です。<br>
+      その不動明王のエネルギーを、かんめいさんが一枚の画像に込めました。<br>
+      あなたの<span id="bridge-name"></span>に、五体目として重なります。
+    </p>
+  </div>
+
+  <div class="cta-benefits">
+    <div class="cta-benefits-label">✦ LINEで受け取れるもの ✦</div>
+    <div class="cta-benefit-item">
+      <span class="cta-benefit-icon">🔥</span>
+      <span><strong>不動明王のエネルギーを込めた画像</strong><br>
+      <small>by かんめいさん ／ 四方を束ねる中央の一体</small></span>
+    </div>
+  </div>
+
+  <p class="cta-stamp-note">
+    🎁 この画像を会場で見せると、<br>スタンプラリーのスタンプを1つプレゼント
+    <small>スタンプ3つで景品と交換できます（景品は数に限りがあります）</small>
+  </p>
+
+  <div class="line-steps">
+    <p class="line-step">① 下のボタンでLINE公式アカウントを友だち追加</p>
+    <div class="line-step-divider"></div>
+    <p class="line-step">② 友だち追加後、トーク画面に</p>
+    <div class="line-step-name">ふどうみょうおう</div>
+    <p class="line-step">と送ってください</p>
+  </div>
+
+  <a class="btn-line" id="btn-line" href="https://lin.ee/zbT55QS" target="_blank" rel="noopener"
+     onclick="trackLine()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
+    </svg>
+    友だち登録して受け取る
+  </a>
+
+  <div class="event-section">
+    <div class="event-eyebrow">✦ EVENT ✦</div>
+    <div class="event-name">第6回 ぶち癒しフェスタ<br>in東京</div>
+    <div class="event-detail">
+      2026年9月19日（土）10:30〜16:30<br>
+      東京都立産業貿易センター 台東館6階<br>
+      浅草
+    </div>
+    <div class="event-badge">入場無料</div>
+  </div>
+
+  <p class="sect-note">
+    ※五大明王の構成は宗派により異説があります。天台宗系では金剛夜叉明王のかわりに烏枢沙摩明王を数えます。本診断は真言系（東密）の四尊で構成しています。
+  </p>
+</div>
+
+<script>
+/* =====================================================================
+   守護明王診断
+   - 設問7問。選択肢は上から 降三世 / 軍荼利 / 大威徳 / 金剛夜叉 に1点。
+   - Q7のみ2点。満点8点。
+   - 同点時の優先順位は TIE_BREAK で固定（変更する場合は企画側の判断が必要）。
+   - 設問は7問が上限。スマホで8問以上にすると完走率が落ちるため増やさない。
+   ===================================================================== */
+
+var TYPES = ['gozanze', 'gundari', 'daiitoku', 'kongoyasha'];
+
+/* 同点時の優先順位。軍荼利を最上位に置くのは、四体でもっとも
+   受け取りやすい結果であるという集客上の判断による。 */
+var TIE_BREAK = ['gundari', 'kongoyasha', 'daiitoku', 'gozanze'];
+
+var QUESTIONS = [
+  {
+    text: "うまくいかない時、\nまず何をする？",
+    choices: ["仕組みや前提を疑う", "人に会って話す", "とにかく手を動かす", "いったん全部見直す"]
+  },
+  {
+    text: "人からよく\n言われることは？",
+    choices: ["物怖じしない", "一緒にいると楽になる", "頼りになる", "よく気づく"]
+  },
+  {
+    text: "苦手なのは？",
+    choices: ["従うこと", "急かされること", "中途半端", "表面的な話"]
+  },
+  {
+    text: "力が湧くのは？",
+    choices: ["反対された時", "誰かが喜んだ時", "目標が見えた時", "本質が見えた時"]
+  },
+  {
+    text: "自分を動物に\nたとえると？",
+    choices: ["高いところに登る", "群れの中心にいる", "黙々と歩く", "気配を読む"]
+  },
+  {
+    text: "過去を振り返って\n思うのは？",
+    choices: ["よく突破してきた", "よく人に恵まれた", "よく続けてきた", "よく乗り越えてきた"]
+  },
+  {
+    /* この問のみ2点。いま欲しいものを結果に強く反映させるための重み付け。 */
+    text: "これから欲しいのは？",
+    weight: 2,
+    choices: ["突き抜ける力", "満たされる感覚", "やり切る強さ", "見抜く目"]
+  }
+];
+
+/* 事実部分（教令輪身・尊容・方位）はすべて典拠のある内容。
+   キャラクター化のための創作を事実として書かないこと。 */
+var MYOUOU = {
+  gozanze: {
+    name: "降三世明王",
+    yomi: "ごうざんぜみょうおう",
+    meta: "東方 ／ 阿閦如来の教令輪身",
+    catch: "前例も権威も、越えていく人",
+    desc: "降三世明王は、左足で大自在天——インドで最高神とされたシヴァ——の頬を踏んでいます。最高位のものを、踏む。図像としてかなり思い切ったことをやっている一体です。\n\nあなたの答えは、この方向に寄っていました。決まっているから、という理由が一番効かない人。前例も肩書きもその場の空気も、納得できなければ一度立ち止まります。四体でいちばん反骨です。\n\nそれは扱いにくさではなく、まだ誰も動かしていないものを動かせる、という強みのほうです。"
+  },
+  gundari: {
+    name: "軍荼利明王",
+    yomi: "ぐんだりみょうおう",
+    meta: "南方 ／ 宝生如来の教令輪身",
+    catch: "居るだけで、場が動き出す人",
+    desc: "軍荼利明王は、儀軌のなかで「威怒甘露軍荼利金剛」と呼ばれます。忿怒の名を持ちながら、同時に甘露——潤すもの——の名を持っている一体です。踏割蓮華の上に立ち、体には蛇が巻きついています。\n\nあなたの答えは、この方向に寄っていました。何かをしようと構えなくても、あなたが来ると場の空気がすこし変わる。人が集まって、勝手に動き出す。\n\n自分ではあまり自覚がないかもしれませんが、それはちゃんと力です。"
+  },
+  daiitoku: {
+    name: "大威徳明王",
+    yomi: "だいいとくみょうおう",
+    meta: "西方 ／ 無量寿（阿弥陀）如来の教令輪身",
+    catch: "決めたことを、やり切る人",
+    desc: "大威徳明王は、六面三目六臂六足。水牛の背に坐しています。四体のなかでもっとも重心が低く、動かないことそのものが姿になっている一体です。勝負の前にこの明王の真言を唱えるとよい、とも言われてきました。\n\nあなたの答えは、この方向に寄っていました。途中で投げない。決めたら運ぶ。派手さより、最後まで持っていくことのほうが強いと知っている側の人です。\n\n続けてきた時間は、そのまま積み上がっています。"
+  },
+  kongoyasha: {
+    name: "金剛夜叉明王",
+    yomi: "こんごうやしゃみょうおう",
+    meta: "北方 ／ 不空成就如来の教令輪身",
+    catch: "過去の激しさが、そのまま力になっている人",
+    desc: "金剛夜叉明王は、もとは人を襲い喰らう夜叉だったと伝わります。それが大日如来の威徳によって善に目覚め、以後は悪しきものだけを喰らうようになったとされる一体です。三面五眼六臂。正面の顔には眼が五つあります。\n\nあなたの答えは、この方向に寄っていました。見落とさない。気づいてしまう。それはたぶん、通ってきたものがあるからです。\n\n荒れていた時期も、しんどかった時期も、消さないままここまで来た。だから今の眼があります。"
+  }
+};
+
+/* LINE友だち追加URL。来場者向けの共通窓口ひとつ。
+   タイプ別の流入経路は使わない（自動タグ付けをしない方針のため）。 */
+var LINE_URL = "https://lin.ee/zbT55QS";
+
+var cur = 0;
+var answers = [];       // 各問で選ばれたタイプ
+var resultType = null;
+var fired = {};         // 計測イベントの二重発火よけ
+
+/* ---------------------- 計測 ----------------------
+   完走率  = MyououComplete / MyououStart
+   離脱設問 = MyououQ1..Q7 の落差で判定
+   一度発火したイベントは戻る操作をしても再送しない。 */
+function track(name, params) {
+  if (fired[name]) return;
+  fired[name] = true;
+  if (typeof fbq !== "undefined") fbq("trackCustom", name, params || {});
+}
+
+function startDiagnosis() {
+  cur = 0;
+  answers = [];
+  resultType = null;
+  track("MyououStart");
+  renderQuestion(0);
+  show("scr-question");
+}
+
+function renderQuestion(i) {
+  var q = QUESTIONS[i];
+  var pct = ((i + 1) / QUESTIONS.length) * 100;
+  document.getElementById("prog-label").textContent = "Q" + (i + 1) + " / " + QUESTIONS.length;
+  document.getElementById("prog-fill").style.width = pct + "%";
+  document.getElementById("q-text").textContent = q.text;
+
+  var labels = ["A", "B", "C", "D"];
+  var wrap = document.getElementById("choices");
+  wrap.innerHTML = "";
+  q.choices.forEach(function (text, idx) {
+    var btn = document.createElement("button");
+    btn.className = "choice";
+    btn.innerHTML = '<span class="choice-lbl">' + labels[idx] + '.</span>' + text;
+    btn.onclick = function () { pick(idx); };
+    wrap.appendChild(btn);
+  });
+
+  document.getElementById("btn-back").hidden = (i === 0);
+}
+
+function pick(choiceIndex) {
+  answers[cur] = TYPES[choiceIndex];
+  track("MyououQ" + (cur + 1));
+  cur++;
+  if (cur < QUESTIONS.length) {
+    renderQuestion(cur);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    calcResult();
+  }
+}
+
+function goBack() {
+  if (cur === 0) return;
+  cur--;
+  answers.length = cur;
+  renderQuestion(cur);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function calcResult() {
+  var score = { gozanze: 0, gundari: 0, daiitoku: 0, kongoyasha: 0 };
+  answers.forEach(function (type, i) {
+    score[type] += QUESTIONS[i].weight || 1;
+  });
+
+  var max = Math.max(score.gozanze, score.gundari, score.daiitoku, score.kongoyasha);
+
+  // 同点は TIE_BREAK の並び順で決める（先に出てくるほうが勝ち）
+  resultType = TIE_BREAK.filter(function (t) { return score[t] === max; })[0];
+
+  var m = MYOUOU[resultType];
+  document.getElementById("r-name").textContent      = m.name;
+  document.getElementById("r-yomi").textContent      = m.yomi;
+  document.getElementById("r-catch").textContent     = m.catch;
+  document.getElementById("r-meta").textContent      = m.meta;
+  document.getElementById("r-desc").textContent      = m.desc;
+  document.getElementById("bridge-name").textContent = m.name;
+  document.getElementById("btn-line").href            = LINE_URL;
+
+  track("MyououComplete", { myouou_type: resultType });
+  show("scr-result");
+}
+
+function show(id) {
+  var screens = document.querySelectorAll(".screen");
+  for (var i = 0; i < screens.length; i++) screens[i].classList.remove("active");
+  document.getElementById(id).classList.add("active");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function trackLine() {
+  // 標準イベント Lead は他ページ（line/index.html）と揃える。
+  if (typeof fbq !== "undefined") fbq("track", "Lead");
+  track("MyououLineClick", { myouou_type: resultType });
+}
+
+/* ---------------------- 背景：立ちのぼる火の粉 ---------------------- */
+(function () {
+  var cv = document.getElementById("emberCanvas");
+  var cx = cv.getContext("2d");
+  var embers = [];
+
+  function resize() {
+    cv.width  = window.innerWidth;
+    cv.height = window.innerHeight;
+  }
+
+  function spawn(atBottom) {
+    return {
+      x: Math.random() * cv.width,
+      y: atBottom ? cv.height + Math.random() * 60 : Math.random() * cv.height,
+      r: Math.random() * 1.4 + 0.4,
+      vy: Math.random() * 0.45 + 0.15,
+      drift: (Math.random() - 0.5) * 0.25,
+      phase: Math.random() * Math.PI * 2,
+      speed: Math.random() * 0.02 + 0.008
+    };
+  }
+
+  function initEmbers() {
+    embers = [];
+    for (var i = 0; i < 90; i++) embers.push(spawn(false));
+  }
+
+  function draw() {
+    cx.clearRect(0, 0, cv.width, cv.height);
+    for (var i = 0; i < embers.length; i++) {
+      var e = embers[i];
+      e.y -= e.vy;
+      e.x += e.drift;
+      e.phase += e.speed;
+
+      if (e.y < -10) embers[i] = spawn(true);
+
+      var a = (Math.sin(e.phase) + 1) / 2 * 0.6 + 0.12;
+      // 上にいくほど赤から金へ抜ける
+      var t = 1 - (e.y / cv.height);
+      var g = Math.round(90 + t * 110);
+      cx.beginPath();
+      cx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+      cx.fillStyle = "rgba(255," + g + ",70," + a.toFixed(2) + ")";
+      cx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  initEmbers();
+  draw();
+  window.addEventListener("resize", function () { resize(); initEmbers(); });
+})();
+</script>
+</body>
+</html>
