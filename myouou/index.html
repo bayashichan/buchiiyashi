@@ -32,26 +32,6 @@
     src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1"
     /></noscript>
 
-  <!-- ===================================================================
-       LINE Conversion Tracker（友だち追加のCAPI計測）
-       bayashichan/line-tracker の tracker.js を読み込むと、広告パラメータの
-       保持 → LIFF経由での friend-add 突合 → Meta CAPI 送信までが繋がる。
-
-       有効化の手順（README「友だち追加の計測を繋ぐ」に詳細）:
-         1. 下2行のコメントを外す
-         2. data-tracker-domain を line-tracker のデプロイ先URLに置換
-         3. data-liff-id を line-tracker 側の NEXT_PUBLIC_LIFF_ID に置換
-         4. LINEボタンの data-line-add-pending を data-line-add に一括置換
-
-       ※ 手順4をやるまでボタンは通常のlin.eeリンクとして動く。
-          先にscriptだけ有効化しても既存導線は壊れない。
-       =================================================================== -->
-  <!--
-  <script src="https://REPLACE-WITH-LINE-TRACKER-DOMAIN/tracker.js"
-          data-tracker-domain="https://REPLACE-WITH-LINE-TRACKER-DOMAIN"
-          data-liff-id="REPLACE-WITH-LIFF-ID" async></script>
-  -->
-
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -549,12 +529,7 @@
     <div class="cta-benefit-item">
       <span class="cta-benefit-icon">🔥</span>
       <span><strong>不動明王のエネルギーを込めた画像</strong><br>
-      <small>by かんめいさん</small></span>
-    </div>
-    <div class="cta-benefit-item">
-      <span class="cta-benefit-icon">📜</span>
-      <span><strong><span id="benefit-name"></span>の詳しい結果</strong><br>
-      <small>強み / 伸ばし方 / 9月19日当日の楽しみ方</small></span>
+      <small>by かんめいさん ／ 四方を束ねる中央の一体</small></span>
     </div>
   </div>
 
@@ -567,12 +542,12 @@
     <p class="line-step">① 下のボタンでLINE公式アカウントを友だち追加</p>
     <div class="line-step-divider"></div>
     <p class="line-step">② 友だち追加後、トーク画面に</p>
-    <div class="line-step-name" id="inst-keyword"></div>
+    <div class="line-step-name">ふどうみょうおう</div>
     <p class="line-step">と送ってください</p>
   </div>
 
   <a class="btn-line" id="btn-line" href="https://lin.ee/zbT55QS" target="_blank" rel="noopener"
-     data-line-add-pending onclick="trackLine()">
+     onclick="trackLine()">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="white" aria-hidden="true">
       <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63.349 0 .631.285.631.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314"/>
     </svg>
@@ -651,7 +626,6 @@ var MYOUOU = {
     yomi: "ごうざんぜみょうおう",
     meta: "東方 ／ 阿閦如来の教令輪身",
     catch: "前例も権威も、越えていく人",
-    keyword: "ごうざんぜ",
     desc: "降三世明王は、左足で大自在天——インドで最高神とされたシヴァ——の頬を踏んでいます。最高位のものを、踏む。図像としてかなり思い切ったことをやっている一体です。\n\nあなたの答えは、この方向に寄っていました。決まっているから、という理由が一番効かない人。前例も肩書きもその場の空気も、納得できなければ一度立ち止まります。四体でいちばん反骨です。\n\nそれは扱いにくさではなく、まだ誰も動かしていないものを動かせる、という強みのほうです。"
   },
   gundari: {
@@ -659,7 +633,6 @@ var MYOUOU = {
     yomi: "ぐんだりみょうおう",
     meta: "南方 ／ 宝生如来の教令輪身",
     catch: "居るだけで、場が動き出す人",
-    keyword: "ぐんだり",
     desc: "軍荼利明王は、儀軌のなかで「威怒甘露軍荼利金剛」と呼ばれます。忿怒の名を持ちながら、同時に甘露——潤すもの——の名を持っている一体です。踏割蓮華の上に立ち、体には蛇が巻きついています。\n\nあなたの答えは、この方向に寄っていました。何かをしようと構えなくても、あなたが来ると場の空気がすこし変わる。人が集まって、勝手に動き出す。\n\n自分ではあまり自覚がないかもしれませんが、それはちゃんと力です。"
   },
   daiitoku: {
@@ -667,7 +640,6 @@ var MYOUOU = {
     yomi: "だいいとくみょうおう",
     meta: "西方 ／ 無量寿（阿弥陀）如来の教令輪身",
     catch: "決めたことを、やり切る人",
-    keyword: "だいいとく",
     desc: "大威徳明王は、六面三目六臂六足。水牛の背に坐しています。四体のなかでもっとも重心が低く、動かないことそのものが姿になっている一体です。勝負の前にこの明王の真言を唱えるとよい、とも言われてきました。\n\nあなたの答えは、この方向に寄っていました。途中で投げない。決めたら運ぶ。派手さより、最後まで持っていくことのほうが強いと知っている側の人です。\n\n続けてきた時間は、そのまま積み上がっています。"
   },
   kongoyasha: {
@@ -675,24 +647,13 @@ var MYOUOU = {
     yomi: "こんごうやしゃみょうおう",
     meta: "北方 ／ 不空成就如来の教令輪身",
     catch: "過去の激しさが、そのまま力になっている人",
-    keyword: "こんごうやしゃ",
     desc: "金剛夜叉明王は、もとは人を襲い喰らう夜叉だったと伝わります。それが大日如来の威徳によって善に目覚め、以後は悪しきものだけを喰らうようになったとされる一体です。三面五眼六臂。正面の顔には眼が五つあります。\n\nあなたの答えは、この方向に寄っていました。見落とさない。気づいてしまう。それはたぶん、通ってきたものがあるからです。\n\n荒れていた時期も、しんどかった時期も、消さないままここまで来た。だから今の眼があります。"
   }
 };
 
-/* LINE友だち追加URL。
-   いまは4タイプとも来場者向けの共通窓口を指している。
-
-   エルメで「流入経路」を4本発行してタイプ別URLに差し替えると、
-   友だち追加と同時に自動でタグが付き、トーク画面へのキーワード入力が
-   不要になる（＝離脱が減る）。差し替え手順は README「LINEタグ設計」参照。
-   既に友だちの人には流入経路が付かないため、キーワード導線は残しておく。 */
-var LINE_URL = {
-  gozanze:    "https://lin.ee/zbT55QS",
-  gundari:    "https://lin.ee/zbT55QS",
-  daiitoku:   "https://lin.ee/zbT55QS",
-  kongoyasha: "https://lin.ee/zbT55QS"
-};
+/* LINE友だち追加URL。来場者向けの共通窓口ひとつ。
+   タイプ別の流入経路は使わない（自動タグ付けをしない方針のため）。 */
+var LINE_URL = "https://lin.ee/zbT55QS";
 
 var cur = 0;
 var answers = [];       // 各問で選ばれたタイプ
@@ -777,9 +738,7 @@ function calcResult() {
   document.getElementById("r-meta").textContent      = m.meta;
   document.getElementById("r-desc").textContent      = m.desc;
   document.getElementById("bridge-name").textContent = m.name;
-  document.getElementById("benefit-name").textContent = m.name;
-  document.getElementById("inst-keyword").textContent = m.keyword;
-  document.getElementById("btn-line").href            = LINE_URL[resultType];
+  document.getElementById("btn-line").href            = LINE_URL;
 
   track("MyououComplete", { myouou_type: resultType });
   show("scr-result");
