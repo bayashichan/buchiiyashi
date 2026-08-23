@@ -699,7 +699,7 @@ var LINE_URL = "https://lin.ee/zbT55QS";
    どれも無ければ枠ごと出さないので、画像が未配置でもページは壊れない。 */
 function imageCandidates(m) {
   var paths = [];
-  ["png", "jpg", "jpeg", "webp"].forEach(function (ext) {
+  ["jpg", "png", "jpeg", "webp"].forEach(function (ext) {
     paths.push(m.name + "." + ext);
     paths.push("images/" + m.img + "." + ext);
   });
