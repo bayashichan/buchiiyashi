@@ -694,19 +694,28 @@ var MYOUOU = {
    タイプ別の流入経路は使わない（自動タグ付けをしない方針のため）。 */
 var LINE_URL = "https://lin.ee/zbT55QS";
 
-/* 明王画像。myouou/images/<img>.<拡張子> に置く。
-   置いていない、または拡張子が合わないときは枠ごと出さない。 */
-var IMAGE_EXTS = ["jpg", "png", "jpeg", "webp"];
+/* 明王画像。myouou/ 直下に漢字名で置いたもの（降三世明王.png など）を先に探し、
+   見つからなければ images/ のローマ字名を探す。
+   どれも無ければ枠ごと出さないので、画像が未配置でもページは壊れない。 */
+function imageCandidates(m) {
+  var paths = [];
+  ["png", "jpg", "jpeg", "webp"].forEach(function (ext) {
+    paths.push(m.name + "." + ext);
+    paths.push("images/" + m.img + "." + ext);
+  });
+  return paths;
+}
 
 function setResultImage(m) {
   var figure = document.getElementById("r-figure");
   var img = document.getElementById("r-img");
+  var paths = imageCandidates(m);
   var i = 0;
 
   img.onerror = function () {
     i++;
-    if (i < IMAGE_EXTS.length) {
-      img.src = "images/" + m.img + "." + IMAGE_EXTS[i];
+    if (i < paths.length) {
+      img.src = paths[i];
     } else {
       figure.hidden = true;
     }
@@ -714,7 +723,7 @@ function setResultImage(m) {
   img.onload = function () { figure.hidden = false; };
 
   img.alt = m.name;
-  img.src = "images/" + m.img + "." + IMAGE_EXTS[0];
+  img.src = paths[0];
 }
 
 var cur = 0;
