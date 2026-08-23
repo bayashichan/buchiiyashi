@@ -243,6 +243,29 @@
       margin-bottom: 14px;
     }
 
+    /* 明王画像。images/ にファイルが無いときは figure ごと隠れる（下の setResultImage）。 */
+    .result-figure {
+      margin: 0 0 20px;
+      width: min(260px, 72vw);
+      padding: 10px;
+      border: 1px solid rgba(217,164,65,0.35);
+      border-radius: 3px;
+      background:
+        radial-gradient(60% 50% at 50% 40%, rgba(224,81,47,0.22), transparent 70%),
+        rgba(0,0,0,0.25);
+      box-shadow: 0 0 60px rgba(224,81,47,0.18);
+    }
+    .result-figure[hidden] { display: none; }
+    .result-figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      /* 縦長すぎる画像でも結果文が画面外へ押し出されないように上限を置く。 */
+      max-height: 380px;
+      object-fit: contain;
+      border-radius: 2px;
+    }
+
     .result-name {
       font-size: 32px;
       font-weight: 200;
@@ -508,6 +531,9 @@
 <!-- ===================== 簡易結果（その場で表示） ===================== -->
 <div class="screen" id="scr-result">
   <div class="result-eyebrow">あなたを守る明王</div>
+  <figure class="result-figure" id="r-figure" hidden>
+    <img id="r-img" alt="">
+  </figure>
   <div class="result-name" id="r-name"></div>
   <div class="result-yomi" id="r-yomi"></div>
   <div class="result-catch" id="r-catch"></div>
@@ -527,23 +553,28 @@
   <div class="cta-benefits">
     <div class="cta-benefits-label">✦ LINEで受け取れるもの ✦</div>
     <div class="cta-benefit-item">
+      <span class="cta-benefit-icon">📜</span>
+      <span><strong><span id="benefit-name"></span>の詳しい結果</strong><br>
+      <small>強み ／ 伸ばし方 ／ 9月19日当日の楽しみ方</small></span>
+    </div>
+    <div class="cta-benefit-item">
       <span class="cta-benefit-icon">🔥</span>
       <span><strong>不動明王のエネルギーを込めた画像</strong><br>
-      <small>by かんめいさん ／ 四方を束ねる中央の一体</small></span>
+      <small>by かんめいさん ／ 当日のクーポンを兼ねます</small></span>
     </div>
   </div>
 
   <p class="cta-stamp-note">
-    🎁 この画像を会場で見せると、<br>スタンプラリーのスタンプを1つプレゼント
+    🎁 この画像が、当日のクーポンになります<br>会場受付で見せると、スタンプラリーのスタンプを1つプレゼント
     <small>スタンプ3つで景品と交換できます（景品は数に限りがあります）</small>
   </p>
 
   <div class="line-steps">
     <p class="line-step">① 下のボタンでLINE公式アカウントを友だち追加</p>
     <div class="line-step-divider"></div>
-    <p class="line-step">② 友だち追加後、トーク画面に</p>
-    <div class="line-step-name">ふどうみょうおう</div>
-    <p class="line-step">と送ってください</p>
+    <p class="line-step">② 友だち追加後、トーク画面に<br>あなたの番号を送ってください</p>
+    <div class="line-step-name" id="inst-number"></div>
+    <p class="line-step">この数字だけでOKです</p>
   </div>
 
   <a class="btn-line" id="btn-line" href="https://lin.ee/zbT55QS" target="_blank" rel="noopener"
@@ -622,6 +653,8 @@ var QUESTIONS = [
    キャラクター化のための創作を事実として書かないこと。 */
 var MYOUOU = {
   gozanze: {
+    num: "1",
+    img: "gozanze",
     name: "降三世明王",
     yomi: "ごうざんぜみょうおう",
     meta: "東方 ／ 阿閦如来の教令輪身",
@@ -629,6 +662,8 @@ var MYOUOU = {
     desc: "降三世明王は、左足で大自在天（インドで最高神とされたシヴァ）の頬を踏んでいます。最高位のものを、踏む。図像としてかなり思い切ったことをやっている一体です。\n\nあなたはたぶん、「決まっているから」という理由がいちばん効かない人です。前例も肩書きもその場の空気も、納得できなければ一度立ち止まる。四体のなかで、いちばん反骨心があります。\n\nそれは扱いにくさではありません。まだ誰も動かしていないものを動かせる、ということです。"
   },
   gundari: {
+    num: "2",
+    img: "gundari",
     name: "軍荼利明王",
     yomi: "ぐんだりみょうおう",
     meta: "南方 ／ 宝生如来の教令輪身",
@@ -636,6 +671,8 @@ var MYOUOU = {
     desc: "軍荼利明王は、儀軌のなかで「威怒甘露軍荼利金剛」と呼ばれます。忿怒の名を持ちながら、甘露（潤すもの）の名も併せ持つ一体です。踏割蓮華の上に立ち、体には蛇が巻きついています。\n\nあなたは、構えなくても場の空気が変わる人です。何かをしようとしていなくても、あなたが来ると人が集まって、勝手に動き出す。\n\n自覚は薄いかもしれませんが、それはちゃんと力があるということです。"
   },
   daiitoku: {
+    num: "3",
+    img: "daiitoku",
     name: "大威徳明王",
     yomi: "だいいとくみょうおう",
     meta: "西方 ／ 無量寿（阿弥陀）如来の教令輪身",
@@ -643,6 +680,8 @@ var MYOUOU = {
     desc: "大威徳明王は、六面三目六臂六足。水牛の背に坐しています。四体のなかでもっとも重心が低く、動かないことそのものが姿になっている一体です。勝負の前にこの明王の真言を唱えるとよい、とも言われてきました。\n\nあなたは、決めたことを最後まで運ぶ人です。途中で投げない。派手さより、最後まで持っていくほうが強いと知っている。\n\n進み続けてきた時間は、きちんと積み上がっていきます。"
   },
   kongoyasha: {
+    num: "4",
+    img: "kongoyasha",
     name: "金剛夜叉明王",
     yomi: "こんごうやしゃみょうおう",
     meta: "北方 ／ 不空成就如来の教令輪身",
@@ -654,6 +693,38 @@ var MYOUOU = {
 /* LINE友だち追加URL。来場者向けの共通窓口ひとつ。
    タイプ別の流入経路は使わない（自動タグ付けをしない方針のため）。 */
 var LINE_URL = "https://lin.ee/zbT55QS";
+
+/* 明王画像。myouou/ 直下に漢字名で置いたもの（降三世明王.png など）を先に探し、
+   見つからなければ images/ のローマ字名を探す。
+   どれも無ければ枠ごと出さないので、画像が未配置でもページは壊れない。 */
+function imageCandidates(m) {
+  var paths = [];
+  ["png", "jpg", "jpeg", "webp"].forEach(function (ext) {
+    paths.push(m.name + "." + ext);
+    paths.push("images/" + m.img + "." + ext);
+  });
+  return paths;
+}
+
+function setResultImage(m) {
+  var figure = document.getElementById("r-figure");
+  var img = document.getElementById("r-img");
+  var paths = imageCandidates(m);
+  var i = 0;
+
+  img.onerror = function () {
+    i++;
+    if (i < paths.length) {
+      img.src = paths[i];
+    } else {
+      figure.hidden = true;
+    }
+  };
+  img.onload = function () { figure.hidden = false; };
+
+  img.alt = m.name;
+  img.src = paths[0];
+}
 
 var cur = 0;
 var answers = [];       // 各問で選ばれたタイプ
@@ -738,6 +809,9 @@ function calcResult() {
   document.getElementById("r-meta").textContent      = m.meta;
   document.getElementById("r-desc").textContent      = m.desc;
   document.getElementById("bridge-name").textContent = m.name;
+  document.getElementById("benefit-name").textContent = m.name;
+  document.getElementById("inst-number").textContent = m.num;
+  setResultImage(m);
   document.getElementById("btn-line").href            = LINE_URL;
 
   track("MyououComplete", { myouou_type: resultType });
