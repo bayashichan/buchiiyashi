@@ -33,10 +33,33 @@
     /></noscript>
 
   <style>
+    /* 明朝を持たない端末（多くのAndroid）向けの予備フォント。
+       このページに出る文字だけに絞った Noto Serif JP で、2つ合わせて約270KB。
+       ヒラギノ／游明朝がある端末では読み込まれない。
+       文章を大きく書き換えたときは myouou/README.md「フォント」の手順で作り直す。 */
+    @font-face {
+      font-family: 'Noto Serif JP';
+      font-style: normal;
+      font-weight: 100 400;
+      font-display: swap;
+      src: url('fonts/NotoSerifJP-300.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Noto Serif JP';
+      font-style: normal;
+      font-weight: 500 900;
+      font-display: swap;
+      src: url('fonts/NotoSerifJP-600.woff2') format('woff2');
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
     body {
-      font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+      /* 明朝。端末に明朝があればそれを使い、無ければ Noto Serif JP を読み込む。
+         ヒラギノ／游明朝が当たる端末では webfont はダウンロードされない。 */
+      font-family: 'Hiragino Mincho ProN', 'Hiragino Mincho Pro',
+                   'Yu Mincho', YuMincho, 'Noto Serif JP', serif;
+      -webkit-font-smoothing: antialiased;
       background: linear-gradient(168deg, #1a0a06 0%, #2b0d0a 48%, #120609 100%);
       min-height: 100vh;
       color: #f2e8de;

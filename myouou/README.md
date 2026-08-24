@@ -444,6 +444,44 @@ LINE公式アカウントの**応答メッセージ**に `1` 〜 `4` を登録�
 
 ---
 
+## フォント
+
+本文・見出しとも**明朝**。端末に入っている明朝を優先し、無い端末だけ同梱のwebfontを読む。
+
+```css
+font-family: 'Hiragino Mincho ProN', 'Hiragino Mincho Pro',
+             'Yu Mincho', YuMincho, 'Noto Serif JP', serif;
+```
+
+- iPhone / Mac → ヒラギノ明朝、Windows → 游明朝。**この場合webfontはダウンロードされない**
+- Androidは標準で明朝を持たないため、`myouou/fonts/` の Noto Serif JP を読む
+
+### 同梱フォントについて
+
+`fonts/NotoSerifJP-300.woff2`（本文用）と `fonts/NotoSerifJP-600.woff2`（太字用）。
+**このページに出る文字だけに絞ってあり、2つで約270KB。**
+Google Fontsからそのまま読むと同じ見た目で約1.6MBかかるので、同梱に切り替えている。
+
+ひらがな・カタカナ・英数・約物は全部入れてあるので、多少の文章修正では欠けない。
+**新しい漢字を含む文章に書き換えたときは作り直すこと。**入っていない字は
+端末側のゴシックで表示される（豆腐にはならないが、そこだけ書体が変わる）。
+
+作り直す手順:
+
+```bash
+# 1. Noto Serif JP の Light(300) と SemiBold(600) の ttf を取得
+curl -A "Mozilla/4.0" "https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300&display=swap"
+curl -A "Mozilla/4.0" "https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600&display=swap"
+#    返ってきたCSSの .ttf URL をダウンロードする
+
+# 2. ページに出る文字を集めて subset.txt に入れ、絞り込む
+pip install fonttools brotli
+python3 -m fontTools.subset NotoSerifJP-300.ttf --text-file=subset.txt \
+  --layout-features='*' --flavor=woff2 --output-file=myouou/fonts/NotoSerifJP-300.woff2 --no-hinting
+```
+
+---
+
 ## 実装メモ
 
 単一の静的HTML。ビルド不要。`myouou/index.html` を編集してpushすればGitHub Pagesに反映される。
