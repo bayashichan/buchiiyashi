@@ -32,6 +32,8 @@
     src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1"
     /></noscript>
 
+  <link rel="preload" as="image" href="不動明王.jpg">
+
   <style>
     /* 明朝を持たない端末（多くのAndroid）向けの予備フォント。
        このページに出る文字だけに絞った Noto Serif JP で、2つ合わせて約270KB。
@@ -92,9 +94,36 @@
     }
     .screen.active { display: flex; animation: fadeUp 0.45s ease both; }
 
+    /* トップだけ不動明王の写真を敷く。文字を読ませるため、上から下へ暗くする幕を重ねている。 */
+    #scr-hero {
+      background-image:
+        linear-gradient(180deg,
+          rgba(18,7,5,0.66) 0%,
+          rgba(18,7,5,0.60) 18%,
+          rgba(18,7,5,0.84) 42%,
+          rgba(16,6,6,0.93) 66%,
+          rgba(15,5,7,0.99) 90%),
+        url('不動明王.jpg');
+      background-repeat: no-repeat, no-repeat;
+      background-size: cover, cover;
+      background-position: center, center top;
+    }
+
+    /* 横長の画面では縦位置をずらして、不動明王が画面に入るようにする。 */
+    @media (min-width: 700px) {
+      #scr-hero { background-position: center, center 32%; }
+    }
+
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(20px); }
       to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #scr-hero .hero-eyebrow,
+    #scr-hero .hero-title,
+    #scr-hero .hero-sub,
+    #scr-hero .sect-note {
+      text-shadow: 0 2px 12px rgba(10,4,3,0.85);
     }
 
     .hero-eyebrow {
@@ -122,7 +151,7 @@
 
     .hero-sub {
       font-size: 13px;
-      color: #b7a294;
+      color: #cbb9ab;
       text-align: center;
       line-height: 1.9;
       margin-bottom: 28px;
@@ -133,8 +162,9 @@
        診断開始より必ず上に置く。位置を下げないこと。 */
     .funnu-note {
       max-width: 330px;
-      background: rgba(224, 81, 47, 0.07);
+      background: rgba(24, 9, 6, 0.62);
       border-left: 2px solid #e0512f;
+      backdrop-filter: blur(2px);
       border-radius: 0 10px 10px 0;
       padding: 16px 18px;
       margin-bottom: 34px;
