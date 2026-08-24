@@ -46,7 +46,7 @@
     /* 日本語を文節単位で折り返す。未対応ブラウザでは通常の折り返しに戻るだけ。
        行末に一文字だけ取り残される見え方を減らすために入れている。 */
     .funnu-note, .q-text, .result-catch, .result-desc,
-    .gift-note, .gift-sub, .cta-stamp-note, .hero-badge {
+    .gift-lead, .gift-note, .gift-sub, .cta-stamp-note, .hero-badge {
       word-break: auto-phrase;
     }
 
@@ -329,12 +329,14 @@
       margin-bottom: 16px;
       text-align: center;
     }
-    .gift-label {
-      font-size: 10px;
-      letter-spacing: 0.25em;
-      color: #d9a441;
-      margin-bottom: 14px;
+    .gift-lead {
+      font-size: 13.5px;
+      line-height: 1.85;
+      color: #ddd0c4;
+      letter-spacing: 0.02em;
+      margin-bottom: 16px;
     }
+    .gift-lead strong { color: #f2cf7a; font-weight: 600; }
     .gift-badge {
       display: inline-block;
       font-size: 10px;
@@ -554,20 +556,20 @@
   <div class="result-rule"></div>
 
   <div class="gift">
-    <div class="gift-label">✦ LINE登録で受け取れるもの ✦</div>
+    <p class="gift-lead">
+      LINE登録すると、<strong>詳しい診断結果</strong>と<br>
+      <strong>不動明王の画像</strong>がもらえます
+    </p>
 
     <span class="gift-badge">🎁 プレゼント</span>
     <p class="gift-title">不動明王の<br>エネルギーを込めた画像</p>
     <p class="gift-by">by かんめいさん</p>
-    <p class="gift-note">
-      四方を固める四体を、まんなかで束ねているのが<strong>不動明王</strong>。
-      あなたの<span id="bridge-name"></span>に、五体目として重なります。
-    </p>
+    <p class="gift-note">五大明王を束ねる中心にいるのが、<strong>不動明王</strong>です。</p>
     <p class="gift-coupon">＋ 当日会場で使えるクーポンにもなります</p>
 
     <div class="gift-sub">
       <span class="gift-sub-icon">📜</span>
-      <span><strong><span id="benefit-name"></span>の詳しい結果</strong><br>
+      <span><strong><span id="benefit-name"></span>の詳しい診断結果</strong><br>
       <small>強み ／ 伸ばし方 ／ 9月19日当日の楽しみ方</small></span>
     </div>
   </div>
@@ -816,7 +818,6 @@ function calcResult() {
   document.getElementById("r-catch").textContent     = m.catch;
   document.getElementById("r-meta").textContent      = m.meta;
   document.getElementById("r-desc").textContent      = m.desc;
-  document.getElementById("bridge-name").textContent = m.name;
   document.getElementById("benefit-name").textContent = m.name;
   document.getElementById("inst-number").textContent = m.num;
   setResultImage(m);
