@@ -46,7 +46,7 @@
     /* 日本語を文節単位で折り返す。未対応ブラウザでは通常の折り返しに戻るだけ。
        行末に一文字だけ取り残される見え方を減らすために入れている。 */
     .funnu-note, .q-text, .result-catch, .result-desc,
-    .fudo-bridge p, .cta-benefit-item, .cta-stamp-note, .hero-badge {
+    .gift-note, .gift-sub, .cta-stamp-note, .hero-badge {
       word-break: auto-phrase;
     }
 
@@ -317,60 +317,72 @@
       margin: 0 auto 32px;
     }
 
-    /* 中央＝不動明王のブリッジ。四方の結果と特典画像を構造で繋ぐ部分。 */
-    .fudo-bridge {
+    /* 特典パネル。中央＝不動明王の説明と、LINEで受け取れるものを1枚にまとめている。
+       パッと見で「かんめいさんの画像がもらえる」と分かることを優先した並び。 */
+    .gift {
       width: 100%;
       max-width: 320px;
-      text-align: center;
-      background: rgba(224,81,47,.06);
-      border: 1px solid rgba(224,81,47,.3);
+      background: linear-gradient(135deg, rgba(224,81,47,.14) 0%, rgba(217,164,65,.06) 100%);
+      border: 1px solid rgba(217,164,65,.45);
       border-radius: 16px;
-      padding: 22px 20px;
-      margin-bottom: 26px;
-    }
-    .fudo-bridge-label {
-      font-size: 10px;
-      letter-spacing: 0.25em;
-      color: #e0512f;
-      margin-bottom: 12px;
-    }
-    .fudo-bridge p {
-      font-size: 13px;
-      line-height: 2.0;
-      color: #ddd0c4;
-    }
-    .fudo-bridge strong { color: #f2cf7a; font-weight: 600; }
-
-    .cta-benefits {
-      width: 100%;
-      max-width: 320px;
-      background: linear-gradient(135deg, rgba(217,164,65,.13) 0%, rgba(217,164,65,.04) 100%);
-      border: 1px solid rgba(217,164,65,.42);
-      border-radius: 16px;
-      padding: 20px 20px 16px;
+      padding: 18px 18px 16px;
       margin-bottom: 16px;
-      text-align: left;
+      text-align: center;
     }
-    .cta-benefits-label {
+    .gift-label {
       font-size: 10px;
       letter-spacing: 0.25em;
       color: #d9a441;
-      text-align: center;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
-    .cta-benefit-item {
+    .gift-badge {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      color: #24100a;
+      background: linear-gradient(135deg, #c9852f 0%, #f2cf7a 100%);
+      border-radius: 999px;
+      padding: 3px 12px;
+      margin-bottom: 10px;
+    }
+    .gift-title {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #f2cf7a;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .gift-by { font-size: 11px; color: #a8927f; letter-spacing: 0.08em; margin-top: 4px; }
+    .gift-note {
+      font-size: 11.5px;
+      line-height: 1.9;
+      color: #c4b3a5;
+      margin-top: 10px;
+    }
+    .gift-note strong { color: #ddd0c4; font-weight: 600; }
+    .gift-coupon {
+      font-size: 12px;
+      color: #f2cf7a;
+      letter-spacing: 0.02em;
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(217,164,65,.25);
+    }
+    .gift-sub {
       display: flex;
       align-items: flex-start;
-      gap: 10px;
-      font-size: 13px;
+      gap: 9px;
+      text-align: left;
+      font-size: 12.5px;
+      line-height: 1.7;
       color: #e6dbd0;
-      line-height: 1.75;
-      margin-bottom: 12px;
+      margin-top: 14px;
+      padding-top: 13px;
+      border-top: 1px solid rgba(255,255,255,.09);
     }
-    .cta-benefit-item:last-child { margin-bottom: 0; }
-    .cta-benefit-icon { font-size: 17px; flex-shrink: 0; line-height: 1.5; }
-    .cta-benefit-item strong { color: #f2cf7a; }
-    .cta-benefit-item small { font-size: 11px; color: #a8927f; }
+    .gift-sub-icon { font-size: 15px; flex-shrink: 0; line-height: 1.6; }
+    .gift-sub strong { color: #f2cf7a; }
+    .gift-sub small { font-size: 10.5px; color: #a8927f; }
 
     .cta-stamp-note {
       width: 100%;
@@ -541,31 +553,27 @@
   <div class="result-desc" id="r-desc"></div>
   <div class="result-rule"></div>
 
-  <div class="fudo-bridge">
-    <div class="fudo-bridge-label">✦ そして中央に ✦</div>
-    <p>
-      四方を固める四体を、まんなかで束ねているのが<strong>不動明王</strong>です。<br>
-      その不動明王のエネルギーを、かんめいさんが一枚の画像に込めました。<br>
+  <div class="gift">
+    <div class="gift-label">✦ LINE登録で受け取れるもの ✦</div>
+
+    <span class="gift-badge">🎁 プレゼント</span>
+    <p class="gift-title">不動明王の<br>エネルギーを込めた画像</p>
+    <p class="gift-by">by かんめいさん</p>
+    <p class="gift-note">
+      四方を固める四体を、まんなかで束ねているのが<strong>不動明王</strong>。
       あなたの<span id="bridge-name"></span>に、五体目として重なります。
     </p>
-  </div>
+    <p class="gift-coupon">＋ 当日会場で使えるクーポンにもなります</p>
 
-  <div class="cta-benefits">
-    <div class="cta-benefits-label">✦ LINEで受け取れるもの ✦</div>
-    <div class="cta-benefit-item">
-      <span class="cta-benefit-icon">📜</span>
+    <div class="gift-sub">
+      <span class="gift-sub-icon">📜</span>
       <span><strong><span id="benefit-name"></span>の詳しい結果</strong><br>
       <small>強み ／ 伸ばし方 ／ 9月19日当日の楽しみ方</small></span>
-    </div>
-    <div class="cta-benefit-item">
-      <span class="cta-benefit-icon">🔥</span>
-      <span><strong>不動明王のエネルギーを込めた画像</strong><br>
-      <small>by かんめいさん ／ 当日のクーポンを兼ねます</small></span>
     </div>
   </div>
 
   <p class="cta-stamp-note">
-    🎁 この画像が、当日のクーポンになります<br>会場受付で見せると、スタンプラリーのスタンプを1つプレゼント
+    画像を会場受付で見せると、<br>スタンプラリーのスタンプを1つプレゼント
     <small>スタンプ3つで景品と交換できます（景品は数に限りがあります）</small>
   </p>
 
