@@ -133,6 +133,7 @@ export function getSocialConfig(env) {
 
 async function testConnection(env) {
     const result = { success: true, facebook: null, instagram: null };
+    const config = getSocialConfig(env);
 
     if (env.FB_PAGE_ID && fbToken(env)) {
         try {
@@ -145,7 +146,7 @@ async function testConnection(env) {
             result.facebook = { ok: false, error: err.message };
         }
     } else {
-        result.facebook = { ok: false, error: 'FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN が未設定です' };
+        result.facebook = { ok: false, error: `未設定の環境変数: ${config.facebook.missing.join(' / ')}` };
     }
 
     if (env.IG_USER_ID && igToken(env)) {
@@ -159,7 +160,7 @@ async function testConnection(env) {
             result.instagram = { ok: false, error: err.message };
         }
     } else {
-        result.instagram = { ok: false, error: 'IG_USER_ID / アクセストークンが未設定です' };
+        result.instagram = { ok: false, error: `未設定の環境変数: ${config.instagram.missing.join(' / ')}` };
     }
 
     return result;

@@ -247,42 +247,58 @@
         <section class="card" id="step3">
             <h2>3. Cloudflare Workers に登録する</h2>
             <p>
-                Cloudflareダッシュボード →
-                <strong>Workers &amp; Pages → buchiiyashi-festa-form → 設定 → 変数とシークレット</strong> で、
-                以下を <strong>シークレット（暗号化）</strong> として追加します。
+                ダッシュボードで登録が必要なのは <strong>アクセストークンの1件だけ</strong> です。
+                ページIDとInstagramのIDは秘密情報ではないため、リポジトリの
+                <code>worker/wrangler.toml</code> に書いてあり、デプロイで自動的に反映されます。
             </p>
             <table>
                 <tr>
                     <th>変数名</th>
                     <th>内容</th>
-                </tr>
-                <tr>
-                    <td><code>FB_PAGE_ID</code></td>
-                    <td>投稿先FacebookページのID</td>
+                    <th>登録場所</th>
                 </tr>
                 <tr>
                     <td><code>FB_PAGE_ACCESS_TOKEN</code></td>
                     <td>長期のページアクセストークン</td>
-                </tr>
-                <tr>
-                    <td><code>IG_USER_ID</code></td>
-                    <td>InstagramビジネスアカウントのID</td>
+                    <td><strong>ダッシュボード（シークレット）</strong></td>
                 </tr>
                 <tr>
                     <td><code>IG_ACCESS_TOKEN</code></td>
                     <td>省略可。未設定なら <code>FB_PAGE_ACCESS_TOKEN</code> を使います</td>
+                    <td>ダッシュボード（シークレット）</td>
+                </tr>
+                <tr>
+                    <td><code>FB_PAGE_ID</code></td>
+                    <td>投稿先FacebookページのID</td>
+                    <td><code>wrangler.toml</code>（設定済み）</td>
+                </tr>
+                <tr>
+                    <td><code>IG_USER_ID</code></td>
+                    <td>InstagramビジネスアカウントのID</td>
+                    <td><code>wrangler.toml</code>（設定済み）</td>
                 </tr>
             </table>
 
-            <p>コマンドで登録する場合:</p>
+            <p>
+                登録場所は Cloudflareダッシュボード →
+                <strong>Workers &amp; Pages → buchiiyashi-festa-form → 設定 → 変数とシークレット</strong>。
+                「変数を追加」で種類に <strong>シークレット</strong> を選び、名前と値を入力します。
+            </p>
+
+            <div class="note">
+                ⚠️ <strong>入力しただけでは反映されません。</strong>
+                変数の一覧はかなり縦に長いので、<strong>カードの一番下までスクロールして「デプロイ」ボタンを押してください</strong>。
+                これを押すまでは保留状態のままで、Workerからは未設定として扱われます。
+            </div>
+
+            <p>コマンドで登録する場合（こちらはボタン操作が不要です）:</p>
             <pre><code>cd worker
-npx wrangler secret put FB_PAGE_ID
-npx wrangler secret put FB_PAGE_ACCESS_TOKEN
-npx wrangler secret put IG_USER_ID</code></pre>
+npx wrangler secret put FB_PAGE_ACCESS_TOKEN</code></pre>
 
             <p>
-                登録後、投稿ページの「接続テスト」ボタンで確認できます。
-                ページ名とInstagramのユーザー名が表示されれば設定完了です。
+                登録後、投稿ページを再読み込みしてください。バッジの下に
+                <strong>「未設定の項目」</strong> が出る場合は、そこに表示された変数名がまだ届いていません。
+                何も出なければ「接続テスト」を押し、ページ名とInstagramのユーザー名が表示されれば設定完了です。
             </p>
             <div class="note danger">
                 ⚠️ トークンは絶対にGitHubへ書かないでください（このリポジトリは公開されています）。
@@ -330,8 +346,8 @@ npx wrangler secret put IG_USER_ID</code></pre>
                     <th>原因と対処</th>
                 </tr>
                 <tr>
-                    <td><code>FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN が未設定です</code></td>
-                    <td>手順3の登録がまだ、またはデプロイ前</td>
+                    <td><code>未設定の環境変数: ...</code></td>
+                    <td>表示された変数名が届いていない。手順3の登録がまだか、「デプロイ」ボタンの押し忘れ</td>
                 </tr>
                 <tr>
                     <td><code>[code 190] ...</code></td>

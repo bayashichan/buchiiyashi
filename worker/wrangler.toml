@@ -13,6 +13,12 @@ LINE_MANAGER_URL = "https://line-manager-omega.vercel.app"
 LINE_MANAGER_SOURCE = "buchiiyashi-apply"
 LINE_MANAGER_CHANNEL_ID = "e5fae09e-25e3-44dd-9e61-3c5dbbb8afe0"
 
+# SNS一括投稿の投稿先。どちらも公開されているIDなので平文でよい。
+# ダッシュボードでの設定漏れを避けるため、ここで確定させる。
+# 秘密にする必要があるのはアクセストークンだけ（FB_PAGE_ACCESS_TOKEN）。
+FB_PAGE_ID = "223720584168739"
+IG_USER_ID = "17841465230403689"
+
 # 以下はwrangler secretで設定が必要:
 # - ADMIN_PASSWORD: 管理画面ログインパスワード
 # - GITHUB_TOKEN: GitHub Personal Access Token (repo権限)
@@ -23,11 +29,10 @@ LINE_MANAGER_CHANNEL_ID = "e5fae09e-25e3-44dd-9e61-3c5dbbb8afe0"
 #   申込完了をLINEでも本人へ通知するために使う。未設定なら通知をスキップする（メールのみ）。
 #   （このファイルはpublicリポジトリにあるため平文で書かないこと）
 #
-# SNS一括投稿（/admin/sns/）で使うシークレット。設定手順は admin/sns/setup.html（サイト上の /admin/sns/setup.html）を参照:
-# - FB_PAGE_ID           : 投稿先Facebookページのページ ID
-# - FB_PAGE_ACCESS_TOKEN : 上記ページの長期ページアクセストークン
-# - IG_USER_ID           : Instagramビジネスアカウントの ID
+# SNS一括投稿（/admin/sns/）で使うシークレット。設定手順は サイト上の /admin/sns/setup.html を参照:
+# - FB_PAGE_ACCESS_TOKEN : 投稿先Facebookページの長期ページアクセストークン
 # - IG_ACCESS_TOKEN      : 省略可。未設定なら FB_PAGE_ACCESS_TOKEN を使う
+#   （FB_PAGE_ID と IG_USER_ID は秘密ではないので上の[vars]に置いている）
 
 # R2バケットバインディング
 # 画像置き場に加えて、SNS予約投稿のジョブ保存にも使う
