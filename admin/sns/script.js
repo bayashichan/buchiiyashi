@@ -16,6 +16,8 @@ let templates = {};
 let overrides = {};          // 出展名 => { instagram, facebook }
 let selected = new Set();    // 選択中の出展者ID
 let rowTimes = {};           // 出展者ID => datetime-local文字列（個別指定）
+let combinedOrder = [];      // まとめ投稿での並び順（出展者ID）
+let combinedEdited = false;  // まとめ投稿の本文を手で編集したか
 let currentId = null;        // 詳細表示中の出展者ID
 let socialConfig = null;
 
@@ -50,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('selectAllBtn').addEventListener('click', selectAllVisible);
     document.getElementById('clearSelectionBtn').addEventListener('click', () => {
         selected.clear();
+        syncCombinedOrder();
         renderList();
         renderPreview();
     });
@@ -59,6 +62,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('runDueBtn').addEventListener('click', runDueNow);
     document.getElementById('refreshJobsBtn').addEventListener('click', loadJobs);
     document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            document.getElementById('combinedOptions').classList.toggle('hidden', getMode() !== 'combined');
+            syncCombinedOrder();
+            renderPreview();
+        });
+    });
+    document.getElementById('rebuildCombinedBtn').addEventListener('click', () => rebuildCombinedCaptions(true));
+    document.getElementById('combinedCaptionInsta').addEventListener('input', () => {
+        combinedEdited = true;
+        updateCombinedCounts();
+    });
+    document.getElementById('combinedCaptionFb').addEventListener('input', () => {
+        combinedEdited = true;
+        updateCombinedCounts();
+    });
 
     document.querySelectorAll('input[name="timing"]').forEach(radio => {
         radio.addEventListener('change', () => {
@@ -213,6 +233,7 @@ async function loadExhibitors() {
         templates = data.captionTemplates || {};
         if (data.eventName) document.getElementById('eventName').textContent = data.eventName;
 
+        syncCombinedOrder();
         renderList();
         renderPreview();
     } catch (err) {
@@ -267,6 +288,7 @@ function renderList() {
         box.addEventListener('change', (e) => {
             const id = Number(e.target.dataset.check);
             if (e.target.checked) selected.add(id); else selected.delete(id);
+            syncCombinedOrder();
             updateSelectionCount();
             renderPreview();
         });
@@ -289,6 +311,7 @@ function renderList() {
 
 function selectAllVisible() {
     visibleExhibitors().forEach(ex => selected.add(ex.id));
+    syncCombinedOrder();
     renderList();
     renderPreview();
 }
@@ -359,6 +382,9 @@ function saveOverride(platform) {
 
     document.getElementById('captionSaveStatus').textContent = '※このページで編集した内容が保存されています';
     updateCaptionCounts();
+
+    // まとめ投稿の本文が自動生成のままなら、編集内容を反映する
+    if (getMode() === 'combined' && !combinedEdited) rebuildCombinedCaptions(false);
 }
 
 function resetOverride() {
@@ -372,6 +398,7 @@ function resetOverride() {
     document.getElementById('captionFb').value = buildCaption(ex, 'facebook');
     document.getElementById('captionSaveStatus').textContent = 'テンプレートの内容に戻しました';
     updateCaptionCounts();
+    if (getMode() === 'combined' && !combinedEdited) rebuildCombinedCaptions(false);
     renderList();
 }
 
@@ -495,6 +522,109 @@ function defaultTemplate(platform) {
 }
 
 // ========================================
+// まとめ投稿（複数画像を1投稿に）
+// ========================================
+function getMode() {
+    return document.querySelector('input[name="mode"]:checked').value;
+}
+
+/** 選択内容にあわせて並び順を更新する（既存の順番はできるだけ保つ） */
+function syncCombinedOrder() {
+    combinedOrder = combinedOrder.filter(id => selected.has(id));
+    exhibitors.forEach(ex => {
+        if (selected.has(ex.id) && !combinedOrder.includes(ex.id)) combinedOrder.push(ex.id);
+    });
+
+    if (getMode() === 'combined') {
+        renderCombinedImages();
+        rebuildCombinedCaptions(false);
+    }
+}
+
+function combinedTargets() {
+    return combinedOrder.map(id => exhibitors.find(ex => ex.id === id)).filter(Boolean);
+}
+
+function renderCombinedImages() {
+    const container = document.getElementById('combinedImages');
+    const targets = combinedTargets();
+
+    const withImage = targets.filter(ex => ex.introImageId).length;
+    const countEl = document.getElementById('combinedCount');
+    countEl.textContent = `画像${withImage}枚 / 出展者${targets.length}件`
+        + (withImage > 10 ? '（Instagramは10枚までです）' : '');
+    countEl.style.color = withImage > 10 ? 'var(--error)' : '';
+
+    if (targets.length === 0) {
+        container.innerHTML = '<p class="empty">出展者が選択されていません</p>';
+        return;
+    }
+
+    container.innerHTML = targets.map((ex, i) => {
+        const thumb = ex.introImageId
+            ? `<img src="https://lh3.googleusercontent.com/d/${ex.introImageId}=w184" alt="" loading="lazy">`
+            : '<div class="no-thumb">画像なし</div>';
+        return `
+            <div class="combined-item">
+                <span class="order">${i + 1}</span>
+                ${thumb}
+                <div class="name">${escapeHtml(ex.exhibitorName)}</div>
+                <div class="moves">
+                    <button type="button" data-move="up" data-id="${ex.id}" ${i === 0 ? 'disabled' : ''}>←</button>
+                    <button type="button" data-move="down" data-id="${ex.id}" ${i === targets.length - 1 ? 'disabled' : ''}>→</button>
+                </div>
+            </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-move]').forEach(btn => {
+        btn.addEventListener('click', () => moveCombined(Number(btn.dataset.id), btn.dataset.move));
+    });
+}
+
+function moveCombined(id, direction) {
+    const at = combinedOrder.indexOf(id);
+    const to = direction === 'up' ? at - 1 : at + 1;
+    if (at < 0 || to < 0 || to >= combinedOrder.length) return;
+
+    [combinedOrder[at], combinedOrder[to]] = [combinedOrder[to], combinedOrder[at]];
+    renderCombinedImages();
+    if (!combinedEdited) rebuildCombinedCaptions(false);
+    renderPreview();
+}
+
+/**
+ * まとめ投稿の本文を、選択中の出展者のキャプションをつないで作る。
+ * force=true のときは手動編集を上書きする。
+ */
+function rebuildCombinedCaptions(force) {
+    if (!force && combinedEdited) {
+        updateCombinedCounts();
+        return;
+    }
+
+    const targets = combinedTargets();
+    const separator = '\n\n──────────\n\n';
+
+    document.getElementById('combinedCaptionInsta').value =
+        targets.map(ex => getCaption(ex, 'instagram')).filter(Boolean).join(separator);
+    document.getElementById('combinedCaptionFb').value =
+        targets.map(ex => getCaption(ex, 'facebook')).filter(Boolean).join(separator);
+
+    combinedEdited = false;
+    updateCombinedCounts();
+}
+
+function updateCombinedCounts() {
+    const insta = document.getElementById('combinedCaptionInsta').value.length;
+    const fb = document.getElementById('combinedCaptionFb').value.length;
+
+    const instaEl = document.getElementById('combinedInstaCount');
+    instaEl.textContent = `${insta}文字${insta > 2200 ? '（上限2,200文字を超えています）' : ''}`;
+    instaEl.style.color = insta > 2200 ? 'var(--error)' : '';
+    document.getElementById('combinedFbCount').textContent = `${fb}文字`;
+}
+
+// ========================================
 // 投稿対象の組み立て
 // ========================================
 function getTiming() {
@@ -510,15 +640,40 @@ function getPlatforms() {
 
 /**
  * 選択中の出展者から投稿アイテムを作る。
- * 日時指定の場合は「個別指定 > 開始日時＋間隔」の優先順で予約時刻を決める。
+ * - 個別モード : 出展者1人につき1投稿。日時は「個別指定 > 開始日時＋間隔」の順で決める
+ * - まとめモード: 全員の画像を並べた1投稿。日時は開始日時のみを使う
  */
 function buildItems() {
     const platforms = getPlatforms();
     const scheduled = getTiming() === 'schedule';
     const startValue = document.getElementById('scheduleStart').value;
-    const interval = Number(document.getElementById('scheduleInterval').value || 0);
     const startEpoch = startValue ? new Date(startValue).getTime() : null;
 
+    if (getMode() === 'combined') {
+        const targets = combinedTargets();
+        if (targets.length === 0) return [];
+
+        const images = targets
+            .filter(ex => ex.introImageId)
+            .map(ex => ({ fileId: ex.introImageId, name: ex.exhibitorName }));
+
+        return [{
+            mode: 'combined',
+            exhibitorName: targets.length > 1
+                ? `${targets[0].exhibitorName} 他${targets.length - 1}件`
+                : targets[0].exhibitorName,
+            memberNames: targets.map(ex => ex.exhibitorName),
+            images,
+            captions: {
+                instagram: document.getElementById('combinedCaptionInsta').value,
+                facebook: document.getElementById('combinedCaptionFb').value
+            },
+            platforms,
+            scheduledAt: scheduled ? startEpoch : null
+        }];
+    }
+
+    const interval = Number(document.getElementById('scheduleInterval').value || 0);
     // 選択順ではなくリストの並び順で番号を振る
     const targets = exhibitors.filter(ex => selected.has(ex.id));
 
@@ -535,6 +690,7 @@ function buildItems() {
         }
 
         return {
+            mode: 'single',
             exhibitorId: ex.id,
             exhibitorName: ex.exhibitorName,
             imageFileId: ex.introImageId || '',
@@ -552,27 +708,43 @@ function renderPreview() {
     const preview = document.getElementById('postPreview');
     const items = buildItems();
     const platforms = getPlatforms();
+    const combined = getMode() === 'combined';
+    const scheduled = getTiming() === 'schedule';
+    const postBtn = document.getElementById('postBtn');
 
     if (items.length === 0) {
         preview.innerHTML = '<p class="empty">出展者が選択されていません</p>';
-        document.getElementById('postBtn').textContent = '選択した出展者を投稿する';
+        postBtn.textContent = '選択した出展者を投稿する';
         return;
     }
 
-    const scheduled = getTiming() === 'schedule';
     preview.innerHTML = items.map(item => {
         const when = scheduled
             ? (item.scheduledAt ? formatDateTime(item.scheduledAt) : '⚠️ 日時未設定')
             : 'すぐに投稿';
+
+        if (combined) {
+            const count = item.images.length;
+            const over = (count > 10 && platforms.includes('instagram'))
+                ? ' <span class="log-ng">Instagramは10枚まで</span>' : '';
+            const none = count === 0 ? ' <span class="log-ng">画像がありません</span>' : '';
+            return `<div class="row"><span>${escapeHtml(item.exhibitorName)}（${count}枚まとめて1投稿）</span>`
+                + `<span>${when}${over}${none}</span></div>`;
+        }
+
         const warn = (!item.imageFileId && platforms.includes('instagram'))
             ? ' <span class="log-ng">画像なし（Instagram不可）</span>'
             : '';
         return `<div class="row"><span>${escapeHtml(item.exhibitorName)}</span><span>${when}${warn}</span></div>`;
     }).join('');
 
-    document.getElementById('postBtn').textContent = scheduled
-        ? `選択した${items.length}件を予約する`
-        : `選択した${items.length}件を今すぐ投稿する`;
+    if (combined) {
+        postBtn.textContent = scheduled ? 'まとめて1投稿を予約する' : 'まとめて1投稿する';
+    } else {
+        postBtn.textContent = scheduled
+            ? `選択した${items.length}件を予約する`
+            : `選択した${items.length}件を今すぐ投稿する`;
+    }
 }
 
 // ========================================
@@ -582,10 +754,23 @@ async function handlePost() {
     const platforms = getPlatforms();
     const items = buildItems();
     const scheduled = getTiming() === 'schedule';
+    const combined = getMode() === 'combined';
     const log = document.getElementById('postLog');
 
     if (items.length === 0) return alert('出展者を選択してください');
     if (platforms.length === 0) return alert('投稿先（Instagram / Facebook）を選択してください');
+
+    if (combined) {
+        const images = items[0].images.length;
+        if (images === 0) return alert('画像のある出展者を選択してください');
+        if (images > 10 && platforms.includes('instagram')) {
+            return alert(`Instagramの複数画像投稿は10枚までです（現在${images}枚）。\n出展者を減らすか、Facebookのみに投稿してください。`);
+        }
+        const missing = combinedTargets().filter(ex => !ex.introImageId);
+        if (missing.length > 0 && !confirm(`画像が無い${missing.length}件（${missing.map(ex => ex.exhibitorName).join('、')}）は画像なしで本文だけに含まれます。続けますか？`)) {
+            return;
+        }
+    }
 
     if (scheduled) {
         const missing = items.filter(item => !item.scheduledAt);
@@ -599,7 +784,11 @@ async function handlePost() {
     }
 
     const label = scheduled ? '予約' : '投稿';
-    if (!confirm(`${items.length}件を${platforms.map(p => p === 'instagram' ? 'Instagram' : 'Facebook').join('・')}へ${label}します。よろしいですか？`)) {
+    const target = platforms.map(p => p === 'instagram' ? 'Instagram' : 'Facebook').join('・');
+    const what = combined
+        ? `${combinedTargets().length}件を画像${items[0].images.length}枚の1投稿にまとめて`
+        : `${items.length}件を個別に`;
+    if (!confirm(`${what}${target}へ${label}します。よろしいですか？`)) {
         return;
     }
 
@@ -613,8 +802,11 @@ async function handlePost() {
             if (!result) return;
 
             if (result.success) {
-                appendLog(`✅ ${result.created.length}件を予約しました`, 'ok');
+                appendLog(combined
+                    ? `✅ まとめ投稿（画像${items[0].images.length}枚）を予約しました`
+                    : `✅ ${result.created.length}件を予約しました`, 'ok');
                 selected.clear();
+                syncCombinedOrder();
                 renderList();
                 renderPreview();
                 await loadJobs();
@@ -625,20 +817,23 @@ async function handlePost() {
             // 1件ずつ送って進捗を出す（Workerのサブリクエスト上限にも配慮）
             let done = 0;
             for (const item of items) {
-                showLoading(`投稿中… (${done + 1}/${items.length}) ${item.exhibitorName}`);
-                appendLog(`▶ ${item.exhibitorName} を投稿しています…`, 'info');
+                const label = combined
+                    ? `まとめ投稿（画像${item.images.length}枚）`
+                    : item.exhibitorName;
+                showLoading(`投稿中… (${done + 1}/${items.length}) ${label}`);
+                appendLog(`▶ ${label} を投稿しています…`, 'info');
 
                 try {
                     const result = await apiPost('/api/admin/social/post', { items: [item], platforms });
                     if (!result) return;
 
                     if (!result.success) {
-                        appendLog(`　❌ ${item.exhibitorName}: ${result.error}`, 'ng');
+                        appendLog(`　❌ ${label}: ${result.error}`, 'ng');
                     } else {
-                        renderJobResult(item.exhibitorName, result.results[0]);
+                        renderJobResult(label, result.results[0]);
                     }
                 } catch (err) {
-                    appendLog(`　❌ ${item.exhibitorName}: ${err.message}`, 'ng');
+                    appendLog(`　❌ ${label}: ${err.message}`, 'ng');
                 }
                 done++;
             }
@@ -726,7 +921,7 @@ function renderJobs(elementId, jobs, cancelable) {
         return `
             <div class="job-row">
                 <span class="job-time">${formatDateTime(job.scheduledAt)}</span>
-                <span class="job-name">${escapeHtml(job.exhibitorName)}</span>
+                <span class="job-name">${escapeHtml(job.exhibitorName)}${job.mode === 'combined' ? `<span class="tag">まとめて${job.imageCount}枚</span>` : ''}</span>
                 <span class="job-platforms">${platforms}</span>
                 <span class="job-status st-${job.status}">${statusLabel(job.status)}</span>
                 <span class="job-links">${links}</span>

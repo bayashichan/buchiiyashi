@@ -745,3 +745,98 @@ input[type="datetime-local"],
         transform: rotate(360deg);
     }
 }
+
+/* まとめ投稿の設定 */
+.combined-options {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.combined-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.combined-head h3 {
+    margin-bottom: 0;
+    color: var(--text);
+}
+
+.combined-images {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px 0;
+    margin-bottom: 8px;
+}
+
+.combined-item {
+    width: 92px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.combined-item img,
+.combined-item .no-thumb {
+    width: 92px;
+    height: 92px;
+    object-fit: cover;
+    border-radius: 6px;
+    background: #edf2f7;
+    display: block;
+}
+
+.combined-item .no-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--warning);
+    text-align: center;
+    padding: 4px;
+}
+
+.combined-item .order {
+    display: inline-block;
+    background: var(--primary);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0 7px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.combined-item .name {
+    font-size: 10px;
+    line-height: 1.4;
+    margin-top: 4px;
+    word-break: break-all;
+}
+
+.combined-item .moves {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin-top: 4px;
+}
+
+.combined-item .moves button {
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    cursor: pointer;
+}
+
+.combined-item .moves button:disabled {
+    opacity: .35;
+    cursor: default;
+}

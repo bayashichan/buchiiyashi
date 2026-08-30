@@ -180,6 +180,9 @@ async function postNow(env, body) {
     if (items.length === 0) return { success: false, error: '投稿対象が選択されていません' };
     if (platforms.length === 0) return { success: false, error: '投稿先（Instagram / Facebook）を選択してください' };
 
+    const invalid = validateItems(items, platforms);
+    if (invalid) return { success: false, error: invalid };
+
     const results = [];
     for (const item of items) {
         const job = buildJob(item, platforms, Date.now());
@@ -210,6 +213,9 @@ async function scheduleJobs(env, body) {
 
     if (items.length === 0) return { success: false, error: '投稿対象が選択されていません' };
     if (platforms.length === 0) return { success: false, error: '投稿先（Instagram / Facebook）を選択してください' };
+
+    const invalid = validateItems(items, platforms);
+    if (invalid) return { success: false, error: invalid };
 
     const created = [];
     for (const item of items) {
@@ -326,22 +332,74 @@ export async function runDueJobs(env) {
 // ジョブの組み立てと実行
 // ========================================
 
+/** 投稿前に弾けるものは弾く。問題なければ null を返す */
+function validateItems(items, platforms) {
+    const toInstagram = platforms.includes('instagram');
+    if (!toInstagram) return null;
+
+    for (const item of items) {
+        const count = normalizeImages(item).length;
+        if (count > IG_CAROUSEL_MAX) {
+            return `Instagramの複数画像投稿は${IG_CAROUSEL_MAX}枚までです（${count}枚が指定されています）。`
+                + '出展者の数を減らすか、Facebookのみに投稿してください';
+        }
+    }
+    return null;
+}
+
 function normalizePlatforms(platforms) {
     const allowed = ['instagram', 'facebook'];
     if (!Array.isArray(platforms)) return [];
     return allowed.filter(p => platforms.includes(p));
 }
 
+/**
+ * 投稿対象の画像を配列に正規化する。
+ * 1人分の投稿は1枚、まとめて1投稿する場合は複数枚になる。
+ */
+function normalizeImages(item) {
+    const images = [];
+
+    if (Array.isArray(item.images)) {
+        for (const image of item.images) {
+            if (!image) continue;
+            const fileId = image.fileId || image.imageFileId || '';
+            const url = image.url || image.imageUrl || '';
+            if (fileId || url) images.push({ fileId, url, name: image.name || '' });
+        }
+    }
+
+    if (images.length === 0 && (item.imageFileId || item.imageUrl)) {
+        images.push({
+            fileId: item.imageFileId || '',
+            url: item.imageUrl || '',
+            name: item.exhibitorName || ''
+        });
+    }
+
+    // 同じ画像を重複して投稿しないようにする
+    const seen = new Set();
+    return images.filter(image => {
+        const key = image.fileId || image.url;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
 function buildJob(item, platforms, scheduledAt) {
+    const images = normalizeImages(item);
+
     return {
         id: crypto.randomUUID(),
         createdAt: Date.now(),
         scheduledAt,
         platforms: normalizePlatforms(item.platforms).length ? normalizePlatforms(item.platforms) : platforms,
+        // combined = 複数人を1投稿にまとめる（Instagramはカルーセル、Facebookは複数写真）
+        mode: item.mode === 'combined' ? 'combined' : 'single',
         exhibitorId: item.exhibitorId ?? item.id ?? null,
         exhibitorName: item.exhibitorName || '(名称未設定)',
-        imageFileId: item.imageFileId || '',
-        imageUrl: item.imageUrl || '',
+        images,
         captions: {
             instagram: (item.captions && item.captions.instagram) || '',
             facebook: (item.captions && item.captions.facebook) || ''
@@ -359,31 +417,36 @@ function buildJob(item, platforms, scheduledAt) {
 async function executeJob(env, job) {
     job.results = job.results || {};
     const needsJpeg = job.platforms.includes('instagram');
-    const hasImage = Boolean(job.imageFileId || job.imageUrl);
+    const images = job.images && job.images.length ? job.images : normalizeImages(job);
 
-    let imageUrl = null;
-    let imageError = null;
+    const imageUrls = [];
+    const imageErrors = [];
 
-    if (hasImage) {
+    // 公開URLの確認は1回で足りるので、ジョブ単位で結果を使い回す
+    const context = { publicUrlVerified: null };
+
+    for (const image of images) {
         try {
-            imageUrl = await prepareImageUrl(env, job, needsJpeg);
-            job.preparedImageUrl = imageUrl;
+            imageUrls.push(await prepareImageUrl(env, image, needsJpeg, job.id, context));
         } catch (err) {
-            imageError = `画像の準備に失敗しました: ${err.message}`;
+            imageErrors.push(`${image.name || '画像'}: ${err.message}`);
         }
-    } else {
-        imageError = '投稿する画像が見つかりません';
     }
+
+    job.preparedImageUrls = imageUrls;
+    const imageError = imageErrors.length
+        ? `画像の準備に失敗しました（${imageErrors.join(' / ')}）`
+        : (images.length === 0 ? '投稿する画像が見つかりません' : null);
 
     for (const platform of job.platforms) {
         const caption = job.captions[platform] || '';
         try {
             if (platform === 'facebook') {
                 // 画像が無い場合でもFacebookはテキスト投稿ができる
-                job.results.facebook = await postToFacebook(env, imageUrl, caption);
+                job.results.facebook = await postToFacebook(env, imageUrls, caption);
             } else {
-                if (!imageUrl) throw new Error(imageError || '投稿する画像が見つかりません');
-                job.results.instagram = await postToInstagram(env, imageUrl, caption);
+                if (imageUrls.length === 0) throw new Error(imageError || '投稿する画像が見つかりません');
+                job.results.instagram = await postToInstagram(env, imageUrls, caption);
             }
         } catch (err) {
             job.results[platform] = { ok: false, error: err.message };
@@ -406,20 +469,23 @@ async function executeJob(env, job) {
 // ========================================
 
 /**
- * Graph APIが取得できる公開URLを用意する。
+ * Graph APIが取得できる公開URLを1枚分用意する。
  * InstagramはJPEGのみ対応なので、必要なら lh3 のJPEG変換／GAS変換を経由する。
+ *
+ * image   : { fileId, url, name }
+ * context : ジョブ内で使い回す情報（R2公開URLの確認結果など）
  */
-async function prepareImageUrl(env, job, needsJpeg) {
+async function prepareImageUrl(env, image, needsJpeg, jobId, context = {}) {
     const candidates = [];
 
-    if (job.imageFileId) {
+    if (image.fileId) {
         // lh3 の "-rj" はJPEGでの配信を要求するパラメータ
-        if (needsJpeg) candidates.push(`https://lh3.googleusercontent.com/d/${job.imageFileId}=w1440-rj`);
-        candidates.push(`https://lh3.googleusercontent.com/d/${job.imageFileId}=w1440`);
-        candidates.push(`https://lh3.googleusercontent.com/d/${job.imageFileId}`);
-        candidates.push(`https://drive.google.com/uc?export=download&id=${job.imageFileId}`);
+        if (needsJpeg) candidates.push(`https://lh3.googleusercontent.com/d/${image.fileId}=w1440-rj`);
+        candidates.push(`https://lh3.googleusercontent.com/d/${image.fileId}=w1440`);
+        candidates.push(`https://lh3.googleusercontent.com/d/${image.fileId}`);
+        candidates.push(`https://drive.google.com/uc?export=download&id=${image.fileId}`);
     }
-    if (job.imageUrl) candidates.push(job.imageUrl);
+    if (image.url) candidates.push(image.url);
 
     if (candidates.length === 0) throw new Error('投稿する画像が指定されていません');
 
@@ -449,8 +515,8 @@ async function prepareImageUrl(env, job, needsJpeg) {
     }
 
     // どの候補でもJPEGにならなかった場合はGAS側で変換してもらう
-    if (needsJpeg && (!fetched || fetched.contentType !== 'image/jpeg') && job.imageFileId && env.GAS_URL) {
-        const converted = await convertToJpegViaGas(env, job.imageFileId);
+    if (needsJpeg && (!fetched || fetched.contentType !== 'image/jpeg') && image.fileId && env.GAS_URL) {
+        const converted = await convertToJpegViaGas(env, image.fileId);
         if (converted) fetched = converted;
     }
 
@@ -462,7 +528,7 @@ async function prepareImageUrl(env, job, needsJpeg) {
     // R2が使えるならミラーして公開URLを返す（Drive URLはGraph側からの取得が不安定なため）
     if (env.R2_BUCKET && env.R2_PUBLIC_URL) {
         const ext = fetched.contentType === 'image/png' ? 'png' : 'jpg';
-        const key = `${IMAGE_PREFIX}${job.imageFileId || job.id}-${await shortHash(fetched.bytes)}.${ext}`;
+        const key = `${IMAGE_PREFIX}${image.fileId || jobId}-${await shortHash(fetched.bytes)}.${ext}`;
         await env.R2_BUCKET.put(key, fetched.bytes, {
             httpMetadata: {
                 contentType: fetched.contentType,
@@ -471,24 +537,27 @@ async function prepareImageUrl(env, job, needsJpeg) {
         });
 
         const publicUrl = `${env.R2_PUBLIC_URL.replace(/\/+$/, '')}/${key}`;
-        // バケットの公開設定が無効だとMeta側から取得できないので、ここで確かめておく
-        if (await isPubliclyReadable(publicUrl)) return publicUrl;
-        console.warn('R2 public URL is not readable, falling back to Drive URL');
+        // バケットの公開設定が無効だとMeta側から取得できないので、1枚目で確かめておく
+        if (context.publicUrlVerified === null || context.publicUrlVerified === undefined) {
+            context.publicUrlVerified = await isPubliclyReadable(publicUrl);
+            if (!context.publicUrlVerified) console.warn('R2 public URL is not readable, falling back to Drive URL');
+        }
+        if (context.publicUrlVerified) return publicUrl;
     }
 
     // R2が使えない場合はDriveの公開URLをそのまま使う
-    const fallback = driveFallbackUrl(job, needsJpeg);
+    const fallback = driveFallbackUrl(image, needsJpeg);
     if (!fallback) throw new Error('投稿できる公開URLを用意できませんでした');
     return fallback;
 }
 
-function driveFallbackUrl(job, needsJpeg) {
-    if (job.imageFileId) {
+function driveFallbackUrl(image, needsJpeg) {
+    if (image.fileId) {
         return needsJpeg
-            ? `https://lh3.googleusercontent.com/d/${job.imageFileId}=w1440-rj`
-            : `https://lh3.googleusercontent.com/d/${job.imageFileId}=w1440`;
+            ? `https://lh3.googleusercontent.com/d/${image.fileId}=w1440-rj`
+            : `https://lh3.googleusercontent.com/d/${image.fileId}=w1440`;
     }
-    return job.imageUrl || null;
+    return image.url || null;
 }
 
 async function isPubliclyReadable(url) {
@@ -533,46 +602,111 @@ async function shortHash(bytes) {
 // Facebook / Instagram 投稿
 // ========================================
 
-async function postToFacebook(env, imageUrl, caption) {
+// Instagramのカルーセルは2〜10枚まで
+const IG_CAROUSEL_MAX = 10;
+
+/**
+ * Facebookページへ投稿する。
+ * 画像なし=テキスト投稿 / 1枚=写真投稿 / 2枚以上=複数写真をまとめた1投稿
+ */
+async function postToFacebook(env, imageUrls, caption) {
     if (!env.FB_PAGE_ID || !fbToken(env)) {
         throw new Error('Facebookの設定（FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN）が未設定です');
     }
+    const token = fbToken(env);
+    const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : (imageUrls ? [imageUrls] : []);
 
-    // 画像があれば写真投稿、無ければテキストのみの投稿にする
-    const data = imageUrl
-        ? await graphPost(`${GRAPH_BASE}/${env.FB_PAGE_ID}/photos`, {
-            url: imageUrl,
+    let data;
+    if (urls.length === 0) {
+        data = await graphPost(`${GRAPH_BASE}/${env.FB_PAGE_ID}/feed`, {
+            message: caption,
+            access_token: token
+        });
+    } else if (urls.length === 1) {
+        data = await graphPost(`${GRAPH_BASE}/${env.FB_PAGE_ID}/photos`, {
+            url: urls[0],
             caption,
             published: 'true',
-            access_token: fbToken(env)
-        })
-        : await graphPost(`${GRAPH_BASE}/${env.FB_PAGE_ID}/feed`, {
-            message: caption,
-            access_token: fbToken(env)
+            access_token: token
         });
+    } else {
+        // 複数写真は「未公開の写真」を先に作り、まとめて1件の投稿に添付する
+        const mediaIds = [];
+        for (const url of urls) {
+            const photo = await graphPost(`${GRAPH_BASE}/${env.FB_PAGE_ID}/photos`, {
+                url,
+                published: 'false',
+                temporary: 'true',
+                access_token: token
+            });
+            if (photo.id) mediaIds.push(photo.id);
+        }
+        if (mediaIds.length === 0) throw new Error('Facebookへの画像アップロードに失敗しました');
+
+        const params = { message: caption, access_token: token };
+        mediaIds.forEach((id, i) => {
+            params[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id });
+        });
+        data = await graphPost(`${GRAPH_BASE}/${env.FB_PAGE_ID}/feed`, params);
+    }
 
     const postId = data.post_id || data.id;
     return {
         ok: true,
         postId,
+        imageCount: urls.length,
         permalink: postId ? `https://www.facebook.com/${postId}` : null,
         postedAt: Date.now()
     };
 }
 
-async function postToInstagram(env, imageUrl, caption) {
+/**
+ * Instagramへ投稿する。1枚なら通常の投稿、2枚以上はカルーセル投稿。
+ */
+async function postToInstagram(env, imageUrls, caption) {
     if (!env.IG_USER_ID || !igToken(env)) {
         throw new Error('Instagramの設定（IG_USER_ID / アクセストークン）が未設定です');
     }
     const token = igToken(env);
+    const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : (imageUrls ? [imageUrls] : []);
 
-    // 1. メディアコンテナ作成
-    const container = await graphPost(`${GRAPH_BASE}/${env.IG_USER_ID}/media`, {
-        image_url: imageUrl,
-        caption,
-        access_token: token
-    });
-    const creationId = container.id;
+    if (urls.length === 0) throw new Error('投稿する画像がありません');
+    if (urls.length > IG_CAROUSEL_MAX) {
+        throw new Error(`Instagramの複数画像投稿は${IG_CAROUSEL_MAX}枚までです（${urls.length}枚が指定されています）`);
+    }
+
+    let creationId;
+    if (urls.length === 1) {
+        // 1. メディアコンテナ作成
+        const container = await graphPost(`${GRAPH_BASE}/${env.IG_USER_ID}/media`, {
+            image_url: urls[0],
+            caption,
+            access_token: token
+        });
+        creationId = container.id;
+    } else {
+        // 1-a. 各画像のカルーセル用コンテナを作る（キャプションは親側に付ける）
+        const children = [];
+        for (const url of urls) {
+            const child = await graphPost(`${GRAPH_BASE}/${env.IG_USER_ID}/media`, {
+                image_url: url,
+                is_carousel_item: 'true',
+                access_token: token
+            });
+            if (child.id) children.push(child.id);
+        }
+        if (children.length < 2) throw new Error('Instagramのカルーセル用画像を用意できませんでした');
+
+        // 1-b. まとめ役のカルーセルコンテナを作る
+        const carousel = await graphPost(`${GRAPH_BASE}/${env.IG_USER_ID}/media`, {
+            media_type: 'CAROUSEL',
+            children: children.join(','),
+            caption,
+            access_token: token
+        });
+        creationId = carousel.id;
+    }
+
     if (!creationId) throw new Error('Instagramのメディア作成に失敗しました');
 
     // 2. コンテナの処理完了を待つ
@@ -592,7 +726,7 @@ async function postToInstagram(env, imageUrl, caption) {
         // パーマリンクが取れなくても投稿自体は成功しているので握りつぶす
     }
 
-    return { ok: true, postId: published.id, permalink, postedAt: Date.now() };
+    return { ok: true, postId: published.id, imageCount: urls.length, permalink, postedAt: Date.now() };
 }
 
 async function waitForContainer(creationId, token, maxAttempts = 12) {
@@ -702,7 +836,8 @@ function toSummary(job) {
         platforms: job.platforms,
         status: job.status,
         error: job.error || null,
-        hasImage: Boolean(job.imageFileId || job.imageUrl),
+        mode: job.mode || 'single',
+        imageCount: (job.images || []).length,
         results: Object.fromEntries(
             Object.entries(job.results || {}).map(([platform, r]) => [platform, {
                 ok: Boolean(r && r.ok),

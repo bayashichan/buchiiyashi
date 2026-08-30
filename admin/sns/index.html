@@ -154,6 +154,49 @@
                 </div>
 
                 <div class="form-row">
+                    <span class="form-label">投稿の形式</span>
+                    <label class="check"><input type="radio" name="mode" value="single" checked> 一人ずつ個別に投稿</label>
+                    <label class="check"><input type="radio" name="mode" value="combined"> まとめて1投稿（複数画像）</label>
+                </div>
+
+                <div id="combinedOptions" class="combined-options hidden">
+                    <div class="combined-head">
+                        <h3>まとめ投稿の内容</h3>
+                        <span id="combinedCount" class="count"></span>
+                    </div>
+                    <p class="hint">
+                        選択した出展者の画像を1件の投稿にまとめます（Instagramはカルーセル、Facebookは複数写真）。<br>
+                        画像は下の順番で並びます。1枚目が表紙になります。Instagramは10枚までです。
+                    </p>
+
+                    <div id="combinedImages" class="combined-images"></div>
+
+                    <div class="caption-block">
+                        <div class="caption-head">
+                            <label for="combinedCaptionInsta">📸 Instagram用キャプション（まとめ投稿）</label>
+                            <span class="caption-tools">
+                                <span id="combinedInstaCount" class="count"></span>
+                                <button type="button" class="btn-ghost small" data-copy="combinedCaptionInsta">コピー</button>
+                            </span>
+                        </div>
+                        <textarea id="combinedCaptionInsta" rows="8"></textarea>
+                    </div>
+
+                    <div class="caption-block">
+                        <div class="caption-head">
+                            <label for="combinedCaptionFb">👤 Facebook用キャプション（まとめ投稿）</label>
+                            <span class="caption-tools">
+                                <span id="combinedFbCount" class="count"></span>
+                                <button type="button" class="btn-ghost small" data-copy="combinedCaptionFb">コピー</button>
+                            </span>
+                        </div>
+                        <textarea id="combinedCaptionFb" rows="8"></textarea>
+                    </div>
+
+                    <button id="rebuildCombinedBtn" class="btn-ghost small">選択中の出展者から本文を作り直す</button>
+                </div>
+
+                <div class="form-row">
                     <span class="form-label">タイミング</span>
                     <label class="check"><input type="radio" name="timing" value="now" checked> 今すぐ投稿</label>
                     <label class="check"><input type="radio" name="timing" value="schedule"> 日時を指定</label>
@@ -170,6 +213,7 @@
                     <p class="hint">
                         選択した出展者を、開始日時から指定の間隔で順番に投稿します。<br>
                         出展者ごとに個別の日時を入れた場合は、そちらが優先されます。<br>
+                        ※「まとめて1投稿」のときは1件の投稿なので、開始日時だけを使います。<br>
                         ※実行は5分間隔のチェックで行うため、指定時刻から最大5分ほど遅れて投稿されます。<br>
                         ※1回のチェックで投稿するのは3件までです。同じ時刻にまとめて予約した場合は5分ごとに3件ずつ投稿されます。
                     </p>
