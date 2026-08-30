@@ -303,6 +303,19 @@ hr {
     background: var(--bg);
 }
 
+/* リンクをボタンとして使う場合 */
+a.btn-secondary {
+    text-decoration: none;
+    display: inline-block;
+}
+
+/* ヘッダー右側のボタン並び */
+.header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
 .btn-large {
     padding: 16px 40px;
     font-size: 16px;

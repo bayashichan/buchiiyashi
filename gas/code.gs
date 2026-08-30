@@ -146,6 +146,18 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // Drive上の画像をJPEGへ変換してBase64で返す（SNS投稿用）
+    // InstagramはJPEGしか受け付けないため、PNGで作った画像を変換する
+    if (action === 'get_image_jpeg') {
+      const fileId = e.parameter.fileId;
+      if (!fileId) throw new Error('fileId is required');
+      const result = getImageAsJpegBase64(fileId);
+
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 確認サイト参照先の候補フォルダ一覧を返す（管理画面用）
     if (action === 'list_image_folders') {
       const result = listImageFolders();
@@ -1876,6 +1888,30 @@ function getFolderImagesList(folderId) {
     return { success: true, images: imageMap };
   } catch (error) {
     console.error('getFolderImagesList error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Drive上の画像をJPEGに変換してBase64で返す
+ * SNS投稿（Instagram）はJPEGのみ対応のため、PNG等はここで変換する。
+ */
+function getImageAsJpegBase64(fileId) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    let blob = file.getBlob();
+
+    if (blob.getContentType() !== 'image/jpeg') {
+      blob = blob.getAs('image/jpeg');
+    }
+
+    return {
+      success: true,
+      mimeType: 'image/jpeg',
+      base64: Utilities.base64Encode(blob.getBytes())
+    };
+  } catch (error) {
+    console.error('getImageAsJpegBase64 error:', error);
     return { success: false, error: error.message };
   }
 }
