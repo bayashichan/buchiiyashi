@@ -2,7 +2,10 @@
  * ぶち癒しフェスタ東京 Cloudflare Worker
  * フォームデータ中継・画像Base64変換・GAS連携（Drive保存）
  * + 管理API（config更新・GASデプロイ）
+ * + SNS一括投稿API（Facebook / Instagram、即時・予約）
  */
+
+import { handleSocialAPI, runDueJobs } from './social.js';
 
 export default {
     async fetch(request, env, ctx) {
@@ -26,7 +29,7 @@ export default {
         }
 
         if (url.pathname.startsWith('/api/admin')) {
-            return handleAdminAPI(request, env, corsHeaders, url);
+            return handleAdminAPI(request, env, corsHeaders, url, ctx);
         }
 
         // 公開用確認データ取得API
@@ -36,13 +39,24 @@ export default {
 
         // 既存のフォーム送信処理
         return handleFormSubmission(request, env, corsHeaders);
+    },
+
+    // Cron Trigger: 予約時刻を過ぎたSNS投稿を実行する
+    async scheduled(event, env, ctx) {
+        ctx.waitUntil(
+            runDueJobs(env)
+                .then(count => {
+                    if (count > 0) console.log(`Social scheduler: processed ${count} job(s)`);
+                })
+                .catch(err => console.error('Social scheduler error:', err))
+        );
     }
 };
 
 // ========================================
 // 管理API
 // ========================================
-async function handleAdminAPI(request, env, corsHeaders, url) {
+async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
     // 認証チェック
     const authResult = verifyAuth(request, env);
     if (!authResult.success) {
@@ -53,6 +67,12 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
     }
 
     try {
+        // /api/admin/social/* - SNS投稿（Facebook / Instagram）
+        if (url.pathname.startsWith('/api/admin/social')) {
+            const socialResponse = await handleSocialAPI(request, env, corsHeaders, url, ctx);
+            if (socialResponse) return socialResponse;
+        }
+
         // GET /api/admin/config - 設定取得
         if (url.pathname === '/api/admin/config' && request.method === 'GET') {
             return await getConfig(env, corsHeaders);

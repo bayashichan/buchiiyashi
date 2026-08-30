@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SNS投稿の設定手順 | ぶち癒しフェスタ</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        .doc {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 24px 16px 80px;
+        }
+
+        .doc .card {
+            margin-bottom: 20px;
+        }
+
+        .doc h2 {
+            font-size: 17px;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .doc h3 {
+            font-size: 14px;
+            color: var(--text);
+            margin: 18px 0 8px;
+        }
+
+        .doc p {
+            line-height: 1.9;
+            margin-bottom: 10px;
+        }
+
+        .doc ol,
+        .doc ul {
+            margin: 0 0 12px 22px;
+            line-height: 1.9;
+        }
+
+        .doc li {
+            margin-bottom: 4px;
+        }
+
+        .doc table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 14px;
+            font-size: 13px;
+        }
+
+        .doc th,
+        .doc td {
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+            line-height: 1.8;
+        }
+
+        .doc th {
+            background: #f8fafc;
+            white-space: nowrap;
+        }
+
+        .doc pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 14px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            line-height: 1.8;
+            margin-bottom: 12px;
+        }
+
+        .doc pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+            font-size: 12px;
+        }
+
+        .doc .note {
+            background: #fffaf0;
+            border-left: 4px solid var(--warning);
+            padding: 12px 14px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 12px;
+            line-height: 1.9;
+        }
+
+        .doc .danger {
+            background: #fff5f5;
+            border-left-color: var(--error);
+        }
+
+        .toc {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            list-style: none;
+            margin: 0;
+        }
+
+        .toc a {
+            display: inline-block;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 6px 14px;
+            font-size: 12px;
+            text-decoration: none;
+            color: var(--text);
+        }
+
+        .toc a:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="header-title">
+            <h1>📖 SNS投稿の設定手順</h1>
+            <span class="header-sub">Instagram / Facebook 連携</span>
+        </div>
+        <div class="header-actions">
+            <a href="./" class="btn-secondary small">📣 投稿ページへ戻る</a>
+            <a href="../" class="btn-secondary small">⚙️ 管理画面</a>
+        </div>
+    </header>
+
+    <main class="doc">
+        <section class="card">
+            <p>
+                管理者専用の投稿ページ（このサイトの <code>/admin/sns/</code>）から、出展者の画像とキャプションを
+                Instagram・Facebook へワンタッチで投稿できます。即時投稿と日時指定（予約投稿）に対応し、
+                複数人をまとめて処理できます。
+            </p>
+            <p>投稿ページは管理画面と同じパスワードで保護されています（管理画面のヘッダーからも移動できます）。</p>
+
+            <ul class="toc">
+                <li><a href="#step0">投稿の形式</a></li>
+                <li><a href="#step1">1. 用意するもの</a></li>
+                <li><a href="#step2">2. トークンを取得する</a></li>
+                <li><a href="#step3">3. Cloudflareに登録する</a></li>
+                <li><a href="#step4">4. 予約投稿の仕組み</a></li>
+                <li><a href="#step5">5. 画像について</a></li>
+                <li><a href="#step6">6. よくあるエラー</a></li>
+            </ul>
+        </section>
+
+        <section class="card" id="step0">
+            <h2>投稿の形式</h2>
+            <p>複数選択したときの投稿のしかたは2通りから選べます。</p>
+            <table>
+                <tr>
+                    <th>投稿の形式</th>
+                    <th>内容</th>
+                </tr>
+                <tr>
+                    <td>一人ずつ個別に投稿</td>
+                    <td>出展者1人につき1投稿。日時をずらして順番に流せます</td>
+                </tr>
+                <tr>
+                    <td>まとめて1投稿<br>（複数画像）</td>
+                    <td>選んだ全員の画像を1件の投稿にまとめます（Instagramはカルーセル、Facebookは複数写真）。
+                        本文は各自のキャプションをつないだものが自動で入り、その場で編集できます。
+                        画像の並び順も ←→ で入れ替えられます</td>
+                </tr>
+            </table>
+            <div class="note">
+                まとめ投稿の上限は <strong>Instagram 10枚</strong> です（Metaの仕様）。
+                10枚を超える場合は投稿前にエラーになります。
+            </div>
+        </section>
+
+        <section class="card" id="step1">
+            <h2>1. 用意するもの</h2>
+            <table>
+                <tr>
+                    <th>必要なもの</th>
+                    <th>説明</th>
+                </tr>
+                <tr>
+                    <td>Facebookページ</td>
+                    <td>投稿先のページ。個人アカウントには投稿できません</td>
+                </tr>
+                <tr>
+                    <td>Instagram<br>プロアカウント</td>
+                    <td>「ビジネス」または「クリエイター」。上のFacebookページと連携済みであること</td>
+                </tr>
+                <tr>
+                    <td>Meta（Facebook）<br>開発者アプリ</td>
+                    <td>Graph APIを使うためのアプリ</td>
+                </tr>
+            </table>
+            <div class="note">
+                Instagramの投稿はMetaの仕様上、<strong>プロアカウント＋Facebookページ連携</strong>が必須です。<br>
+                （Instagram → 設定 → アカウントの種類とツール → プロアカウントに切り替え → Facebookページとリンク）
+            </div>
+        </section>
+
+        <section class="card" id="step2">
+            <h2>2. アクセストークンなどを取得する</h2>
+            <ol>
+                <li><a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">developers.facebook.com/apps</a>
+                    でアプリを作成（種類は「ビジネス」）。</li>
+                <li>「ツール」→「グラフAPIエクスプローラ」を開く。</li>
+                <li>右上でアプリを選び、<strong>ユーザーまたはページ</strong> で対象のFacebookページを選択。</li>
+                <li>次の権限（アクセス許可）を追加して「アクセストークンを生成」:
+                    <ul>
+                        <li><code>pages_show_list</code></li>
+                        <li><code>pages_read_engagement</code></li>
+                        <li><code>pages_manage_posts</code></li>
+                        <li><code>instagram_basic</code></li>
+                        <li><code>instagram_content_publish</code></li>
+                        <li><code>business_management</code></li>
+                    </ul>
+                </li>
+                <li>生成されたトークンは短期（数時間）なので、<strong>長期トークンに変換</strong>します。
+                    <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener">アクセストークンデバッガ</a>
+                    に貼り付け →「アクセストークンを延長」→ 表示された長期トークンを控える。<br>
+                    ※ページアクセストークンは、長期のユーザートークンから取得すると無期限になります。
+                </li>
+            </ol>
+
+            <h3>必要なIDの調べ方</h3>
+            <p>グラフAPIエクスプローラで以下を実行します。</p>
+            <ul>
+                <li><strong>FacebookページID</strong><br>
+                    <code>GET /me/accounts</code> → 対象ページの <code>id</code></li>
+                <li><strong>InstagramビジネスアカウントID</strong><br>
+                    <code>GET /{ページID}?fields=instagram_business_account</code> →
+                    <code>instagram_business_account.id</code></li>
+            </ul>
+        </section>
+
+        <section class="card" id="step3">
+            <h2>3. Cloudflare Workers に登録する</h2>
+            <p>
+                Cloudflareダッシュボード →
+                <strong>Workers &amp; Pages → buchiiyashi-festa-form → 設定 → 変数とシークレット</strong> で、
+                以下を <strong>シークレット（暗号化）</strong> として追加します。
+            </p>
+            <table>
+                <tr>
+                    <th>変数名</th>
+                    <th>内容</th>
+                </tr>
+                <tr>
+                    <td><code>FB_PAGE_ID</code></td>
+                    <td>投稿先FacebookページのID</td>
+                </tr>
+                <tr>
+                    <td><code>FB_PAGE_ACCESS_TOKEN</code></td>
+                    <td>長期のページアクセストークン</td>
+                </tr>
+                <tr>
+                    <td><code>IG_USER_ID</code></td>
+                    <td>InstagramビジネスアカウントのID</td>
+                </tr>
+                <tr>
+                    <td><code>IG_ACCESS_TOKEN</code></td>
+                    <td>省略可。未設定なら <code>FB_PAGE_ACCESS_TOKEN</code> を使います</td>
+                </tr>
+            </table>
+
+            <p>コマンドで登録する場合:</p>
+            <pre><code>cd worker
+npx wrangler secret put FB_PAGE_ID
+npx wrangler secret put FB_PAGE_ACCESS_TOKEN
+npx wrangler secret put IG_USER_ID</code></pre>
+
+            <p>
+                登録後、投稿ページの「接続テスト」ボタンで確認できます。
+                ページ名とInstagramのユーザー名が表示されれば設定完了です。
+            </p>
+            <div class="note danger">
+                ⚠️ トークンは絶対にGitHubへ書かないでください（このリポジトリは公開されています）。
+            </div>
+        </section>
+
+        <section class="card" id="step4">
+            <h2>4. 予約投稿の仕組み</h2>
+            <ul>
+                <li>予約は Cloudflare R2（<code>buchiiyashi-images</code> バケットの <code>social/jobs/</code> 配下）に保存されます。</li>
+                <li>Worker の Cron Trigger が <strong>5分ごと</strong> に予約時刻を過ぎた投稿を実行します。
+                    そのため、指定時刻から最大5分ほど遅れて投稿されます。</li>
+                <li>1回のチェックで処理するのは <strong>3件まで</strong> です
+                    （Workerの1リクエストあたりの外部呼び出し数の上限に合わせています）。
+                    同じ時刻に大量に予約すると、5分ごとに3件ずつ順番に投稿されます。
+                    まとめて投稿したいときは「◯分ずつずらす」で間隔を空けてください。
+                    上限を変える場合は Worker の環境変数 <code>SOCIAL_MAX_JOBS_PER_TICK</code> を設定します。</li>
+                <li>予約は投稿ページの「予約一覧」からいつでも取り消せます。</li>
+                <li>Cronを待たずに実行したいときは「予約分を今すぐ実行」ボタンを押してください。</li>
+            </ul>
+            <p>
+                Cron Trigger は <code>worker/wrangler.toml</code> の <code>[triggers]</code> で設定しています。
+                GitHub Actions で <code>worker/</code> を変更すると自動デプロイされ、Cronもあわせて登録されます。
+            </p>
+        </section>
+
+        <section class="card" id="step5">
+            <h2>5. 画像について</h2>
+            <ul>
+                <li>投稿画像は、管理画面の「画像生成」で作られ Google Drive に保存された画像を使います。
+                    参照先フォルダは管理画面の「基本設定 → 確認ページ参照フォルダ」で指定します。</li>
+                <li><strong>InstagramはJPEG画像しか受け付けません。</strong>
+                    生成画像はPNGのため、Workerが自動でJPEGに変換します
+                    （Googleの画像配信でJPEG取得 → 失敗時はGAS側で変換）。
+                    GAS側の変換を使うには、管理画面の「デプロイ → GASスクリプト」で最新のスクリプトを反映してください。</li>
+                <li>変換した画像はR2にコピーされ、その公開URLをMetaに渡しています。</li>
+            </ul>
+        </section>
+
+        <section class="card" id="step6">
+            <h2>6. よくあるエラー</h2>
+            <table>
+                <tr>
+                    <th>メッセージ</th>
+                    <th>原因と対処</th>
+                </tr>
+                <tr>
+                    <td><code>FB_PAGE_ID / FB_PAGE_ACCESS_TOKEN が未設定です</code></td>
+                    <td>手順3の登録がまだ、またはデプロイ前</td>
+                </tr>
+                <tr>
+                    <td><code>[code 190] ...</code></td>
+                    <td>アクセストークンの期限切れ・失効。手順2で取り直す</td>
+                </tr>
+                <tr>
+                    <td><code>[code 200] ...</code></td>
+                    <td>権限不足。手順2の権限をすべて付けてトークンを取り直す</td>
+                </tr>
+                <tr>
+                    <td>InstagramはJPEG画像のみ投稿できます</td>
+                    <td>画像がJPEGに変換できていない。GASを最新にデプロイする</td>
+                </tr>
+                <tr>
+                    <td>画像を取得できませんでした</td>
+                    <td>Drive画像の共有設定が「リンクを知っている全員」になっていない</td>
+                </tr>
+                <tr>
+                    <td>Instagramの画像処理がタイムアウトしました</td>
+                    <td>画像サイズが大きすぎる可能性。生成し直して再投稿</td>
+                </tr>
+                <tr>
+                    <td>Instagramの複数画像投稿は10枚までです</td>
+                    <td>まとめ投稿の枚数を10枚以下に減らすか、Facebookのみに投稿する</td>
+                </tr>
+            </table>
+            <div class="note">
+                Instagramには <strong>24時間あたり50投稿</strong> の上限があります。
+                大量投稿は日時をずらして予約するか、「まとめて1投稿」を使ってください
+                （まとめ投稿は何人分でも1投稿として数えられます）。
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>

@@ -22,8 +22,19 @@ LINE_MANAGER_CHANNEL_ID = "e5fae09e-25e3-44dd-9e61-3c5dbbb8afe0"
 # - LINE_CHANNEL_ACCESS_TOKEN: 公式LINE(Messaging API)のチャネルアクセストークン。
 #   申込完了をLINEでも本人へ通知するために使う。未設定なら通知をスキップする（メールのみ）。
 #   （このファイルはpublicリポジトリにあるため平文で書かないこと）
+#
+# SNS一括投稿（/admin/sns/）で使うシークレット。設定手順は admin/sns/setup.html（サイト上の /admin/sns/setup.html）を参照:
+# - FB_PAGE_ID           : 投稿先Facebookページのページ ID
+# - FB_PAGE_ACCESS_TOKEN : 上記ページの長期ページアクセストークン
+# - IG_USER_ID           : Instagramビジネスアカウントの ID
+# - IG_ACCESS_TOKEN      : 省略可。未設定なら FB_PAGE_ACCESS_TOKEN を使う
 
 # R2バケットバインディング
+# 画像置き場に加えて、SNS予約投稿のジョブ保存にも使う
 [[r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "buchiiyashi-images"
+
+# 予約投稿の実行トリガー（5分ごとに予約時刻を過ぎた投稿を処理する）
+[triggers]
+crons = ["*/5 * * * *"]

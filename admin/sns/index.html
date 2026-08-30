@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SNS一括投稿 | ぶち癒しフェスタ</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- ログイン画面（管理者のみ） -->
+    <div id="loginScreen" class="screen">
+        <div class="login-container">
+            <h1>🔐 管理者ログイン</h1>
+            <p class="login-note">SNS一括投稿ページは管理者専用です。</p>
+            <input type="password" id="passwordInput" placeholder="パスワードを入力">
+            <button id="loginBtn">ログイン</button>
+            <p id="loginError" class="error hidden">パスワードが正しくありません</p>
+        </div>
+    </div>
+
+    <!-- メイン画面 -->
+    <div id="mainScreen" class="screen hidden">
+        <header>
+            <div class="header-title">
+                <h1>📣 SNS一括投稿</h1>
+                <span class="header-sub" id="eventName">ぶち癒しフェスタ</span>
+            </div>
+            <div class="header-actions">
+                <a href="setup.html" class="btn-secondary small">📖 設定手順</a>
+                <a href="../" class="btn-secondary small">⚙️ 管理画面</a>
+                <button id="logoutBtn" class="btn-secondary small">ログアウト</button>
+            </div>
+        </header>
+
+        <main>
+            <!-- 連携状況 -->
+            <section class="card">
+                <div class="card-head">
+                    <h2>🔗 SNS連携の状況</h2>
+                    <button id="testConnectionBtn" class="btn-secondary small">接続テスト</button>
+                </div>
+                <div class="status-badges">
+                    <span id="igStatus" class="badge badge-unknown">Instagram: 確認中…</span>
+                    <span id="fbStatus" class="badge badge-unknown">Facebook: 確認中…</span>
+                </div>
+                <div id="connectionDetail" class="status-note"></div>
+                <p class="hint">
+                    未設定の場合は、Cloudflareの環境変数に <code>FB_PAGE_ID</code> / <code>FB_PAGE_ACCESS_TOKEN</code> /
+                    <code>IG_USER_ID</code> を登録してください。
+                </p>
+                <a href="setup.html" class="btn-secondary small" style="margin-top:8px;">📖 設定手順を開く</a>
+            </section>
+
+            <div class="layout">
+                <!-- 左：出展者リスト -->
+                <section class="card list-card">
+                    <div class="card-head">
+                        <h2>👥 出展者を選択</h2>
+                        <button id="reloadBtn" class="btn-secondary small">再読み込み</button>
+                    </div>
+
+                    <input type="search" id="searchInput" class="search-input" placeholder="出展名で絞り込み…">
+
+                    <div class="list-toolbar">
+                        <button id="selectAllBtn" class="btn-ghost small">表示中をすべて選択</button>
+                        <button id="clearSelectionBtn" class="btn-ghost small">選択解除</button>
+                        <span class="spacer"></span>
+                        <span id="selectionCount" class="count">0件選択</span>
+                    </div>
+
+                    <div id="exhibitorList" class="exhibitor-list">
+                        <p class="empty">読み込み中…</p>
+                    </div>
+                </section>
+
+                <!-- 右：内容確認 -->
+                <section class="card detail-card">
+                    <div class="card-head">
+                        <h2>📝 内容確認</h2>
+                        <span id="detailName" class="detail-name">出展者を選んでください</span>
+                    </div>
+
+                    <div id="detailEmpty" class="empty-detail">
+                        <p>左のリストから出展者名をクリックすると、<br>投稿される画像とキャプションを確認・編集できます。</p>
+                    </div>
+
+                    <div id="detailBody" class="hidden">
+                        <div class="detail-image">
+                            <img id="detailImage" src="" alt="投稿画像">
+                            <div id="detailNoImage" class="no-image hidden">画像が見つかりません</div>
+                        </div>
+                        <div class="detail-image-actions">
+                            <a id="detailImageLink" href="#" target="_blank" rel="noopener" class="btn-ghost small">画像を開く</a>
+                            <span id="detailImageNote" class="hint"></span>
+                        </div>
+
+                        <div class="caption-block">
+                            <div class="caption-head">
+                                <label for="captionInsta">📸 Instagram用キャプション</label>
+                                <span class="caption-tools">
+                                    <span id="instaCount" class="count"></span>
+                                    <button class="btn-ghost small" data-copy="captionInsta">コピー</button>
+                                </span>
+                            </div>
+                            <textarea id="captionInsta" rows="10"></textarea>
+                        </div>
+
+                        <div class="caption-block">
+                            <div class="caption-head">
+                                <label for="captionFb">👤 Facebook用キャプション</label>
+                                <span class="caption-tools">
+                                    <span id="fbCount" class="count"></span>
+                                    <button class="btn-ghost small" data-copy="captionFb">コピー</button>
+                                </span>
+                            </div>
+                            <textarea id="captionFb" rows="10"></textarea>
+                        </div>
+
+                        <div class="detail-actions">
+                            <button id="resetCaptionBtn" class="btn-ghost small">テンプレートに戻す</button>
+                            <span id="captionSaveStatus" class="hint"></span>
+                        </div>
+
+                        <details class="detail-meta">
+                            <summary>登録情報を表示</summary>
+                            <dl>
+                                <dt>出展メニュー</dt>
+                                <dd id="metaMenu">-</dd>
+                                <dt>取扱いジャンル</dt>
+                                <dd id="metaGenre">-</dd>
+                                <dt>一言PR</dt>
+                                <dd id="metaPr">-</dd>
+                                <dt>自己紹介文</dt>
+                                <dd id="metaIntro">-</dd>
+                                <dt>座席番号</dt>
+                                <dd id="metaSeat">-</dd>
+                            </dl>
+                        </details>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 投稿設定 -->
+            <section class="card">
+                <h2>🚀 投稿する</h2>
+
+                <div class="form-row">
+                    <span class="form-label">投稿先</span>
+                    <label class="check"><input type="checkbox" id="platformInsta" checked> 📸 Instagram</label>
+                    <label class="check"><input type="checkbox" id="platformFb" checked> 👤 Facebook</label>
+                </div>
+
+                <div class="form-row">
+                    <span class="form-label">投稿の形式</span>
+                    <label class="check"><input type="radio" name="mode" value="single" checked> 一人ずつ個別に投稿</label>
+                    <label class="check"><input type="radio" name="mode" value="combined"> まとめて1投稿（複数画像）</label>
+                </div>
+
+                <div id="combinedOptions" class="combined-options hidden">
+                    <div class="combined-head">
+                        <h3>まとめ投稿の内容</h3>
+                        <span id="combinedCount" class="count"></span>
+                    </div>
+                    <p class="hint">
+                        選択した出展者の画像を1件の投稿にまとめます（Instagramはカルーセル、Facebookは複数写真）。<br>
+                        画像は下の順番で並びます。1枚目が表紙になります。Instagramは10枚までです。
+                    </p>
+
+                    <div id="combinedImages" class="combined-images"></div>
+
+                    <div class="caption-block">
+                        <div class="caption-head">
+                            <label for="combinedCaptionInsta">📸 Instagram用キャプション（まとめ投稿）</label>
+                            <span class="caption-tools">
+                                <span id="combinedInstaCount" class="count"></span>
+                                <button type="button" class="btn-ghost small" data-copy="combinedCaptionInsta">コピー</button>
+                            </span>
+                        </div>
+                        <textarea id="combinedCaptionInsta" rows="8"></textarea>
+                    </div>
+
+                    <div class="caption-block">
+                        <div class="caption-head">
+                            <label for="combinedCaptionFb">👤 Facebook用キャプション（まとめ投稿）</label>
+                            <span class="caption-tools">
+                                <span id="combinedFbCount" class="count"></span>
+                                <button type="button" class="btn-ghost small" data-copy="combinedCaptionFb">コピー</button>
+                            </span>
+                        </div>
+                        <textarea id="combinedCaptionFb" rows="8"></textarea>
+                    </div>
+
+                    <button id="rebuildCombinedBtn" class="btn-ghost small">選択中の出展者から本文を作り直す</button>
+                </div>
+
+                <div class="form-row">
+                    <span class="form-label">タイミング</span>
+                    <label class="check"><input type="radio" name="timing" value="now" checked> 今すぐ投稿</label>
+                    <label class="check"><input type="radio" name="timing" value="schedule"> 日時を指定</label>
+                </div>
+
+                <div id="scheduleOptions" class="schedule-options hidden">
+                    <div class="form-row">
+                        <label class="form-label" for="scheduleStart">開始日時</label>
+                        <input type="datetime-local" id="scheduleStart">
+                        <label class="form-label" for="scheduleInterval">間隔</label>
+                        <input type="number" id="scheduleInterval" value="0" min="0" max="1440" step="5" class="num-input">
+                        <span class="unit">分ずつずらす</span>
+                    </div>
+                    <p class="hint">
+                        選択した出展者を、開始日時から指定の間隔で順番に投稿します。<br>
+                        出展者ごとに個別の日時を入れた場合は、そちらが優先されます。<br>
+                        ※「まとめて1投稿」のときは1件の投稿なので、開始日時だけを使います。<br>
+                        ※実行は5分間隔のチェックで行うため、指定時刻から最大5分ほど遅れて投稿されます。<br>
+                        ※1回のチェックで投稿するのは3件までです。同じ時刻にまとめて予約した場合は5分ごとに3件ずつ投稿されます。
+                    </p>
+                </div>
+
+                <div id="postPreview" class="post-preview"></div>
+
+                <div class="button-group">
+                    <button id="postBtn" class="btn-primary">選択した出展者を投稿する</button>
+                    <button id="runDueBtn" class="btn-secondary small">予約分を今すぐ実行</button>
+                </div>
+
+                <div id="postLog" class="post-log"></div>
+            </section>
+
+            <!-- 予約・履歴 -->
+            <section class="card">
+                <div class="card-head">
+                    <h2>🗓 予約一覧・投稿履歴</h2>
+                    <button id="refreshJobsBtn" class="btn-secondary small">更新</button>
+                </div>
+
+                <h3>予約中</h3>
+                <div id="pendingJobs" class="job-list">
+                    <p class="empty">予約はありません</p>
+                </div>
+
+                <h3 class="mt">実行済み</h3>
+                <div id="historyJobs" class="job-list">
+                    <p class="empty">履歴はありません</p>
+                </div>
+                <button id="clearHistoryBtn" class="btn-ghost small mt">履歴をすべて削除</button>
+            </section>
+        </main>
+    </div>
+
+    <div id="loadingOverlay" class="overlay hidden">
+        <div class="spinner"></div>
+        <p id="loadingText">処理中…</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
