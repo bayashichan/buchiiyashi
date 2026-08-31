@@ -1249,6 +1249,20 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
         }
 
         // 4. 個人情報の除外と画像IDの紐付け
+        const imageMap = imagesData.images || {};
+
+        // 画像ファイル名が「番号_出展名.jpg」形式でも照合できるようにする別名索引。
+        // GAS側でも同様の別名キーを生成しているが、GASが旧版のままでも動くよう
+        // ここでも正規化キーの先頭に付いた連番を取り除いたキーを用意する。
+        // （正規化済みキーは「_」等の区切り記号が除去済みのため、数字のみを剥がす）
+        const strippedImageMap = {};
+        Object.keys(imageMap).forEach(key => {
+            const stripped = key.replace(/^[0-9０-９]+/, '');
+            if (stripped && stripped !== key && !imageMap[stripped] && !strippedImageMap[stripped]) {
+                strippedImageMap[stripped] = imageMap[key];
+            }
+        });
+
         const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
             // 出展名から正規化キーを作成 (GAS側のnormalizeNameと必ず一致させること)
             // ファイル名に使えない記号（/ \ : * ? " < > |）は画像保存時に除去または
@@ -1266,7 +1280,8 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
                 selfIntro: ex.selfIntro,
                 snsLinks: ex.snsLinks,
                 photoUrl: ex.photoUrl,
-                introImageId: imagesData.images[normalizedName] || null, // フォルダ内の画像ID
+                // フォルダ内の画像ID（「番号_出展名.jpg」形式のファイル名にも対応）
+                introImageId: imageMap[normalizedName] || strippedImageMap[normalizedName] || null,
                 seatNumber: ex.seatNumber,
                 advanceReservation: ex.advanceReservation, // 事前予約の有無（AK列）
                 specialtyGenres: ex.specialtyGenres // 取扱いジャンル（AJ列＝得意ジャンル）

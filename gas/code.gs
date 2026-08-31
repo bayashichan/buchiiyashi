@@ -1854,24 +1854,31 @@ function combinePresentationsCleanup(targetId) {
 }
 /**
  * 指定されたフォルダ内の画像をスキャンして、正規化されたファイル名とIDのマップを返す
+ * ファイル名が「番号_出展名.jpg」形式（例: 12_ぶち工房.jpg）の場合は、
+ * 先頭の連番を除いた「出展名」でも照合できるよう別名キーも登録する。
  */
 function getFolderImagesList(folderId) {
   try {
     const folder = DriveApp.getFolderById(folderId);
     const files = folder.getFiles();
     const imageMap = {};
-    
+    const aliasMap = {}; // 連番を除いた別名キー（実ファイル名の一致を優先するため後でマージ）
+
     while (files.hasNext()) {
       const file = files.next();
       const fileName = file.getName();
-      
+
       // 拡張子を除去
       const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
-      
+
       // 正規化（記号・スペースを除去して小文字化）
       const normalized = normalizeName(nameWithoutExt);
-      
-      if (normalized) {
+
+      // 「番号_出展名」形式なら連番部分を除いたキーも作る
+      const strippedName = stripLeadingNumber(nameWithoutExt);
+      const normalizedStripped = strippedName ? normalizeName(strippedName) : "";
+
+      if (normalized || normalizedStripped) {
         // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
         try {
           if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
@@ -1880,16 +1887,37 @@ function getFolderImagesList(folderId) {
         } catch (e) {
           console.warn('Failed to set sharing for ' + fileName);
         }
-        
-        imageMap[normalized] = file.getId();
+
+        if (normalized) {
+          imageMap[normalized] = file.getId();
+        }
+        if (normalizedStripped && normalizedStripped !== normalized && !aliasMap[normalizedStripped]) {
+          aliasMap[normalizedStripped] = file.getId();
+        }
       }
     }
-    
+
+    // 別名キーは、同名の正規キーが無い場合のみ採用する
+    Object.keys(aliasMap).forEach(function (key) {
+      if (!imageMap[key]) imageMap[key] = aliasMap[key];
+    });
+
     return { success: true, images: imageMap };
   } catch (error) {
     console.error('getFolderImagesList error:', error);
     return { success: false, error: error.message };
   }
+}
+
+/**
+ * ファイル名の先頭に付いた連番（「12_」「3-」「01. 」など）を取り除く
+ * 区切り文字が無い場合（例:「3期生ぶち工房」）は連番と判断せずそのまま返さない。
+ * ※ この関数は worker/src/index.js の stripLeadingNumber と必ず一致させること
+ */
+function stripLeadingNumber(name) {
+  if (!name) return "";
+  const matched = String(name).match(/^[\s　]*[0-9０-９]+[\s　]*[_＿\-ー－–—.．・,、:：)）\]】][\s　]*(.+)$/);
+  return matched ? matched[1] : "";
 }
 
 /**
