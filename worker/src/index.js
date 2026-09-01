@@ -1394,9 +1394,12 @@ function oauthRedirectUri(requestUrl) {
 
 // 連携を開始するURLを組み立てる
 async function startGoogleOAuth(env, request, corsHeaders) {
-    if (!env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET) {
+    const missing = [];
+    if (!env.GOOGLE_OAUTH_CLIENT_ID) missing.push('GOOGLE_OAUTH_CLIENT_ID');
+    if (!env.GOOGLE_OAUTH_CLIENT_SECRET) missing.push('GOOGLE_OAUTH_CLIENT_SECRET');
+    if (missing.length > 0) {
         return new Response(JSON.stringify({
-            error: 'GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です'
+            error: `Workerから次のシークレットが見えていません: ${missing.join(', ')}`
         }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -1495,7 +1498,13 @@ async function handleGoogleOAuthCallback(env, request) {
 // 連携状態を返す（管理画面の表示用）
 async function getGoogleOAuthStatus(env, corsHeaders) {
     const stored = env.R2_BUCKET ? await env.R2_BUCKET.get(OAUTH_TOKEN_KEY) : null;
-    const configured = !!(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET);
+
+    // 「未設定」だけでは、名前の打ち間違いなのか反映されていないのか切り分けられない。
+    // どの名前が見えていないかを返す（値そのものは返さない）
+    const missing = [];
+    if (!env.GOOGLE_OAUTH_CLIENT_ID) missing.push('GOOGLE_OAUTH_CLIENT_ID');
+    if (!env.GOOGLE_OAUTH_CLIENT_SECRET) missing.push('GOOGLE_OAUTH_CLIENT_SECRET');
+    const configured = missing.length === 0;
 
     let connectedAt = null;
     if (stored) {
@@ -1509,6 +1518,9 @@ async function getGoogleOAuthStatus(env, corsHeaders) {
     return new Response(JSON.stringify({
         success: true,
         configured,
+        missing,
+        // R2が無いとリフレッシュトークンを保存できない
+        hasStorage: !!env.R2_BUCKET,
         connected: !!stored,
         connectedAt
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
