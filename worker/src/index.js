@@ -28,6 +28,12 @@ export default {
             return handleRepeaterSearch(request, env, corsHeaders);
         }
 
+        // Googleからのリダイレクト。ブラウザが直接開くため管理画面の認証ヘッダーが付かない。
+        // 代わりにstateで照合する（handleGoogleOAuthCallback内）
+        if (url.pathname === '/oauth/google/callback') {
+            return handleGoogleOAuthCallback(env, request);
+        }
+
         if (url.pathname.startsWith('/api/admin')) {
             return handleAdminAPI(request, env, corsHeaders, url, ctx);
         }
@@ -87,6 +93,21 @@ async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
         // POST /api/admin/deploy-gas - GASデプロイ
         if (url.pathname === '/api/admin/deploy-gas' && request.method === 'POST') {
             return await deployGas(env, corsHeaders);
+        }
+
+        // GET /api/admin/google-oauth/status - Google連携の状態
+        if (url.pathname === '/api/admin/google-oauth/status' && request.method === 'GET') {
+            return await getGoogleOAuthStatus(env, corsHeaders);
+        }
+
+        // GET /api/admin/google-oauth/start - 連携を開始するURLを返す
+        if (url.pathname === '/api/admin/google-oauth/start' && request.method === 'GET') {
+            return await startGoogleOAuth(env, request, corsHeaders);
+        }
+
+        // POST /api/admin/google-oauth/disconnect - 連携を解除
+        if (url.pathname === '/api/admin/google-oauth/disconnect' && request.method === 'POST') {
+            return await disconnectGoogleOAuth(env, corsHeaders);
         }
 
         // POST /api/admin/create-spreadsheet - 新規スプレッドシート作成
@@ -449,10 +470,15 @@ function generateConfigJs(config) {
  * 引き金を引くだけにして、GitHubからの取得と反映はGAS側にやらせる。
  */
 async function deployGas(env, corsHeaders) {
+    // Apps Script APIの呼び出しに使うトークン。スクリプト自身のトークンでは
+    // 操作できない既定のCloudプロジェクトに紐づいてしまうため、所有アカウント
+    // 本人のトークンを渡す
+    const accessToken = await getGoogleUserAccessToken(env);
+
     const response = await fetch(env.GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'self_update' }),
+        body: JSON.stringify({ action: 'self_update', accessToken }),
         redirect: 'follow'
     });
 
@@ -1335,4 +1361,198 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }
+}
+
+// ========================================
+// Google連携（デプロイ用のユーザー認証）
+// ========================================
+//
+// Apps Script API はサービスアカウントに対応していない。書き込み時に
+// 「アカウントごとの有効化設定がない」として403になるが、サービスアカウントには
+// その設定ページ自体が存在しないため回避できない。
+// またスクリプト自身のトークンを使うと、Apps Scriptが自動作成した既定のCloud
+// プロジェクトに紐づく。このプロジェクトはGoogle管理で利用者が操作できず、
+// Apps Script APIを有効化できない。
+//
+// そこで、所有アカウント本人のOAuth認証を一度だけ通し、そのリフレッシュトークンで
+// デプロイする。認証情報は操作可能なCloudプロジェクトのものになるため、どちらの
+// 制約にも当たらない。
+
+const OAUTH_SCOPES = [
+    'https://www.googleapis.com/auth/script.projects',
+    'https://www.googleapis.com/auth/script.deployments'
+].join(' ');
+
+const OAUTH_TOKEN_KEY = 'config/google-oauth.json';
+const OAUTH_STATE_PREFIX = 'oauth-state/';
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+// このWorker自身のコールバックURL。OAuthクライアントにこの値の登録が必要
+function oauthRedirectUri(requestUrl) {
+    return `${new URL(requestUrl).origin}/oauth/google/callback`;
+}
+
+// 連携を開始するURLを組み立てる
+async function startGoogleOAuth(env, request, corsHeaders) {
+    if (!env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET) {
+        return new Response(JSON.stringify({
+            error: 'GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です'
+        }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // 第三者にコールバックを踏ませても連携が成立しないよう、stateを控えて照合する
+    const state = crypto.randomUUID();
+    await env.R2_BUCKET.put(OAUTH_STATE_PREFIX + state, JSON.stringify({ createdAt: Date.now() }), {
+        httpMetadata: { contentType: 'application/json' }
+    });
+
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    url.searchParams.set('client_id', env.GOOGLE_OAUTH_CLIENT_ID);
+    url.searchParams.set('redirect_uri', oauthRedirectUri(request.url));
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', OAUTH_SCOPES);
+    // リフレッシュトークンを受け取るために必要。promptを付けないと2回目以降返らない
+    url.searchParams.set('access_type', 'offline');
+    url.searchParams.set('prompt', 'consent');
+    url.searchParams.set('state', state);
+
+    return new Response(JSON.stringify({ url: url.toString() }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+}
+
+/**
+ * Googleからのリダイレクトを受ける。
+ *
+ * ブラウザから直接開かれるため管理画面の認証ヘッダーが付かない。
+ * 代わりに、連携開始時に控えたstateと一致することを確認する。
+ */
+async function handleGoogleOAuthCallback(env, request) {
+    const page = (title, body) => new Response(
+        `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">`
+        + `<meta name="viewport" content="width=device-width, initial-scale=1">`
+        + `<title>${title}</title></head>`
+        + `<body style="font-family:sans-serif; line-height:1.8; padding:40px; max-width:600px; margin:0 auto;">`
+        + body + '</body></html>',
+        { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } }
+    );
+
+    const url = new URL(request.url);
+    const error = url.searchParams.get('error');
+    if (error) {
+        return page('連携できませんでした', `<h1>連携できませんでした</h1><p>${error}</p>`);
+    }
+
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    if (!code || !state) {
+        return page('連携できませんでした', '<h1>連携できませんでした</h1><p>パラメータが足りません。</p>');
+    }
+
+    const stateKey = OAUTH_STATE_PREFIX + state;
+    const savedState = await env.R2_BUCKET.get(stateKey);
+    if (!savedState) {
+        return page('連携できませんでした',
+            '<h1>連携できませんでした</h1><p>この連携リンクは無効か、期限切れです。管理画面からやり直してください。</p>');
+    }
+    await env.R2_BUCKET.delete(stateKey);
+
+    const saved = JSON.parse(await savedState.text());
+    if (Date.now() - saved.createdAt > OAUTH_STATE_TTL_MS) {
+        return page('連携できませんでした',
+            '<h1>連携できませんでした</h1><p>連携の有効期限（10分）が切れています。管理画面からやり直してください。</p>');
+    }
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            code,
+            client_id: env.GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+            redirect_uri: oauthRedirectUri(request.url),
+            grant_type: 'authorization_code'
+        })
+    });
+
+    const token = await tokenResponse.json();
+    if (!tokenResponse.ok || !token.refresh_token) {
+        console.error('OAuth token exchange failed:', token);
+        return page('連携できませんでした',
+            `<h1>連携できませんでした</h1><p>${token.error_description || token.error || 'リフレッシュトークンが返りませんでした'}</p>`);
+    }
+
+    await env.R2_BUCKET.put(OAUTH_TOKEN_KEY, JSON.stringify({
+        refresh_token: token.refresh_token,
+        connected_at: new Date().toISOString()
+    }), { httpMetadata: { contentType: 'application/json' } });
+
+    return page('連携が完了しました',
+        '<h1>✅ 連携が完了しました</h1><p>このタブを閉じて、管理画面に戻ってください。</p>'
+        + '<p>「GASをデプロイ」が使えるようになります。</p>');
+}
+
+// 連携状態を返す（管理画面の表示用）
+async function getGoogleOAuthStatus(env, corsHeaders) {
+    const stored = env.R2_BUCKET ? await env.R2_BUCKET.get(OAUTH_TOKEN_KEY) : null;
+    const configured = !!(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET);
+
+    let connectedAt = null;
+    if (stored) {
+        try {
+            connectedAt = JSON.parse(await stored.text()).connected_at || null;
+        } catch (e) {
+            connectedAt = null;
+        }
+    }
+
+    return new Response(JSON.stringify({
+        success: true,
+        configured,
+        connected: !!stored,
+        connectedAt
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+// 連携を解除する
+async function disconnectGoogleOAuth(env, corsHeaders) {
+    await env.R2_BUCKET.delete(OAUTH_TOKEN_KEY);
+    return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+}
+
+// 保存済みのリフレッシュトークンからアクセストークンを取得する
+async function getGoogleUserAccessToken(env) {
+    if (!env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET) {
+        throw new Error('GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です');
+    }
+
+    const stored = await env.R2_BUCKET.get(OAUTH_TOKEN_KEY);
+    if (!stored) {
+        throw new Error('Googleアカウントが未連携です。デプロイタブの「Googleアカウントを連携」から連携してください');
+    }
+
+    const { refresh_token } = JSON.parse(await stored.text());
+
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            refresh_token,
+            client_id: env.GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+            grant_type: 'refresh_token'
+        })
+    });
+
+    const token = await response.json();
+    if (!response.ok || !token.access_token) {
+        // 連携が取り消された・期限切れの場合はここに来る。やり直せることを伝える
+        throw new Error(
+            `Googleとの連携が無効になっています（${token.error_description || token.error || response.status}）。\n`
+            + 'デプロイタブの「Googleアカウントを連携」からやり直してください。'
+        );
+    }
+    return token.access_token;
 }

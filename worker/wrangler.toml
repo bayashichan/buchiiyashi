@@ -23,7 +23,14 @@ IG_USER_ID = "17841465230403689"
 # - ADMIN_PASSWORD: 管理画面ログインパスワード
 # - GITHUB_TOKEN: GitHub Personal Access Token (repo権限)
 # - GOOGLE_SA_KEY: サービスアカウントJSON (Base64エンコード)
-# - GAS_SCRIPT_ID: Apps ScriptのスクリプトID
+# - GOOGLE_OAUTH_CLIENT_ID     : GASデプロイ用のOAuthクライアントID
+# - GOOGLE_OAUTH_CLIENT_SECRET : 同シークレット
+#   Apps Script APIはサービスアカウントに対応しておらず、スクリプト自身のトークンも
+#   操作できない既定のCloudプロジェクトに紐づくため、所有アカウント本人の認証を使う。
+#   コールバックURLは https://<このWorkerのドメイン>/oauth/google/callback
+#   リフレッシュトークンはR2の config/google-oauth.json に保存される（管理画面から連携）
+#
+# GAS_SCRIPT_ID はもう使っていない（GASが自分のIDを使うため）。設定済みでも無害
 # - LINE_MANAGER_SECRET: line-manager側のAPPLICANT_INGEST_SECRETと同じ値
 # - LINE_CHANNEL_ACCESS_TOKEN: 公式LINE(Messaging API)のチャネルアクセストークン。
 #   申込完了をLINEでも本人へ通知するために使う。未設定なら通知をスキップする（メールのみ）。

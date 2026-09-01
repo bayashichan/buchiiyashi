@@ -39,6 +39,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
+    // Googleアカウント連携（GASデプロイ用）
+    document.getElementById('connectGoogleBtn')?.addEventListener('click', connectGoogle);
+    document.getElementById('disconnectGoogleBtn')?.addEventListener('click', disconnectGoogle);
+
     // デプロイボタン
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
     document.getElementById('deployGasBtn').addEventListener('click', deployGas);
@@ -511,6 +515,9 @@ function renderAvailability() {
 // タブ切り替え
 // ========================================
 function switchTab(tabName) {
+    // 連携が切れていてもデプロイを押すまで気づけないため、タブを開いた時点で出す
+    if (tabName === 'deploy') loadGoogleOAuthStatus();
+
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
 
@@ -1688,4 +1695,86 @@ function renderResendResults(results) {
                     : escapeHtml(r.error || '送信できませんでした')}</span>
             </div>`).join('')}
         </div>`;
+}
+
+// ========================================
+// Googleアカウント連携（GASデプロイ用）
+// ========================================
+
+// 連携状態を読み込んで表示する
+async function loadGoogleOAuthStatus() {
+    const statusEl = document.getElementById('googleOauthStatus');
+    if (!statusEl) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/google-oauth/status`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+
+        const result = await response.json();
+
+        if (!result.configured) {
+            statusEl.className = 'status error';
+            statusEl.textContent = '⚠️ OAuthクライアントが未設定です（GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET）';
+        } else if (result.connected) {
+            statusEl.className = 'status success';
+            const when = result.connectedAt ? new Date(result.connectedAt).toLocaleString('ja-JP') : '';
+            statusEl.textContent = `✅ 連携済み${when ? `（${when}）` : ''}`;
+        } else {
+            statusEl.className = 'status loading';
+            statusEl.textContent = '未連携です。「Googleアカウントを連携」を押してください。';
+        }
+    } catch (error) {
+        console.error('Google OAuth status error:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ 連携状態を取得できませんでした: ${error.message}`;
+    }
+}
+
+// 連携を開始する（Googleの同意画面を別タブで開く）
+async function connectGoogle() {
+    showLoading();
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/google-oauth/start`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+
+        const result = await response.json();
+        if (!result.url) throw new Error(result.error || '連携URLを取得できませんでした');
+
+        // ポップアップブロックに掛かることがあるので、開けたかどうかを確認する
+        const opened = window.open(result.url, '_blank');
+        if (!opened) {
+            prompt('別タブを開けませんでした。このURLをコピーしてブラウザで開いてください:', result.url);
+        }
+        alert('別タブでGoogleの連携画面が開きます。\n完了したらこのタブに戻り、デプロイタブを開き直すと連携状態が更新されます。');
+    } catch (error) {
+        console.error('Connect Google error:', error);
+        alert('連携を開始できませんでした: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 連携を解除する
+async function disconnectGoogle() {
+    if (!confirm('Googleアカウントの連携を解除します。GASのデプロイができなくなりますが、よろしいですか？')) return;
+
+    showLoading();
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/google-oauth/disconnect`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+        await response.json();
+        await loadGoogleOAuthStatus();
+    } catch (error) {
+        console.error('Disconnect Google error:', error);
+        alert('連携を解除できませんでした: ' + error.message);
+    } finally {
+        hideLoading();
+    }
 }
