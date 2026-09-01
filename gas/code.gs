@@ -536,6 +536,14 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // GASプロジェクトの自己更新アクション（管理画面のデプロイボタン）
+    if (params.action === 'self_update') {
+      const result = selfUpdateFromRepo();
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 申込時自動返信メールの再送アクション（管理画面用）
     if (params.action === 'resend_confirmation_email') {
       const result = resendConfirmationEmails(params.spreadsheetId, params.rowIds, params.testEmail);
@@ -2298,4 +2306,191 @@ function normalizeName(name) {
     .replace(/[ 　\-_.\(\)（）!！?？｜|\/／\\＼:：*＊"＂”<＜>＞]/g, "") // 一般的な記号・スペース＋ファイル名禁止文字を削除
     .toLowerCase();
   // ※ この正規表現は worker/src/index.js の出展名正規化と必ず一致させること
+}
+
+// ========================================
+// GASプロジェクトの自己更新（デプロイ）
+// ========================================
+
+/**
+ * このスクリプト自身を、GitHub上の gas/ の内容へ更新する。
+ *
+ * サービスアカウントではApps Script APIの書き込みができない。アカウントごとの
+ * 有効化設定（script.google.com/home/usersettings）を持てないためで、読み取りは
+ * 通るのに書き込みだけが403になる。スクリプト自身のトークンなら所有アカウントの
+ * 権限で動くので、更新をGAS側で行う。
+ *
+ * 取得元はこのリポジトリのmainに固定している。外部からコードを受け取らないので、
+ * このエンドポイントを誰が呼んでも、公開済みのリポジトリの内容が反映されるだけになる。
+ */
+const SELF_UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/bayashichan/buchiiyashi/main/';
+
+/**
+ * 反映対象のファイル。
+ *
+ * appsscript.json は意図的に含めない。マニフェストはWebアプリの公開設定
+ * （誰がアクセスできるか）を持っており、リポジトリのコピーにはそれが無い。
+ * 上書きすると公開URLが機能しなくなる。
+ */
+const SELF_UPDATE_FILES = [
+  { path: 'gas/code.gs', name: 'code', type: 'SERVER_JS' },
+  { path: 'gas/mail_template.html', name: 'mail_template', type: 'HTML' },
+  { path: 'gas/admin_mail_template.html', name: 'admin_mail_template', type: 'HTML' }
+];
+
+/**
+ * リポジトリの内容をこのプロジェクトへ反映し、Webアプリを更新する。
+ *
+ * エディタから直接実行してもよい（初回の承認はこの関数を実行して行う）。
+ * @return {Object} 反映結果
+ */
+function selfUpdateFromRepo() {
+  const scriptId = ScriptApp.getScriptId();
+  const token = ScriptApp.getOAuthToken();
+
+  // 1. リポジトリの最新を取得
+  const repoFiles = SELF_UPDATE_FILES.map(file => ({
+    name: file.name,
+    type: file.type,
+    source: fetchRepoSource(file.path)
+  }));
+
+  // 2. 現在の内容
+  const current = scriptApi(token, `projects/${scriptId}/content`);
+  const currentFiles = current.files || [];
+
+  // 3. 差分。何が上書きされるのかを管理画面に返すため
+  const changedFiles = repoFiles.filter(file => {
+    const currentFile = currentFiles.filter(f => f.name === file.name)[0];
+    return normalizeSource(currentFile && currentFile.source) !== normalizeSource(file.source);
+  }).map(file => file.name);
+
+  // Apps Script側にしか無いファイル（エディタで直接追加されたもの）は消さずに残す
+  const keptFiles = currentFiles.filter(f => !repoFiles.some(r => r.name === f.name));
+
+  let backupVersion = null;
+
+  if (changedFiles.length > 0) {
+    // 4. 上書きの前に、いまのコードをバージョンとして退避する。
+    //    エディタで直接直した内容が入っていても、ここから復元できる。
+    backupVersion = createScriptVersion(token, scriptId, '上書き前の自動バックアップ');
+
+    // 5. 内容を差し替え
+    scriptApi(token, `projects/${scriptId}/content`, 'put', {
+      files: repoFiles.concat(keptFiles)
+    });
+  }
+
+  // 6. 新しいバージョンを作成
+  const versionNumber = createScriptVersion(token, scriptId, '管理画面からデプロイ');
+
+  // 7. 既存のデプロイを新しいバージョンへ向ける（/exec のURLは変わらない）
+  const deployments = updateScriptDeployments(token, scriptId, versionNumber);
+
+  return {
+    success: true,
+    changedFiles: changedFiles,
+    versionNumber: versionNumber,
+    backupVersion: backupVersion,
+    deployments: deployments,
+    message: changedFiles.length > 0
+      ? `${changedFiles.join(', ')} を更新し、バージョン${versionNumber}として公開しました`
+      : `コードに変更はありませんでした。バージョン${versionNumber}として公開し直しました`
+  };
+}
+
+/**
+ * リポジトリからファイルの中身を取得する。
+ *
+ * 壊れた内容で自分を上書きすると、この関数ごと失われて元に戻せなくなる。
+ * 取得できた内容が妥当かどうかを、書き込む前に確認する。
+ */
+function fetchRepoSource(path) {
+  // rawはCDNキャッシュが効くため、毎回異なるURLにして最新を取りに行く
+  const url = `${SELF_UPDATE_RAW_BASE}${path}?_=${Date.now()}`;
+  const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+
+  if (response.getResponseCode() !== 200) {
+    throw new Error(`GitHubからの取得に失敗しました (${path}): ${response.getResponseCode()}`);
+  }
+
+  const source = response.getContentText();
+  if (!source || source.length < 500) {
+    throw new Error(`取得した内容が短すぎます (${path}): ${source.length}文字`);
+  }
+  // 通信途中で切れた内容で上書きしないよう、要となる記述が含まれているか確かめる
+  if (path === 'gas/code.gs' && source.indexOf('function selfUpdateFromRepo') < 0) {
+    throw new Error('取得したcode.gsに selfUpdateFromRepo が含まれていません。中断します');
+  }
+
+  return source;
+}
+
+// Apps Script API 呼び出しの共通処理
+function scriptApi(token, path, method, body) {
+  const options = {
+    method: method || 'get',
+    headers: { Authorization: `Bearer ${token}` },
+    muteHttpExceptions: true
+  };
+  if (body) {
+    options.contentType = 'application/json';
+    options.payload = JSON.stringify(body);
+  }
+
+  const response = UrlFetchApp.fetch(`https://script.googleapis.com/v1/${path}`, options);
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+
+  if (code < 200 || code >= 300) {
+    throw new Error(`Apps Script API ${options.method.toUpperCase()} ${path} が失敗しました: ${code} ${text}`);
+  }
+  return JSON.parse(text);
+}
+
+// 新しいバージョンを作成して、そのバージョン番号を返す
+function createScriptVersion(token, scriptId, description) {
+  const version = scriptApi(token, `projects/${scriptId}/versions`, 'post', {
+    description: `${description}: ${new Date().toISOString()}`
+  });
+  return version.versionNumber;
+}
+
+/**
+ * 既存のデプロイを新しいバージョンへ向ける。
+ *
+ * 既存のデプロイを更新するので /exec のURLは変わらない。
+ * バージョンを持たないHEAD（テスト用）デプロイは常に最新コードを返すため触らない。
+ */
+function updateScriptDeployments(token, scriptId, versionNumber) {
+  const list = scriptApi(token, `projects/${scriptId}/deployments`);
+  const results = [];
+
+  (list.deployments || []).forEach(deployment => {
+    const config = deployment.deploymentConfig || {};
+    if (config.versionNumber === undefined || config.versionNumber === null) return;
+
+    try {
+      scriptApi(token, `projects/${scriptId}/deployments/${deployment.deploymentId}`, 'put', {
+        deploymentConfig: {
+          scriptId: scriptId,
+          versionNumber: versionNumber,
+          manifestFileName: config.manifestFileName || 'appsscript',
+          description: config.description || ''
+        }
+      });
+      results.push({ deploymentId: deployment.deploymentId, updated: true });
+    } catch (error) {
+      // 1つ失敗しても他のデプロイの更新は続ける。結果は管理画面に出す
+      console.error(`Failed to update deployment ${deployment.deploymentId}:`, error);
+      results.push({ deploymentId: deployment.deploymentId, updated: false, error: error.message });
+    }
+  });
+
+  return results;
+}
+
+// 改行コードと末尾の空白の違いは差分とみなさない（Apps Script側で正規化されるため）
+function normalizeSource(source) {
+  return String(source || '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
 }
