@@ -1666,8 +1666,10 @@ async function resendConfirmationEmails() {
     } catch (error) {
         console.error('Resend confirmation error:', error);
         statusEl.className = 'status error';
+        // GASからの応答が複数行で返ることがあるので、そのまま読める形にする
+        statusEl.style.whiteSpace = 'pre-line';
         // 途中まで送れている可能性があるので、成功分も残して表示する
-        statusEl.textContent = `❌ エラー: ${error.message}（${allResults.filter(r => r.success).length}件は送信済み）`;
+        statusEl.textContent = `❌ エラー: ${error.message}\n（${allResults.filter(r => r.success).length}件は送信済み）`;
         renderResendResults(allResults);
     } finally {
         hideLoading();

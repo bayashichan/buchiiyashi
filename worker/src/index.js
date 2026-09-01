@@ -462,6 +462,40 @@ function generateConfigJs(config) {
 
 // GASデプロイ
 /**
+ * GASのWebアプリへPOSTしてJSONを受け取る。
+ *
+ * GASが例外を投げたり承認が必要な状態だと、JSONではなくHTMLのエラーページが返る。
+ * それをそのままJSONとして読むと「Unexpected token '<'」としか分からず、
+ * Googleが何を言っているのか追えない。中身を添えて投げ直す。
+ */
+async function postToGas(env, payload) {
+    const response = await fetch(env.GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+    });
+
+    const text = await response.text();
+
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        const snippet = text
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 400);
+        throw new Error(
+            `GASがJSONではない応答を返しました (HTTP ${response.status})。\n`
+            + `Googleからの表示: ${snippet || '(本文なし)'}`
+        );
+    }
+}
+
+/**
  * GASのデプロイ。実際の反映はGAS側（selfUpdateFromRepo）が行う。
  *
  * サービスアカウントではApps Script APIの書き込みができない。アカウントごとの
@@ -475,22 +509,7 @@ async function deployGas(env, corsHeaders) {
     // 本人のトークンを渡す
     const accessToken = await getGoogleUserAccessToken(env);
 
-    const response = await fetch(env.GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'self_update', accessToken }),
-        redirect: 'follow'
-    });
-
-    const text = await response.text();
-
-    let result;
-    try {
-        result = JSON.parse(text);
-    } catch (e) {
-        // GASが例外を投げるとJSONではなくHTMLのエラーページが返る
-        throw new Error(`GASから予期しない応答が返りました (${response.status}): ${text.slice(0, 300)}`);
-    }
+    const result = await postToGas(env, { action: 'self_update', accessToken });
 
     if (!result.success) {
         throw new Error(result.error || 'GASでの更新に失敗しました');
@@ -757,18 +776,13 @@ async function resendConfirmation(env, body, corsHeaders) {
             });
         }
 
-        const response = await fetch(env.GAS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'resend_confirmation_email',
-                spreadsheetId: spreadsheetId || '',
-                rowIds,
-                testEmail: testEmail || ''
-            })
+        const result = await postToGas(env, {
+            action: 'resend_confirmation_email',
+            spreadsheetId: spreadsheetId || '',
+            rowIds,
+            testEmail: testEmail || ''
         });
 
-        const result = await response.json();
         return new Response(JSON.stringify(result), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
