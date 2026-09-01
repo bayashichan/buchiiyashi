@@ -1716,7 +1716,15 @@ async function loadGoogleOAuthStatus() {
 
         if (!result.configured) {
             statusEl.className = 'status error';
-            statusEl.textContent = '⚠️ OAuthクライアントが未設定です（GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET）';
+            statusEl.style.whiteSpace = 'pre-line';
+            // どの名前が見えていないかが分からないと、打ち間違いなのか反映漏れなのか切り分けられない
+            const missing = (result.missing || []).join('\n・');
+            statusEl.textContent = '⚠️ Workerから次のシークレットが見えていません:\n・' + missing
+                + '\n\nCloudflareのWorker設定で、この名前どおりに登録されているか確認してください。'
+                + '\n登録済みなのに出る場合は、変数を保存したあと「デプロイ」を押して新しいバージョンを反映させる必要があります。';
+        } else if (!result.hasStorage) {
+            statusEl.className = 'status error';
+            statusEl.textContent = '⚠️ R2バケット(R2_BUCKET)が見えていません。連携情報を保存できません。';
         } else if (result.connected) {
             statusEl.className = 'status success';
             const when = result.connectedAt ? new Date(result.connectedAt).toLocaleString('ja-JP') : '';
