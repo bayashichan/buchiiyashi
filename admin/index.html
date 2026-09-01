@@ -407,6 +407,16 @@
                 </div>
                 <hr>
                 <div class="deploy-section">
+                    <h3>🔗 Googleアカウント連携</h3>
+                    <p>GASのデプロイに必要です。所有アカウント（GASプロジェクトの持ち主）で一度だけ連携してください。</p>
+                    <div id="googleOauthStatus" class="status"></div>
+                    <div class="button-group mt-3">
+                        <button id="connectGoogleBtn" class="btn-primary">Googleアカウントを連携</button>
+                        <button id="disconnectGoogleBtn" class="btn-secondary">連携を解除</button>
+                    </div>
+                </div>
+                <hr>
+                <div class="deploy-section">
                     <h3>📜 GASスクリプト (code.gs)</h3>
                     <p>GitHub上の <code>gas/</code>（code.gs・メールテンプレート2種）をApps Scriptへ反映し、
                         新しいバージョンとして公開します。公開URLは変わりません。</p>

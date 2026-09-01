@@ -538,7 +538,7 @@ function doPost(e) {
 
     // GASプロジェクトの自己更新アクション（管理画面のデプロイボタン）
     if (params.action === 'self_update') {
-      const result = selfUpdateFromRepo();
+      const result = selfUpdateFromRepo(params.accessToken);
       return ContentService
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
@@ -2341,12 +2341,16 @@ const SELF_UPDATE_FILES = [
 /**
  * リポジトリの内容をこのプロジェクトへ反映し、Webアプリを更新する。
  *
- * エディタから直接実行してもよい（初回の承認はこの関数を実行して行う）。
+ * @param {string} accessToken Apps Script APIに使うトークン。管理画面からは
+ *   所有アカウント本人のものが渡される。スクリプト自身のトークンは、Apps Scriptが
+ *   自動作成した既定のCloudプロジェクトに紐づき、そのプロジェクトはGoogle管理で
+ *   Apps Script APIを有効化できないため使えない。
+ *   省略した場合は自分のトークンを使う（エディタから直接実行する場合用）。
  * @return {Object} 反映結果
  */
-function selfUpdateFromRepo() {
+function selfUpdateFromRepo(accessToken) {
   const scriptId = ScriptApp.getScriptId();
-  const token = ScriptApp.getOAuthToken();
+  const token = accessToken || ScriptApp.getOAuthToken();
 
   // 1. リポジトリの最新を取得
   const repoFiles = SELF_UPDATE_FILES.map(file => ({
