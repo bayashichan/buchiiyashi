@@ -970,13 +970,31 @@ function formatImageUploadStatus(data) {
   return `未登録（要LINE回収${reason}）`;
 }
 
+/**
+ * キャンセル待ちでの申込かどうか。
+ *
+ * 満枠ブースへの申込はキャンセル待ち扱いとし、確認メールに振込先を出さない
+ * （出展確定と誤解されて入金されるのを防ぐため）。
+ * 申込フォームが isWaitlist を送ってくればそれを優先し、送ってこない場合は
+ * ブース定義の soldOut から判定する。
+ */
+function isWaitlistApplication(data) {
+  if (data.isWaitlist === '1' || data.isWaitlist === true) return true;
+
+  const booth = CONFIG.BOOTHS[data.boothId];
+  return !!(booth && booth.soldOut);
+}
+
 // 管理者へメール通知（HTMLメール）
 function sendAdminEmail(data, calculationResult) {
   // LINE情報が取れていない申込は件名で分かるようにする（後追いの案内が必要なため）
   const linkPrefix = data.lineUserId ? '' : '【LINE未連携】';
+  // キャンセル待ちは入金案内をしていないため、通常申込と対応が異なる
+  const isWaitlist = isWaitlistApplication(data);
+  const waitlistPrefix = isWaitlist ? '【キャンセル待ち】' : '';
   // 画像が登録できなかった申込も件名で分かるようにする（公式LINEで写真を受け取る必要があるため）
   const imagePrefix = data.profileImageUrl ? '' : '【画像未登録】';
-  const subject = `${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
+  const subject = `${waitlistPrefix}${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
   
   // テキスト版（HTMLが表示できないクライアント用）
   const textBody = `
@@ -1057,6 +1075,7 @@ ${data.notes || 'なし'}
 
   template.breakdownList = breakdownList;
   template.isMember = data.isMember === '1';
+  template.isWaitlist = isWaitlist;
 
   const htmlBody = template.evaluate().getContent();
   
@@ -1075,6 +1094,8 @@ ${data.notes || 'なし'}
 function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   // 会員かどうか
   const isMember = data.isMember === '1';
+  // 満枠ブースへの申込はキャンセル待ち扱い。振込先を出さない分岐に使う
+  const isWaitlist = isWaitlistApplication(data);
   
   // テンプレート用のデータを準備（フィールド名をテンプレートの期待する形式に変換）
   const formData = {
@@ -1126,6 +1147,9 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   template.calculationResult = calculationResult;
   template.breakdownList = breakdownList; // 追加
   template.isMember = isMember;
+  template.isWaitlist = isWaitlist;
+  // キャンセル待ちの案内文で「ご希望の『◯◯』は満枠のため」と出すために使う
+  template.boothName = data.boothName || '';
   template.CONFIG = CONFIG;
   // 画像が登録できなかった場合、公式LINEでの送付をお願いする案内を出す
   template.imageUploadOk = !!data.profileImageUrl;
@@ -1159,12 +1183,32 @@ ${CONFIG.OFFICIAL_LINE_URL}
 `;
   }
 
+  // キャンセル待ちはHTML版に大きく出しているが、テキスト版しか読めない環境でも
+  // 「まだ確定ではない・振り込まない」が伝わるようにする
+  let waitlistMessage = '';
+  if (isWaitlist) {
+    waitlistMessage = `
+━━━━━━━━━━━━━━━━━━━━
+⚠️ 【重要】キャンセル待ちでの受付です
+━━━━━━━━━━━━━━━━━━━━
+ご希望の「${data.boothName}」は満枠のため、キャンセル待ちとしてお申し込みを承りました。
+
+・現時点では出展確定ではございません。
+・空きが出た場合のみ、お申し込み順に事務局よりご連絡いたします。
+・出展料のお振込みは、まだなさらないでください。
+　（出展が確定した際に、お振込先とお支払い期限を改めてご案内いたします）
+
+下記の金額は、出展が確定した場合のご請求予定額です。
+━━━━━━━━━━━━━━━━━━━━
+`;
+  }
+
   const textBody = `
 ${data.name} 様
 
 この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
 以下の内容でお申し込みを受け付けました。
-${imageMessage}
+${waitlistMessage}${imageMessage}
 ■ お申し込み内容
 お名前: ${data.name}
 ふりがな: ${data.furigana}
@@ -1175,7 +1219,7 @@ ${imageMessage}
 出展メニュー: ${data.menuName}
 
 ■ 料金
-合計: ¥${calculationResult.totalFee.toLocaleString()}
+${isWaitlist ? '確定時のご請求予定額' : '合計'}: ¥${calculationResult.totalFee.toLocaleString()}
 ${memberMessage}
 詳細はHTML版メールをご確認ください。
 
