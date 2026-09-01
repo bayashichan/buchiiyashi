@@ -440,53 +440,184 @@ function generateConfigJs(config) {
 }
 
 // GASデプロイ
+/**
+ * Apps Script プロジェクトへ反映するファイル。リポジトリ側を正とする。
+ *
+ * appsscript.json は意図的に含めない。マニフェストはWebアプリの公開設定
+ * （誰がアクセスできるか）を持っており、リポジトリのコピーにはそれが無い。
+ * 上書きすると公開URLが機能しなくなるため、Apps Script側のものをそのまま残す。
+ */
+const GAS_DEPLOY_FILES = [
+    { path: 'gas/code.gs', name: 'code', type: 'SERVER_JS' },
+    { path: 'gas/mail_template.html', name: 'mail_template', type: 'HTML' },
+    { path: 'gas/admin_mail_template.html', name: 'admin_mail_template', type: 'HTML' }
+];
+
+/**
+ * リポジトリの gas/ 配下を Apps Script プロジェクトへ反映し、Webアプリを更新する。
+ *
+ * 以前はバージョンを切るだけでコードを送っておらず、Apps Scriptエディタへ
+ * 手作業で貼り付ける必要があった。その手作業が、エディタで直接直した内容を
+ * 消してしまう事故につながっていた。
+ *
+ * 上書きの前に必ず現在のコードをバージョンとして退避するので、
+ * エディタ側の変更が入っていた場合もそのバージョンから復元できる。
+ */
 async function deployGas(env, corsHeaders) {
-    // Apps Script APIを使用してデプロイ
-    // サービスアカウント認証でアクセストークンを取得
-    const accessToken = await getGoogleAccessToken(env);
+    const scriptId = env.GAS_SCRIPT_ID;
+    const accessToken = await getGoogleAccessToken(env, GAS_DEPLOY_SCOPES);
 
-    // スクリプトの内容を取得
-    const scriptResponse = await fetch(
-        `https://script.googleapis.com/v1/projects/${env.GAS_SCRIPT_ID}/content`,
-        {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-            }
-        }
-    );
-
-    if (!scriptResponse.ok) {
-        const errorText = await scriptResponse.text();
-        throw new Error(`Apps Script API error: ${scriptResponse.status} ${errorText}`);
+    // 1. リポジトリの最新を取得
+    const repoFiles = [];
+    for (const file of GAS_DEPLOY_FILES) {
+        repoFiles.push({
+            name: file.name,
+            type: file.type,
+            source: await fetchRepoFile(env, file.path)
+        });
     }
 
-    // 新しいバージョンを作成（デプロイ）
-    const versionResponse = await fetch(
-        `https://script.googleapis.com/v1/projects/${env.GAS_SCRIPT_ID}/versions`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                description: '管理画面からデプロイ: ' + new Date().toISOString()
-            })
-        }
-    );
+    // 2. Apps Script 側の現在の内容
+    const current = await gasApi(accessToken, `projects/${scriptId}/content`);
+    const currentFiles = current.files || [];
+    const currentByName = new Map(currentFiles.map(f => [f.name, f]));
 
-    if (!versionResponse.ok) {
-        const errorText = await versionResponse.text();
-        throw new Error(`Version create failed: ${versionResponse.status} ${errorText}`);
+    // 3. 差分を出す。何が上書きされるのかを管理画面に返すため
+    const changedFiles = repoFiles
+        .filter(f => normalizeSource((currentByName.get(f.name) || {}).source) !== normalizeSource(f.source))
+        .map(f => f.name);
+
+    // Apps Script 側にしか無いファイル（エディタで直接追加されたもの）は消さずに残す
+    const keptFiles = currentFiles.filter(f => !repoFiles.some(r => r.name === f.name));
+
+    let backupVersion = null;
+
+    if (changedFiles.length > 0) {
+        // 4. 上書きの前に、いまのコードをバージョンとして退避する
+        backupVersion = await createGasVersion(accessToken, scriptId, '上書き前の自動バックアップ');
+
+        // 5. 内容を差し替え
+        await gasApi(accessToken, `projects/${scriptId}/content`, {
+            method: 'PUT',
+            body: { files: [...repoFiles, ...keptFiles] }
+        });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    // 6. 新しいバージョンを作成
+    const versionNumber = await createGasVersion(accessToken, scriptId, '管理画面からデプロイ');
+
+    // 7. Webアプリのデプロイを新しいバージョンへ向ける（/exec のURLは変わらない）
+    const deployments = await updateGasDeployments(accessToken, scriptId, versionNumber);
+
+    return new Response(JSON.stringify({
+        success: true,
+        changedFiles,
+        versionNumber,
+        backupVersion,
+        deployments,
+        // エディタ側で直接直した内容を上書きした可能性を管理画面で知らせるため
+        message: changedFiles.length > 0
+            ? `${changedFiles.join(', ')} を更新し、バージョン${versionNumber}として公開しました`
+            : `コードに変更はありませんでした。バージョン${versionNumber}として公開し直しました`
+    }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 }
 
+// リポジトリからファイルの中身を取得する（rawで受け取るのでBase64のデコードが不要）
+async function fetchRepoFile(env, path) {
+    const response = await fetch(
+        `https://api.github.com/repos/${env.GITHUB_REPO}/contents/${path}`,
+        {
+            headers: {
+                'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.raw',
+                'User-Agent': 'BuchiiyashiFesta-Admin'
+            }
+        }
+    );
+
+    if (!response.ok) {
+        throw new Error(`GitHubからの取得に失敗しました (${path}): ${response.status}`);
+    }
+    return await response.text();
+}
+
+// Apps Script API 呼び出しの共通処理
+async function gasApi(accessToken, path, options = {}) {
+    const method = options.method || 'GET';
+    const response = await fetch(`https://script.googleapis.com/v1/${path}`, {
+        method,
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            ...(options.body ? { 'Content-Type': 'application/json' } : {})
+        },
+        ...(options.body ? { body: JSON.stringify(options.body) } : {})
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Apps Script API ${method} ${path} が失敗しました: ${response.status} ${errorText}`);
+    }
+    return await response.json();
+}
+
+// 新しいバージョンを作成して、そのバージョン番号を返す
+async function createGasVersion(accessToken, scriptId, description) {
+    const version = await gasApi(accessToken, `projects/${scriptId}/versions`, {
+        method: 'POST',
+        body: { description: `${description}: ${new Date().toISOString()}` }
+    });
+    return version.versionNumber;
+}
+
+/**
+ * 既存のデプロイを新しいバージョンへ向ける。
+ *
+ * 既存のデプロイを更新するので /exec のURLは変わらない。
+ * バージョンを持たないHEAD（テスト用）デプロイは常に最新コードを返すため触らない。
+ */
+async function updateGasDeployments(accessToken, scriptId, versionNumber) {
+    const list = await gasApi(accessToken, `projects/${scriptId}/deployments`);
+    const results = [];
+
+    for (const deployment of (list.deployments || [])) {
+        const config = deployment.deploymentConfig || {};
+        if (config.versionNumber === undefined || config.versionNumber === null) continue;
+
+        try {
+            await gasApi(accessToken, `projects/${scriptId}/deployments/${deployment.deploymentId}`, {
+                method: 'PUT',
+                body: {
+                    deploymentConfig: {
+                        scriptId,
+                        versionNumber,
+                        manifestFileName: config.manifestFileName || 'appsscript',
+                        description: config.description || ''
+                    }
+                }
+            });
+            results.push({ deploymentId: deployment.deploymentId, updated: true });
+        } catch (error) {
+            // 1つ失敗しても他のデプロイの更新は続ける。結果は管理画面に出す
+            console.error(`Failed to update deployment ${deployment.deploymentId}:`, error);
+            results.push({ deploymentId: deployment.deploymentId, updated: false, error: error.message });
+        }
+    }
+
+    return results;
+}
+
+// 改行コードと末尾の空白の違いは差分とみなさない（Apps Script側で正規化されるため）
+function normalizeSource(source) {
+    return String(source || '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
+}
+
 // Googleアクセストークン取得（サービスアカウント）
-async function getGoogleAccessToken(env) {
+// デプロイの更新には script.projects だけでは足りず、script.deployments が要る
+const GAS_DEPLOY_SCOPES = 'https://www.googleapis.com/auth/script.projects https://www.googleapis.com/auth/script.deployments';
+
+async function getGoogleAccessToken(env, scopes) {
     const saKey = JSON.parse(atob(env.GOOGLE_SA_KEY));
 
     // JWT作成
@@ -494,7 +625,7 @@ async function getGoogleAccessToken(env) {
     const now = Math.floor(Date.now() / 1000);
     const payload = {
         iss: saKey.client_email,
-        scope: 'https://www.googleapis.com/auth/script.projects',
+        scope: scopes || 'https://www.googleapis.com/auth/script.projects',
         aud: 'https://oauth2.googleapis.com/token',
         iat: now,
         exp: now + 3600

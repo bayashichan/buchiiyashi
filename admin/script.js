@@ -642,8 +642,22 @@ async function deployGas() {
         const result = await response.json();
 
         if (result.success) {
-            statusEl.className = 'status success';
-            statusEl.textContent = '✅ GASデプロイ完了！';
+            const failed = (result.deployments || []).filter(d => !d.updated);
+            statusEl.className = failed.length > 0 ? 'status error' : 'status success';
+
+            // 何を上書きしたか・どのバージョンへ戻せるかが分からないと、
+            // Apps Scriptエディタ側の変更を消しても気づけない
+            const lines = [
+                failed.length > 0 ? '⚠️ コードは更新しましたが、公開の切り替えに失敗しました' : '✅ GASデプロイ完了！',
+                result.message || ''
+            ];
+            if (result.backupVersion) {
+                lines.push(`上書き前のコードはバージョン${result.backupVersion}として保存しました（Apps Scriptの「デプロイを管理」から復元できます）`);
+            }
+            failed.forEach(d => lines.push(`失敗: ${d.deploymentId} — ${d.error || '不明なエラー'}`));
+
+            statusEl.textContent = lines.filter(Boolean).join('\n');
+            statusEl.style.whiteSpace = 'pre-line';
         } else {
             throw new Error(result.error || 'Unknown error');
         }

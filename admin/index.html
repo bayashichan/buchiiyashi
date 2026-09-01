@@ -408,7 +408,10 @@
                 <hr>
                 <div class="deploy-section">
                     <h3>📜 GASスクリプト (code.gs)</h3>
-                    <p>Google Apps Scriptを最新版にデプロイします。</p>
+                    <p>GitHub上の <code>gas/</code>（code.gs・メールテンプレート2種）をApps Scriptへ反映し、
+                        新しいバージョンとして公開します。公開URLは変わりません。</p>
+                    <p class="hint">※Apps Scriptエディタで直接編集していた場合、その内容はGitHub側の内容で上書きされます。
+                        上書き前のコードは自動でバージョンとして保存されるので、Apps Scriptの「デプロイを管理」から復元できます。</p>
                     <button id="deployGasBtn" class="btn-primary">GASをデプロイ</button>
                     <div id="gasStatus" class="status"></div>
                 </div>
