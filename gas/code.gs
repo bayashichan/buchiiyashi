@@ -2346,7 +2346,11 @@ const SELF_UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/bayashichan/buch
  * 上書きすると公開URLが機能しなくなる。
  */
 const SELF_UPDATE_FILES = [
-  { path: 'gas/code.gs', name: 'code', type: 'SERVER_JS' },
+  // aliases は「Apps Script側で同じ役割のファイルが別名になっている場合」の受け皿。
+  // 名前が一致しないと既存ファイルを残したまま新しいファイルを作ってしまい、
+  // 同じ関数が二重定義になってプロジェクト全体がコンパイルできなくなる。
+  // 既定のスクリプト名は言語設定によって「コード」だったり「Code」だったりする。
+  { path: 'gas/code.gs', name: 'code', type: 'SERVER_JS', aliases: ['code', 'コード', 'Code'] },
   { path: 'gas/mail_template.html', name: 'mail_template', type: 'HTML' },
   { path: 'gas/admin_mail_template.html', name: 'admin_mail_template', type: 'HTML' }
 ];
@@ -2365,16 +2369,16 @@ function selfUpdateFromRepo(accessToken) {
   const scriptId = ScriptApp.getScriptId();
   const token = accessToken || ScriptApp.getOAuthToken();
 
-  // 1. リポジトリの最新を取得
+  // 1. 現在の内容
+  const current = scriptApi(token, `projects/${scriptId}/content`);
+  const currentFiles = current.files || [];
+
+  // 2. リポジトリの最新を取得。書き込み先の名前は既存ファイルに合わせる
   const repoFiles = SELF_UPDATE_FILES.map(file => ({
-    name: file.name,
+    name: resolveTargetFileName(currentFiles, file),
     type: file.type,
     source: fetchRepoSource(file.path)
   }));
-
-  // 2. 現在の内容
-  const current = scriptApi(token, `projects/${scriptId}/content`);
-  const currentFiles = current.files || [];
 
   // 3. 差分。何が上書きされるのかを管理画面に返すため
   const changedFiles = repoFiles.filter(file => {
@@ -2384,6 +2388,16 @@ function selfUpdateFromRepo(accessToken) {
 
   // Apps Script側にしか無いファイル（エディタで直接追加されたもの）は消さずに残す
   const keptFiles = currentFiles.filter(f => !repoFiles.some(r => r.name === f.name));
+
+  // 残すファイルの中に doPost を持つものがあると、書き込むcode.gsと二重定義になり
+  // プロジェクト全体がコンパイルできなくなる。上書きする前に止める
+  const duplicated = keptFiles.filter(f => f.type === 'SERVER_JS' && /function\s+doPost\s*\(/.test(f.source || ''));
+  if (duplicated.length > 0) {
+    throw new Error(
+      `「${duplicated.map(f => f.name + '.gs').join('、')}」にも doPost があり、二重定義になるため中断しました。`
+      + 'Apps Scriptエディタで不要な方を削除してから、もう一度お試しください。'
+    );
+  }
 
   let backupVersion = null;
 
@@ -2414,6 +2428,24 @@ function selfUpdateFromRepo(accessToken) {
       ? `${changedFiles.join(', ')} を更新し、バージョン${versionNumber}として公開しました`
       : `コードに変更はありませんでした。バージョン${versionNumber}として公開し直しました`
   };
+}
+
+/**
+ * 書き込み先のファイル名を決める。
+ *
+ * 既定のスクリプト名は言語設定によって変わる（日本語なら「コード」）。
+ * 名前が違うまま書き込むと、既存ファイルを残したまま別名のファイルを作ってしまい、
+ * 同じ関数が二重定義になってプロジェクト全体がコンパイルできなくなる。
+ * 同じ役割のファイルが既にあるなら、その名前をそのまま使う。
+ */
+function resolveTargetFileName(currentFiles, file) {
+  const candidates = file.aliases || [file.name];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const existing = currentFiles.filter(f => f.name === candidates[i])[0];
+    if (existing) return existing.name;
+  }
+  return file.name;
 }
 
 /**
