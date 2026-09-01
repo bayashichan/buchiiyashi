@@ -464,6 +464,15 @@ const GAS_DEPLOY_FILES = [
  * エディタ側の変更が入っていた場合もそのバージョンから復元できる。
  */
 async function deployGas(env, corsHeaders) {
+    try {
+        return await runGasDeploy(env, corsHeaders);
+    } catch (error) {
+        // 生のAPIレスポンスのままでは何をすればいいか分からないので、対処を添えて投げ直す
+        throw explainGasApiError(error, getServiceAccountEmail(env));
+    }
+}
+
+async function runGasDeploy(env, corsHeaders) {
     const scriptId = env.GAS_SCRIPT_ID;
     const accessToken = await getGoogleAccessToken(env, GAS_DEPLOY_SCOPES);
 
@@ -522,6 +531,48 @@ async function deployGas(env, corsHeaders) {
     }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
+}
+
+/**
+ * Apps Script API のエラーに、管理者が取るべき対処を添える。
+ *
+ * Apps Script API はアカウントごとの有効化が必要で、無効だと書き込み系だけが
+ * 403 を返す（読み取りは通る）。生のJSONだけでは原因にたどり着けないため、
+ * どのアカウントで呼んでいるかと、どこを設定すればよいかを示す。
+ */
+function explainGasApiError(error, serviceAccountEmail) {
+    const message = String(error && error.message || error);
+
+    if (message.includes('has not enabled the Apps Script API')) {
+        return new Error(
+            'Apps Script API が有効になっていないため、デプロイできませんでした。\n'
+            + `呼び出しているアカウント: ${serviceAccountEmail || '（取得できませんでした）'}\n`
+            + 'https://script.google.com/home/usersettings を開き「Google Apps Script API」をオンにしてください。\n'
+            + '（反映まで数分かかることがあります）\n'
+            + '※Apps Script側のコードは書き換わっていません。'
+        );
+    }
+
+    if (message.includes(': 403')) {
+        return new Error(
+            'Apps Scriptプロジェクトへの権限がありません。\n'
+            + `呼び出しているアカウント: ${serviceAccountEmail || '（取得できませんでした）'}\n`
+            + 'このアカウントをApps Scriptプロジェクトの編集者として共有してください。\n'
+            + '※Apps Script側のコードは書き換わっていません。\n\n'
+            + message
+        );
+    }
+
+    return error;
+}
+
+// サービスアカウントのメールアドレス（識別子であって秘密情報ではない）。エラー表示用
+function getServiceAccountEmail(env) {
+    try {
+        return JSON.parse(atob(env.GOOGLE_SA_KEY)).client_email;
+    } catch (e) {
+        return '';
+    }
 }
 
 // リポジトリからファイルの中身を取得する（rawで受け取るのでBase64のデコードが不要）

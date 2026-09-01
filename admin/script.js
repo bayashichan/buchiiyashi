@@ -664,6 +664,8 @@ async function deployGas() {
     } catch (error) {
         console.error('Deploy GAS error:', error);
         statusEl.className = 'status error';
+        // 対処が複数行で返ってくるので、そのまま読める形で表示する
+        statusEl.style.whiteSpace = 'pre-line';
         statusEl.textContent = `❌ エラー: ${error.message}`;
     } finally {
         hideLoading();
