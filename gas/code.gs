@@ -1283,6 +1283,12 @@ function resendConfirmationEmails(spreadsheetId, rowIds, testEmail) {
           throw new Error(`メールアドレスの形式が正しくありません: ${data.email}`);
         }
 
+        // ブース名が定義と一致しないと boothId を復元できず、確認メール側の料金計算が
+        // "Invalid Booth ID" で落ちる。どの行のどのブース名が問題なのかを分かるようにする。
+        if (!data.boothId) {
+          throw new Error(`出展ブース「${data.boothName || '（空欄）'}」がブース定義（CONFIG.BOOTHS）と一致しません`);
+        }
+
         const calculationResult = rebuildCalculationResult(data);
         const recipient = override || data.email;
         sendConfirmationEmail(data, calculationResult, recipient);
@@ -1337,7 +1343,7 @@ function buildApplicationDataFromRow(headers, row) {
   // 「あり」「はい」といった保存済みの表示文字列を、フォームが送ってくる '1' / '0' に戻す
   const flag = (name, trueLabel) => cell(name) === trueLabel ? '1' : '0';
 
-  return {
+  const data = {
     submittedAt: cell('申込日時'),
     name: cell('氏名'),
     furigana: cell('フリガナ'),
@@ -1349,6 +1355,9 @@ function buildApplicationDataFromRow(headers, row) {
     category: cell('出展カテゴリ'),
     exhibitorName: cell('出展名'),
     specialtyGenres: cell('得意ジャンル'),
+    // 申込フォームは boothId を送ってくるが、シートにはブース名しか残っていない。
+    // 申込時と同じ形で渡せるよう、ブース定義から逆引きする。
+    boothId: findBoothIdByName(cell('出展ブース')),
     boothName: cell('出展ブース'),
     equipment: cell('ボディーブース持ち込み物品'),
     menuName: cell('出展メニュー'),
@@ -1374,51 +1383,92 @@ function buildApplicationDataFromRow(headers, row) {
     lineDisplayName: cell('LINE表示名'),
     recordedTotalFee: toNumber(cell('合計金額'))
   };
+
+  // 早割の適用有無も保存されていないため、逆算したブース料が早割価格と一致するかで判定する
+  data.isEarlyBird = inferEarlyBird(data) ? '1' : '0';
+
+  return data;
 }
 
 /**
  * 再送用に料金内訳を組み立て直す。
- *
- * 早割の適用有無やブースIDはシートに残っていないため、確定額であるシートの合計金額を正とし、
- * ブース料は「合計 − オプション計」で逆算する。こうすると申込時に案内した金額と必ず一致する。
  */
 function rebuildCalculationResult(data) {
-  const isMember = data.isMember === '1';
-  const extraStaff = parseInt(data.extraStaff || 0, 10) || 0;
-  const extraChairs = parseInt(data.extraChairs || 0, 10) || 0;
-  const partyCount = parseInt(data.partyCount || 0, 10) || 0;
+  const options = buildOptionFees(data);
+  const boothFee = deriveBoothFee(data);
 
-  const breakdown = {
-    booth: 0,
-    staff: extraStaff * CONFIG.UNIT_PRICES.staff,
-    chairs: extraChairs * CONFIG.UNIT_PRICES.chair,
-    power: data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0,
-    party: partyCount * CONFIG.UNIT_PRICES.party,
-    memberDiscount: isMember ? -CONFIG.MEMBER_DISCOUNT : 0
+  return {
+    totalFee: boothFee + options.total,
+    breakdown: {
+      booth: boothFee,
+      staff: options.staff,
+      chairs: options.chairs,
+      power: options.power,
+      party: options.party,
+      memberDiscount: options.memberDiscount
+    }
   };
-
-  const optionTotal = breakdown.staff + breakdown.chairs + breakdown.power + breakdown.party + breakdown.memberDiscount;
-  const recordedTotalFee = parseInt(data.recordedTotalFee || 0, 10) || 0;
-
-  if (recordedTotalFee > 0) {
-    breakdown.booth = recordedTotalFee - optionTotal;
-    return { totalFee: recordedTotalFee, breakdown: breakdown };
-  }
-
-  // 合計金額が空の行（手入力の行など）はブース名から通常価格を引いて計算する
-  breakdown.booth = findBoothPriceByName(data.boothName);
-  return { totalFee: breakdown.booth + optionTotal, breakdown: breakdown };
 }
 
-// ブース名（シートに保存されている表示名）から通常価格を引く。見つからなければ0。
-function findBoothPriceByName(boothName) {
+// シートに残っている項目だけでオプション料金を積み直す
+function buildOptionFees(data) {
+  const staff = (parseInt(data.extraStaff || 0, 10) || 0) * CONFIG.UNIT_PRICES.staff;
+  const chairs = (parseInt(data.extraChairs || 0, 10) || 0) * CONFIG.UNIT_PRICES.chair;
+  const power = data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0;
+  const party = (parseInt(data.partyCount || 0, 10) || 0) * CONFIG.UNIT_PRICES.party;
+  const memberDiscount = data.isMember === '1' ? -CONFIG.MEMBER_DISCOUNT : 0;
+
+  return {
+    staff: staff,
+    chairs: chairs,
+    power: power,
+    party: party,
+    memberDiscount: memberDiscount,
+    total: staff + chairs + power + party + memberDiscount
+  };
+}
+
+/**
+ * ブース料を求める。
+ *
+ * 早割の適用有無は保存されていないため、確定額であるシートの合計金額を正とし、
+ * 「合計 − オプション計」で逆算する。こうすると申込時に案内した金額と必ず一致する。
+ * 合計金額が空の行（手入力の行など）だけ、ブース定義の通常価格にフォールバックする。
+ */
+function deriveBoothFee(data) {
+  const recordedTotalFee = parseInt(data.recordedTotalFee || 0, 10) || 0;
+  if (recordedTotalFee > 0) {
+    return recordedTotalFee - buildOptionFees(data).total;
+  }
+
+  const booth = CONFIG.BOOTHS[data.boothId];
+  return booth ? booth.regular : 0;
+}
+
+/**
+ * 早割が適用されていたかを、逆算したブース料から判定する。
+ *
+ * 会員は早割適用外（calculatePrice と同じ扱い）。早割価格と通常価格が同額のブースは
+ * どちらでも結果が変わらないため false を返す。
+ */
+function inferEarlyBird(data) {
+  const booth = CONFIG.BOOTHS[data.boothId];
+  if (!booth) return false;
+  if (data.isMember === '1') return false;
+  if (booth.earlyBird === booth.regular) return false;
+
+  return deriveBoothFee(data) === booth.earlyBird;
+}
+
+// ブース名（シートに保存されている表示名）からブースIDを逆引きする。見つからなければ空文字。
+function findBoothIdByName(boothName) {
   const target = String(boothName || '').trim();
-  if (!target) return 0;
+  if (!target) return '';
 
   for (const key in CONFIG.BOOTHS) {
-    if (CONFIG.BOOTHS[key].name === target) return CONFIG.BOOTHS[key].regular;
+    if (CONFIG.BOOTHS[key].name === target) return key;
   }
-  return 0;
+  return '';
 }
 
 // "¥30,000" や "3,000円" のような表示文字列から数値を取り出す
