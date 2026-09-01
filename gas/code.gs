@@ -535,6 +535,14 @@ function doPost(e) {
       const result = combinePresentationsCleanup(params.targetId);
       return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
     }
+
+    // 申込時自動返信メールの再送アクション（管理画面用）
+    if (params.action === 'resend_confirmation_email') {
+      const result = resendConfirmationEmails(params.spreadsheetId, params.rowIds, params.testEmail);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
     // 画像アップロード処理
     // 画像の失敗で申込ごと落とさない。Drive保存に失敗しても申込は受け付け、
@@ -1058,8 +1066,13 @@ ${data.notes || 'なし'}
   });
 }
 
-// 申込者へ確認メール送信
-function sendConfirmationEmail(data, calculationResult) {
+/**
+ * 申込者へ確認メールを送る。
+ *
+ * recipientOverride は管理画面からのテスト再送用。指定した場合も本文はそのままに、
+ * 宛先だけを差し替える（申込者に届かない状態で内容を確認できるようにする）。
+ */
+function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   // 会員かどうか
   const isMember = data.isMember === '1';
   
@@ -1174,11 +1187,248 @@ Email: ${CONFIG.REPLY_TO_EMAIL}
   // メール送信
   const subject = `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
   
-  GmailApp.sendEmail(data.email, subject, textBody, {
+  const recipient = recipientOverride || data.email;
+
+  GmailApp.sendEmail(recipient, subject, textBody, {
     name: 'ぶち癒やしフェスタin東京事務局',
     replyTo: CONFIG.REPLY_TO_EMAIL,
     htmlBody: htmlBody
   });
+}
+
+// ========================================
+// 確認メールの再送（管理画面用）
+// ========================================
+
+// 1回のリクエストで再送できる上限。doPost のロックを長時間握らないための保険。
+const RESEND_MAX_PER_REQUEST = 20;
+
+/**
+ * スプレッドシートの申込行をもとに、申込時と同じ確認メールを再送する。
+ *
+ * 申込フォームから届いた生データは残っていないため、シートに保存された内容から
+ * data / calculationResult を組み立て直して sendConfirmationEmail に渡す。
+ *
+ * @param {string} spreadsheetId 対象スプレッドシートID（省略時は CONFIG.SPREADSHEET_ID）
+ * @param {Array<number>} rowIds getExhibitorList が返す id（＝シートの行インデックス）
+ * @param {string} testEmail 指定するとこのアドレスへ送る（申込者には届かない）
+ * @return {{success: boolean, results: Array}}
+ */
+function resendConfirmationEmails(spreadsheetId, rowIds, testEmail) {
+  try {
+    const targets = (rowIds || [])
+      .map(id => parseInt(id, 10))
+      .filter(id => Number.isFinite(id) && id > 0);
+
+    if (targets.length === 0) {
+      return { success: false, error: '再送する出展者が選択されていません', results: [] };
+    }
+    if (targets.length > RESEND_MAX_PER_REQUEST) {
+      return {
+        success: false,
+        error: `一度に再送できるのは${RESEND_MAX_PER_REQUEST}件までです（${targets.length}件が指定されました）`,
+        results: []
+      };
+    }
+
+    const override = String(testEmail || '').trim();
+    if (override && !isValidEmail(override)) {
+      return { success: false, error: `テスト送信先のメールアドレスが正しくありません: ${override}`, results: [] };
+    }
+
+    // 送信途中で日次上限に当たると「一部だけ届いた」状態になるため、先に残数を確認する
+    let remainingQuota = null;
+    try {
+      remainingQuota = MailApp.getRemainingDailyQuota();
+    } catch (quotaError) {
+      console.warn('Failed to read mail quota: ' + quotaError.message);
+    }
+    if (remainingQuota !== null && remainingQuota < targets.length) {
+      return {
+        success: false,
+        error: `本日の送信可能数が足りません（残り${remainingQuota}件 / 再送${targets.length}件）。時間をおいて再度お試しください。`,
+        results: []
+      };
+    }
+
+    const ss = SpreadsheetApp.openById(spreadsheetId || CONFIG.SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    if (!sheet) {
+      return { success: false, error: 'シートが見つかりません', results: [] };
+    }
+
+    // 表示どおりの文字列で扱う（郵便番号の先頭0や日時の書式をそのまま再現するため）
+    const values = sheet.getDataRange().getDisplayValues();
+    if (values.length <= 1) {
+      return { success: false, error: '申込データがありません', results: [] };
+    }
+
+    const headers = values[0].map(h => String(h).trim());
+    const results = [];
+
+    targets.forEach(rowId => {
+      let exhibitorName = '';
+      try {
+        if (rowId >= values.length) {
+          throw new Error('該当する申込データが見つかりません（一覧を読み込み直してください）');
+        }
+
+        const data = buildApplicationDataFromRow(headers, values[rowId]);
+        exhibitorName = data.exhibitorName || data.name || `${rowId}行目`;
+
+        if (!data.email) {
+          throw new Error('メールアドレスが登録されていません');
+        }
+        if (!override && !isValidEmail(data.email)) {
+          throw new Error(`メールアドレスの形式が正しくありません: ${data.email}`);
+        }
+
+        const calculationResult = rebuildCalculationResult(data);
+        const recipient = override || data.email;
+        sendConfirmationEmail(data, calculationResult, recipient);
+
+        results.push({
+          rowId: rowId,
+          exhibitorName: exhibitorName,
+          registeredEmail: data.email,
+          sentTo: recipient,
+          isTest: !!override,
+          success: true
+        });
+      } catch (rowError) {
+        console.error(`Resend failed for row ${rowId}:`, rowError);
+        results.push({
+          rowId: rowId,
+          exhibitorName: exhibitorName,
+          success: false,
+          error: rowError.message
+        });
+      }
+    });
+
+    return {
+      success: true,
+      total: results.length,
+      succeeded: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results: results
+    };
+
+  } catch (error) {
+    console.error('resendConfirmationEmails error:', error);
+    return { success: false, error: error.message, results: [] };
+  }
+}
+
+/**
+ * シート1行分の値を、申込フォームから届く data と同じ形に戻す。
+ *
+ * 列の並びはイベント用（座席番号あり）とマスターDB用（開催回あり）で異なるので、
+ * 位置ではなく見出し名で引く。
+ */
+function buildApplicationDataFromRow(headers, row) {
+  const cell = (name) => {
+    const idx = headers.indexOf(name);
+    if (idx < 0 || idx >= row.length) return '';
+    const val = row[idx];
+    return val !== undefined && val !== null ? String(val).trim() : '';
+  };
+
+  // 「あり」「はい」といった保存済みの表示文字列を、フォームが送ってくる '1' / '0' に戻す
+  const flag = (name, trueLabel) => cell(name) === trueLabel ? '1' : '0';
+
+  return {
+    submittedAt: cell('申込日時'),
+    name: cell('氏名'),
+    furigana: cell('フリガナ'),
+    email: cell('メールアドレス'),
+    phoneNumber: cell('電話番号'),
+    postalCode: cell('郵便番号'),
+    address: cell('住所'),
+    isMember: flag('協会会員', 'はい'),
+    category: cell('出展カテゴリ'),
+    exhibitorName: cell('出展名'),
+    specialtyGenres: cell('得意ジャンル'),
+    boothName: cell('出展ブース'),
+    equipment: cell('ボディーブース持ち込み物品'),
+    menuName: cell('出展メニュー'),
+    advanceReservation: cell('事前予約') || '不可',
+    selfIntro: cell('自己紹介'),
+    shortPR: cell('一言PR'),
+    photoPermission: cell('写真掲載可否'),
+    profileImageUrl: cell('プロフィール写真'),
+    // シートには "Instagram: https://..." の形で入っているので、
+    // sendConfirmationEmail が期待するJSON文字列へ戻す
+    snsLinks: JSON.stringify(parseSnsLinks(cell('SNS'))),
+    extraStaff: toNumber(cell('参加人数追加オプション')),
+    extraChairs: toNumber(cell('椅子追加')),
+    usePower: flag('コンセント', 'あり'),
+    stampRallyPrize: cell('景品提供') || 'ない',
+    prizeContent: cell('景品内容'),
+    partyAttend: cell('懇親会出欠') || '欠席',
+    partyCount: toNumber(cell('懇親会人数')),
+    secondaryPartyAttend: cell('二次会出欠') || '欠席',
+    secondaryPartyCount: toNumber(cell('二次会人数')),
+    notes: cell('備考・質問'),
+    lineUserId: cell('LINEユーザーID'),
+    lineDisplayName: cell('LINE表示名'),
+    recordedTotalFee: toNumber(cell('合計金額'))
+  };
+}
+
+/**
+ * 再送用に料金内訳を組み立て直す。
+ *
+ * 早割の適用有無やブースIDはシートに残っていないため、確定額であるシートの合計金額を正とし、
+ * ブース料は「合計 − オプション計」で逆算する。こうすると申込時に案内した金額と必ず一致する。
+ */
+function rebuildCalculationResult(data) {
+  const isMember = data.isMember === '1';
+  const extraStaff = parseInt(data.extraStaff || 0, 10) || 0;
+  const extraChairs = parseInt(data.extraChairs || 0, 10) || 0;
+  const partyCount = parseInt(data.partyCount || 0, 10) || 0;
+
+  const breakdown = {
+    booth: 0,
+    staff: extraStaff * CONFIG.UNIT_PRICES.staff,
+    chairs: extraChairs * CONFIG.UNIT_PRICES.chair,
+    power: data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0,
+    party: partyCount * CONFIG.UNIT_PRICES.party,
+    memberDiscount: isMember ? -CONFIG.MEMBER_DISCOUNT : 0
+  };
+
+  const optionTotal = breakdown.staff + breakdown.chairs + breakdown.power + breakdown.party + breakdown.memberDiscount;
+  const recordedTotalFee = parseInt(data.recordedTotalFee || 0, 10) || 0;
+
+  if (recordedTotalFee > 0) {
+    breakdown.booth = recordedTotalFee - optionTotal;
+    return { totalFee: recordedTotalFee, breakdown: breakdown };
+  }
+
+  // 合計金額が空の行（手入力の行など）はブース名から通常価格を引いて計算する
+  breakdown.booth = findBoothPriceByName(data.boothName);
+  return { totalFee: breakdown.booth + optionTotal, breakdown: breakdown };
+}
+
+// ブース名（シートに保存されている表示名）から通常価格を引く。見つからなければ0。
+function findBoothPriceByName(boothName) {
+  const target = String(boothName || '').trim();
+  if (!target) return 0;
+
+  for (const key in CONFIG.BOOTHS) {
+    if (CONFIG.BOOTHS[key].name === target) return CONFIG.BOOTHS[key].regular;
+  }
+  return 0;
+}
+
+// "¥30,000" や "3,000円" のような表示文字列から数値を取り出す
+function toNumber(value) {
+  const num = parseInt(String(value || '').replace(/[^0-9-]/g, ''), 10);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
 // ========================================

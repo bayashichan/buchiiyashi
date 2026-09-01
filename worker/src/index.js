@@ -106,6 +106,12 @@ async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
             return await getImageFolders(env, corsHeaders);
         }
 
+        // POST /api/admin/resend-confirmation - 申込時自動返信メールの再送
+        if (url.pathname === '/api/admin/resend-confirmation' && request.method === 'POST') {
+            const body = await request.json();
+            return await resendConfirmation(env, body, corsHeaders);
+        }
+
         // POST /api/admin/generate-image - 画像生成
         if (url.pathname === '/api/admin/generate-image' && request.method === 'POST') {
             const body = await request.json();
@@ -717,6 +723,42 @@ async function generateBatchImages(env, body, corsHeaders) {
         });
     } catch (error) {
         console.error('Generate batch images error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// 申込時自動返信メールの再送（GASへ中継）
+async function resendConfirmation(env, body, corsHeaders) {
+    try {
+        const { spreadsheetId, rowIds, testEmail } = body;
+
+        if (!Array.isArray(rowIds) || rowIds.length === 0) {
+            return new Response(JSON.stringify({ error: 'rowIds is required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const response = await fetch(env.GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'resend_confirmation_email',
+                spreadsheetId: spreadsheetId || '',
+                rowIds,
+                testEmail: testEmail || ''
+            })
+        });
+
+        const result = await response.json();
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Resend confirmation error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }

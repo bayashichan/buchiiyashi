@@ -81,6 +81,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // 確認ページURLコピー
     document.getElementById('copyConfirmUrlBtn')?.addEventListener('click', copyConfirmUrl);
 
+    // 申込時自動返信メールの再送
+    document.getElementById('loadResendExhibitorsBtn')?.addEventListener('click', loadExhibitors);
+    document.getElementById('resendFilter')?.addEventListener('input', renderResendExhibitorList);
+    document.getElementById('selectAllResendExhibitors')?.addEventListener('change', toggleAllResendExhibitors);
+    document.getElementById('resendConfirmationBtn')?.addEventListener('click', resendConfirmationEmails);
+
     // プレースホルダーボタン
     document.querySelectorAll('.placeholder-btn').forEach(btn => {
         btn.addEventListener('click', () => insertPlaceholder(btn.dataset.tag));
@@ -683,8 +689,11 @@ async function loadExhibitors() {
 
         if (result.success && result.exhibitors) {
             exhibitors = result.exhibitors;
+            // 行番号をIDに使っているため、読み込み直したら選択はリセットする
+            resendSelectedIds = new Set();
             renderExhibitorList();
             updateExhibitorSelect();
+            renderResendExhibitorList();
         } else {
             alert('出展者一覧の取得に失敗しました: ' + (result.error || '不明なエラー'));
         }
@@ -1468,4 +1477,199 @@ async function copyConfirmUrl() {
     } catch (err) {
         alert('コピーに失敗しました: ' + err.message);
     }
+}
+
+// ========================================
+// 申込時自動返信メールの再送
+// ========================================
+
+// 1リクエストあたりの件数。GAS側の上限(20件)より小さくして、進捗を細かく出す。
+const RESEND_CHUNK_SIZE = 5;
+
+// 絞り込みで非表示になっても選択を保つため、IDはSetで持つ
+let resendSelectedIds = new Set();
+
+// 再送タブの出展者一覧を描画（絞り込み条件に一致するものだけ表示）
+function renderResendExhibitorList() {
+    const container = document.getElementById('resendExhibitorList');
+    const selectAllContainer = document.getElementById('resendSelectAllContainer');
+    if (!container) return;
+
+    if (exhibitors.length === 0) {
+        container.innerHTML = '<p class="hint">出展者データがありません</p>';
+        if (selectAllContainer) selectAllContainer.style.display = 'none';
+        return;
+    }
+
+    const keyword = (document.getElementById('resendFilter')?.value || '').trim().toLowerCase();
+    const visible = keyword
+        ? exhibitors.filter(ex => [ex.exhibitorName, ex.name, ex.email]
+            .some(v => (v || '').toLowerCase().includes(keyword)))
+        : exhibitors;
+
+    if (selectAllContainer) selectAllContainer.style.display = 'flex';
+
+    if (visible.length === 0) {
+        container.innerHTML = '<p class="hint">絞り込み条件に一致する出展者がいません</p>';
+        updateResendSelectedCount();
+        return;
+    }
+
+    container.innerHTML = visible.map(ex => {
+        const checked = resendSelectedIds.has(ex.id) ? 'checked' : '';
+        // メールアドレスがない行は選べないようにする（送っても必ず失敗するため）
+        const disabled = ex.email ? '' : 'disabled';
+        const emailLabel = ex.email
+            ? escapeHtml(ex.email)
+            : '<span style="color:#c53030;">メールアドレス未登録</span>';
+
+        return `
+        <label class="exhibitor-item">
+            <input type="checkbox" name="resendExhibitor" value="${ex.id}" ${checked} ${disabled}
+                onchange="toggleResendExhibitor(${ex.id}, this.checked)">
+            <span class="exhibitor-name">${escapeHtml(ex.exhibitorName)}</span>
+            <span class="exhibitor-seat">${escapeHtml(ex.name || '')} / ${emailLabel}</span>
+        </label>`;
+    }).join('');
+
+    updateResendSelectedCount();
+}
+
+// チェックボックスの操作を選択状態へ反映
+window.toggleResendExhibitor = function (id, checked) {
+    if (checked) {
+        resendSelectedIds.add(id);
+    } else {
+        resendSelectedIds.delete(id);
+    }
+    updateResendSelectedCount();
+};
+
+// 表示中の出展者をまとめて選択／解除
+function toggleAllResendExhibitors(e) {
+    const isChecked = e.target.checked;
+    document.querySelectorAll('#resendExhibitorList input[name="resendExhibitor"]').forEach(cb => {
+        if (cb.disabled) return;
+        cb.checked = isChecked;
+        toggleResendExhibitor(parseInt(cb.value, 10), isChecked);
+    });
+}
+
+function updateResendSelectedCount() {
+    const countEl = document.getElementById('resendSelectedCount');
+    if (countEl) countEl.textContent = `${resendSelectedIds.size}名を選択中`;
+}
+
+// 選択した出展者へ確認メールを再送
+async function resendConfirmationEmails() {
+    const statusEl = document.getElementById('resendStatus');
+    const resultsEl = document.getElementById('resendResults');
+    const targets = exhibitors.filter(ex => resendSelectedIds.has(ex.id));
+
+    if (targets.length === 0) {
+        alert('再送する出展者を選択してください');
+        return;
+    }
+
+    const testEmail = (document.getElementById('resendTestEmail')?.value || '').trim();
+    if (testEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+        alert('テスト送信先のメールアドレスの形式が正しくありません');
+        return;
+    }
+
+    // 出展者本人へ届くので、送信前に必ず宛先と件数を確認してもらう
+    const destination = testEmail
+        ? `テスト送信先（${testEmail}）`
+        : '出展者ご本人のメールアドレス';
+    const names = targets.slice(0, 10).map(ex => `・${ex.exhibitorName}`).join('\n');
+    const more = targets.length > 10 ? `\n…ほか${targets.length - 10}名` : '';
+    if (!confirm(`${targets.length}名分の申込時自動返信メールを${destination}へ再送します。\n\n${names}${more}\n\nよろしいですか？`)) {
+        return;
+    }
+
+    const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value || '';
+    const allResults = [];
+    let sent = 0;
+
+    showLoading();
+    statusEl.className = 'status loading';
+    statusEl.textContent = `送信中... (0/${targets.length})`;
+    resultsEl.innerHTML = '';
+
+    try {
+        // GAS側のロックを長く握らないよう、小分けにして送る
+        for (let i = 0; i < targets.length; i += RESEND_CHUNK_SIZE) {
+            const chunk = targets.slice(i, i + RESEND_CHUNK_SIZE);
+
+            const response = await fetch(`${API_BASE}/api/admin/resend-confirmation`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    spreadsheetId,
+                    rowIds: chunk.map(ex => ex.id),
+                    testEmail
+                })
+            });
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || '不明なエラー');
+            }
+
+            allResults.push(...(result.results || []));
+            sent += chunk.length;
+            statusEl.textContent = `送信中... (${sent}/${targets.length})`;
+        }
+
+        const succeeded = allResults.filter(r => r.success).length;
+        const failed = allResults.length - succeeded;
+
+        statusEl.className = failed > 0 ? 'status error' : 'status success';
+        statusEl.textContent = failed > 0
+            ? `⚠️ ${succeeded}件を再送しました（${failed}件は失敗）`
+            : `✅ ${succeeded}件の再送が完了しました${testEmail ? `（テスト送信先: ${testEmail}）` : ''}`;
+
+        renderResendResults(allResults);
+
+    } catch (error) {
+        console.error('Resend confirmation error:', error);
+        statusEl.className = 'status error';
+        // 途中まで送れている可能性があるので、成功分も残して表示する
+        statusEl.textContent = `❌ エラー: ${error.message}（${allResults.filter(r => r.success).length}件は送信済み）`;
+        renderResendResults(allResults);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 再送結果の一覧を表示
+function renderResendResults(results) {
+    const resultsEl = document.getElementById('resendResults');
+    if (!resultsEl) return;
+
+    if (!results || results.length === 0) {
+        resultsEl.innerHTML = '';
+        return;
+    }
+
+    resultsEl.innerHTML = `
+        <div class="exhibitor-list">
+            ${results.map(r => `
+            <div class="exhibitor-item">
+                <span>${r.success ? '✅' : '❌'}</span>
+                <span class="exhibitor-name">${escapeHtml(r.exhibitorName || `${r.rowId}行目`)}</span>
+                <span class="exhibitor-seat">${r.success
+                    ? escapeHtml(r.sentTo || '') + (r.isTest ? '（テスト送信）' : '')
+                    : escapeHtml(r.error || '送信できませんでした')}</span>
+            </div>`).join('')}
+        </div>`;
 }
