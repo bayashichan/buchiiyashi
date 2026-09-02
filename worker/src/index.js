@@ -40,7 +40,7 @@ export default {
 
         // 公開用確認データ取得API
         if (url.pathname === '/api/public/exhibitor-data' && request.method === 'GET') {
-            return handlePublicExhibitorData(request, env, corsHeaders, url);
+            return handlePublicExhibitorData(request, env, corsHeaders, url, ctx);
         }
 
         // 既存のフォーム送信処理
@@ -238,8 +238,8 @@ function verifyAuth(request, env) {
     return { success: false };
 }
 
-// 設定取得（GitHubからconfig.json読み込み）
-async function getConfig(env, corsHeaders) {
+// 設定取得（GitHubからconfig.jsonを読み、オブジェクトで返す）
+async function fetchConfigObject(env) {
     const response = await fetch(
         `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.json`,
         {
@@ -255,8 +255,12 @@ async function getConfig(env, corsHeaders) {
         throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    const configJson = await response.text();
-    const config = JSON.parse(configJson);
+    return JSON.parse(await response.text());
+}
+
+// 設定取得（管理APIのレスポンス用）
+async function getConfig(env, corsHeaders) {
+    const config = await fetchConfigObject(env);
 
     return new Response(JSON.stringify(config), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -1282,41 +1286,66 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
 /**
  * 公開用確認データ取得（個人情報を除外）
  */
-async function handlePublicExhibitorData(request, env, corsHeaders, url) {
+async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
+    // 中身が変わることは稀なので、エッジキャッシュを挟んで毎回GASを叩かないようにする。
+    // 修正直後に確認したい場合は ?nocache=1 を付ければ素通しできる。
+    const bypassCache = url.searchParams.get('nocache') === '1';
+    const cache = caches.default;
+    const cacheKey = publicExhibitorCacheKey(url);
+
+    if (!bypassCache) {
+        const hit = await cache.match(cacheKey);
+        if (hit) return hit;
+    }
+
     try {
         const spreadsheetId = url.searchParams.get('sid');
-        
-        // 1. 設定を取得 (GitHubから)
-        const configResponse = await getConfig(env, corsHeaders);
-        const config = await configResponse.json();
-        
-        // 2. 出展者一覧を取得 (GASから)
-        const gasUrl = new URL(env.GAS_URL);
-        gasUrl.searchParams.append('action', 'get_exhibitors');
-        if (spreadsheetId) {
-            gasUrl.searchParams.append('spreadsheetId', spreadsheetId);
-        } else if (config.currentSpreadsheetId) {
-            gasUrl.searchParams.append('spreadsheetId', config.currentSpreadsheetId);
-        }
+        const folderIdParam = url.searchParams.get('folderId');
 
-        const exhibitorsRes = await fetch(gasUrl.toString(), { redirect: 'follow' });
-        const exhibitorsData = await exhibitorsRes.json();
+        // 1. 設定を取得 (GitHubから)
+        const configPromise = fetchConfigObject(env);
+
+        // 2/3. 出展者一覧と画像フォルダのスキャンは互いに独立しているので並列で叩く。
+        //      直列にすると往復の遅いGASを2回続けて待つことになる。
+        const exhibitorsPromise = (async () => {
+            const config = await configPromise;
+            const gasUrl = new URL(env.GAS_URL);
+            gasUrl.searchParams.append('action', 'get_exhibitors');
+            const sid = spreadsheetId || config.currentSpreadsheetId;
+            if (sid) {
+                gasUrl.searchParams.append('spreadsheetId', sid);
+            }
+
+            const res = await fetch(gasUrl.toString(), { redirect: 'follow' });
+            return res.json();
+        })();
+
+        // 画像索引が取れなくても登録内容は見せたいので、ここだけは失敗を握って空で返す
+        const imagesPromise = (async () => {
+            try {
+                const folderId = folderIdParam || (await configPromise).introImagesFolderId;
+                if (!folderId) return { success: true, images: {} };
+
+                const imagesGasUrl = new URL(env.GAS_URL);
+                imagesGasUrl.searchParams.append('action', 'get_folder_images');
+                imagesGasUrl.searchParams.append('folderId', folderId);
+                // GAS側のキャッシュも一緒に素通しする
+                if (bypassCache) imagesGasUrl.searchParams.append('nocache', '1');
+
+                const res = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
+                return await res.json();
+            } catch (e) {
+                console.error('Folder images fetch failed:', e);
+                return { success: false, images: {} };
+            }
+        })();
+
+        const [config, exhibitorsData, imagesData] = await Promise.all([
+            configPromise, exhibitorsPromise, imagesPromise
+        ]);
 
         if (!exhibitorsData.success) {
             throw new Error(exhibitorsData.error || 'Failed to fetch exhibitors');
-        }
-
-        // 3. 画像フォルダのスキャン (GASから)
-        const folderId = url.searchParams.get('folderId') || config.introImagesFolderId;
-        let imagesData = { success: true, images: {} };
-        
-        if (folderId) {
-            const imagesGasUrl = new URL(env.GAS_URL);
-            imagesGasUrl.searchParams.append('action', 'get_folder_images');
-            imagesGasUrl.searchParams.append('folderId', folderId);
-            
-            const imagesRes = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
-            imagesData = await imagesRes.json();
         }
 
         // 4. 個人情報の除外と画像IDの紐付け
@@ -1359,22 +1388,52 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
             };
         });
 
-        return new Response(JSON.stringify({
+        const response = new Response(JSON.stringify({
             success: true,
             exhibitors: safeExhibitors,
             captionTemplates: config.captionTemplates,
             eventName: config.eventName
         }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                // ブラウザは1分、エッジは5分。誤字修正が反映されるまでの遅れを
+                // この範囲に収めつつ、連続アクセスではGASまで到達させない
+                'Cache-Control': 'public, max-age=60, s-maxage=300'
+            }
         });
+
+        // レスポンスは一度しか読めないので、複製をキャッシュへ回す。
+        // nocache=1 で来た場合も、せっかく取り直した最新値で古いキャッシュを上書きする。
+        if (ctx) {
+            ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        }
+
+        return response;
 
     } catch (error) {
         console.error('Public data error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                // 失敗はキャッシュに残さない
+                'Cache-Control': 'no-store'
+            }
         });
     }
+}
+
+// エッジキャッシュのキー。参照先が変われば別物として扱いたいのでsid/folderIdだけを残し、
+// nocache等の余計なパラメータは落として同じ内容が別キーに散らばらないようにする
+function publicExhibitorCacheKey(url) {
+    const keyUrl = new URL(url.origin + url.pathname);
+    const sid = url.searchParams.get('sid');
+    const folderId = url.searchParams.get('folderId');
+    if (sid) keyUrl.searchParams.set('sid', sid);
+    if (folderId) keyUrl.searchParams.set('folderId', folderId);
+    return new Request(keyUrl.toString(), { method: 'GET' });
 }
 
 // ========================================

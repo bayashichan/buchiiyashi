@@ -139,7 +139,8 @@ function doGet(e) {
     if (action === 'get_folder_images') {
       const folderId = e.parameter.folderId;
       if (!folderId) throw new Error('folderId is required');
-      const result = getFolderImagesList(folderId);
+      // nocache=1 でキャッシュを素通しし、追加直後の画像もその場で拾えるようにする
+      const result = getFolderImagesList(folderId, e.parameter.nocache === '1');
 
       return ContentService
         .createTextOutput(JSON.stringify(result))
@@ -2173,14 +2174,44 @@ function combinePresentationsCleanup(targetId) {
     return { success: false, error: error.message };
   }
 }
+
+const FOLDER_IMAGES_CACHE_PREFIX = 'folder_images_';
+const FOLDER_IMAGES_CACHE_SEC = 300; // 画像の入れ替えが反映されるまでの許容待ち時間
+const FOLDER_IMAGES_CACHE_MAX_BYTES = 90000; // CacheServiceの上限(100KB)に対する余裕
+
 /**
  * 指定されたフォルダ内の画像をスキャンして、正規化されたファイル名とIDのマップを返す
  * ファイル名が「番号_出展名.jpg」形式（例: 12_ぶち工房.jpg）の場合は、
  * 先頭の連番を除いた「出展名」でも照合できるよう別名キーも登録する。
+ *
+ * 共有設定はフォルダ単位で一度だけ行う。以前はファイル1件ごとに
+ * getSharingAccess()/setSharing() を呼んでいたが、これはファイル数に比例して
+ * Driveへの往復が増え、確認ページの初回表示が数十秒かかる原因になっていた。
+ * フォルダを「リンクを知っている全員が閲覧可能」にしておけば、
+ * 中のファイルはその設定を引き継ぐため、個別に触る必要がない。
+ *
+ * 走査結果はスクリプトキャッシュに置き、短時間に何人が開いてもDriveを叩き直さない。
+ * skipCache=true で素通しできる。
  */
-function getFolderImagesList(folderId) {
+function getFolderImagesList(folderId, skipCache) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = FOLDER_IMAGES_CACHE_PREFIX + folderId;
+
+  if (!skipCache) {
+    try {
+      const cached = cache.get(cacheKey);
+      if (cached) return { success: true, images: JSON.parse(cached), cached: true };
+    } catch (e) {
+      console.warn('folder images cache read failed: ' + e.message);
+    }
+  }
+
   try {
     const folder = DriveApp.getFolderById(folderId);
+
+    // フォルダごと公開しておき、中のファイルには個別に触らない
+    ensureFolderIsLinkViewable(folder);
+
     const files = folder.getFiles();
     const imageMap = {};
     const aliasMap = {}; // 連番を除いた別名キー（実ファイル名の一致を優先するため後でマージ）
@@ -2200,20 +2231,13 @@ function getFolderImagesList(folderId) {
       const normalizedStripped = strippedName ? normalizeName(strippedName) : "";
 
       if (normalized || normalizedStripped) {
-        // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
-        try {
-          if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
-            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-          }
-        } catch (e) {
-          console.warn('Failed to set sharing for ' + fileName);
-        }
+        const fileId = file.getId();
 
         if (normalized) {
-          imageMap[normalized] = file.getId();
+          imageMap[normalized] = fileId;
         }
         if (normalizedStripped && normalizedStripped !== normalized && !aliasMap[normalizedStripped]) {
-          aliasMap[normalizedStripped] = file.getId();
+          aliasMap[normalizedStripped] = fileId;
         }
       }
     }
@@ -2223,10 +2247,33 @@ function getFolderImagesList(folderId) {
       if (!imageMap[key]) imageMap[key] = aliasMap[key];
     });
 
+    try {
+      const serialized = JSON.stringify(imageMap);
+      if (serialized.length < FOLDER_IMAGES_CACHE_MAX_BYTES) {
+        cache.put(cacheKey, serialized, FOLDER_IMAGES_CACHE_SEC);
+      }
+    } catch (e) {
+      console.warn('folder images cache write failed: ' + e.message);
+    }
+
     return { success: true, images: imageMap };
   } catch (error) {
     console.error('getFolderImagesList error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+/**
+ * フォルダを「リンクを知っている全員が閲覧可能」にする（すでにそうなら何もしない）
+ * 失敗しても画像の照合自体は続けられるので、警告だけ残して処理を止めない。
+ */
+function ensureFolderIsLinkViewable(folder) {
+  try {
+    if (folder.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+  } catch (e) {
+    console.warn('Failed to set sharing for folder: ' + e.message);
   }
 }
 
