@@ -46,6 +46,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     document.getElementById('copy-btn').addEventListener('click', copyCaption);
+
+    const downloadBtn = document.getElementById('download-image-btn');
+    if (downloadBtn) downloadBtn.addEventListener('click', downloadImage);
 });
 
 // データ読み込み
@@ -110,7 +113,7 @@ function showExhibitor(id) {
         if (downloadBtn) {
             // ダウンロードは加工前の原寸を渡す
             downloadBtn.href = imageUrl;
-            downloadBtn.download = `${currentExhibitor.exhibitorName || '出展者'}_画像.jpg`;
+            downloadBtn.dataset.imageUrl = imageUrl;
             downloadBtn.classList.remove('hidden');
         }
     } else {
@@ -167,6 +170,61 @@ function formatReservation(value) {
     if (v === '可') return '○可\n（ご予約の際は直接，出展者様にお問い合わせください。）';
     if (v === '不可') return '×不可（当日受付のみ）';
     return v;
+}
+
+// 画像ダウンロード
+// hrefをそのまま辿るとブラウザが画像を開くだけになる。download属性は
+// 別ドメイン(googleusercontent.com)の画像には効かないため、中身を取り出して
+// Blobにしてから保存させる。
+async function downloadImage(e) {
+    e.preventDefault();
+
+    const btn = e.currentTarget;
+    const imageUrl = btn.dataset.imageUrl;
+    if (!imageUrl || btn.dataset.busy === '1') return;
+
+    const originalText = btn.textContent;
+    btn.dataset.busy = '1';
+    btn.textContent = '⬇️ ダウンロード中...';
+
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = buildImageFileName(blob.type);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // 保存が始まる前に破棄すると失敗するブラウザがあるので少し待ってから解放する
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+
+        btn.textContent = '✅ ダウンロードしました！';
+        setTimeout(() => { btn.textContent = originalText; }, 2000);
+    } catch (err) {
+        console.error('Download image error:', err);
+        btn.textContent = originalText;
+        // 取得できないときは従来どおり画像を開き、長押し・右クリックで保存してもらう
+        window.open(imageUrl, '_blank', 'noopener');
+    } finally {
+        btn.dataset.busy = '';
+    }
+}
+
+// 保存するファイル名。拡張子は実データの種類に合わせる
+function buildImageFileName(mimeType) {
+    const base = (currentExhibitor && currentExhibitor.exhibitorName) || '出展者';
+    const extMap = {
+        'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+        'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic'
+    };
+    const ext = extMap[String(mimeType || '').toLowerCase()] || 'jpg';
+    // ファイル名に使えない文字を落とす
+    const safeBase = base.replace(/[\\/:*?"<>|]/g, '_').trim();
+    return `${safeBase}_画像.${ext}`;
 }
 
 // クリップボードコピー
