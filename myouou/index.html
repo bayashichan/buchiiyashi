@@ -857,7 +857,12 @@ function show(id) {
 
 function trackLine() {
   // 標準イベント Lead は他ページ（line/index.html）と揃える。
-  if (typeof fbq !== "undefined") fbq("track", "Lead");
+  // line/ は <head> で1回撃つだけなので、こちらもボタン連打で複数回
+  // 計上されないよう custom イベントと同じ fired フラグで1回に絞る。
+  if (!fired["Lead"]) {
+    fired["Lead"] = true;
+    if (typeof fbq !== "undefined") fbq("track", "Lead");
+  }
   track("MyououLineClick", { myouou_type: resultType });
 }
 
