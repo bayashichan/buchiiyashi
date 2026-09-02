@@ -39,6 +39,10 @@ document.addEventListener('DOMContentLoaded', () => {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
     });
 
+    // Googleアカウント連携（GASデプロイ用）
+    document.getElementById('connectGoogleBtn')?.addEventListener('click', connectGoogle);
+    document.getElementById('disconnectGoogleBtn')?.addEventListener('click', disconnectGoogle);
+
     // デプロイボタン
     document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
     document.getElementById('deployGasBtn').addEventListener('click', deployGas);
@@ -80,6 +84,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 確認ページURLコピー
     document.getElementById('copyConfirmUrlBtn')?.addEventListener('click', copyConfirmUrl);
+
+    // 申込時自動返信メールの再送
+    document.getElementById('loadResendExhibitorsBtn')?.addEventListener('click', loadExhibitors);
+    document.getElementById('resendFilter')?.addEventListener('input', renderResendExhibitorList);
+    document.getElementById('selectAllResendExhibitors')?.addEventListener('change', toggleAllResendExhibitors);
+    document.getElementById('resendConfirmationBtn')?.addEventListener('click', resendConfirmationEmails);
 
     // プレースホルダーボタン
     document.querySelectorAll('.placeholder-btn').forEach(btn => {
@@ -505,6 +515,9 @@ function renderAvailability() {
 // タブ切り替え
 // ========================================
 function switchTab(tabName) {
+    // 連携が切れていてもデプロイを押すまで気づけないため、タブを開いた時点で出す
+    if (tabName === 'deploy') loadGoogleOAuthStatus();
+
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
 
@@ -636,14 +649,30 @@ async function deployGas() {
         const result = await response.json();
 
         if (result.success) {
-            statusEl.className = 'status success';
-            statusEl.textContent = '✅ GASデプロイ完了！';
+            const failed = (result.deployments || []).filter(d => !d.updated);
+            statusEl.className = failed.length > 0 ? 'status error' : 'status success';
+
+            // 何を上書きしたか・どのバージョンへ戻せるかが分からないと、
+            // Apps Scriptエディタ側の変更を消しても気づけない
+            const lines = [
+                failed.length > 0 ? '⚠️ コードは更新しましたが、公開の切り替えに失敗しました' : '✅ GASデプロイ完了！',
+                result.message || ''
+            ];
+            if (result.backupVersion) {
+                lines.push(`上書き前のコードはバージョン${result.backupVersion}として保存しました（Apps Scriptの「デプロイを管理」から復元できます）`);
+            }
+            failed.forEach(d => lines.push(`失敗: ${d.deploymentId} — ${d.error || '不明なエラー'}`));
+
+            statusEl.textContent = lines.filter(Boolean).join('\n');
+            statusEl.style.whiteSpace = 'pre-line';
         } else {
             throw new Error(result.error || 'Unknown error');
         }
     } catch (error) {
         console.error('Deploy GAS error:', error);
         statusEl.className = 'status error';
+        // 対処が複数行で返ってくるので、そのまま読める形で表示する
+        statusEl.style.whiteSpace = 'pre-line';
         statusEl.textContent = `❌ エラー: ${error.message}`;
     } finally {
         hideLoading();
@@ -683,8 +712,11 @@ async function loadExhibitors() {
 
         if (result.success && result.exhibitors) {
             exhibitors = result.exhibitors;
+            // 行番号をIDに使っているため、読み込み直したら選択はリセットする
+            resendSelectedIds = new Set();
             renderExhibitorList();
             updateExhibitorSelect();
+            renderResendExhibitorList();
         } else {
             alert('出展者一覧の取得に失敗しました: ' + (result.error || '不明なエラー'));
         }
@@ -1467,5 +1499,292 @@ async function copyConfirmUrl() {
         setTimeout(() => { btn.textContent = originalText; }, 2000);
     } catch (err) {
         alert('コピーに失敗しました: ' + err.message);
+    }
+}
+
+// ========================================
+// 申込時自動返信メールの再送
+// ========================================
+
+// 1リクエストあたりの件数。GAS側の上限(20件)より小さくして、進捗を細かく出す。
+const RESEND_CHUNK_SIZE = 5;
+
+// 絞り込みで非表示になっても選択を保つため、IDはSetで持つ
+let resendSelectedIds = new Set();
+
+// 再送タブの出展者一覧を描画（絞り込み条件に一致するものだけ表示）
+function renderResendExhibitorList() {
+    const container = document.getElementById('resendExhibitorList');
+    const selectAllContainer = document.getElementById('resendSelectAllContainer');
+    if (!container) return;
+
+    if (exhibitors.length === 0) {
+        container.innerHTML = '<p class="hint">出展者データがありません</p>';
+        if (selectAllContainer) selectAllContainer.style.display = 'none';
+        return;
+    }
+
+    const keyword = (document.getElementById('resendFilter')?.value || '').trim().toLowerCase();
+    const visible = keyword
+        ? exhibitors.filter(ex => [ex.exhibitorName, ex.name, ex.email]
+            .some(v => (v || '').toLowerCase().includes(keyword)))
+        : exhibitors;
+
+    if (selectAllContainer) selectAllContainer.style.display = 'flex';
+
+    if (visible.length === 0) {
+        container.innerHTML = '<p class="hint">絞り込み条件に一致する出展者がいません</p>';
+        updateResendSelectedCount();
+        return;
+    }
+
+    container.innerHTML = visible.map(ex => {
+        const checked = resendSelectedIds.has(ex.id) ? 'checked' : '';
+        // メールアドレスがない行は選べないようにする（送っても必ず失敗するため）
+        const disabled = ex.email ? '' : 'disabled';
+        const emailLabel = ex.email
+            ? escapeHtml(ex.email)
+            : '<span style="color:#c53030;">メールアドレス未登録</span>';
+
+        return `
+        <label class="exhibitor-item">
+            <input type="checkbox" name="resendExhibitor" value="${ex.id}" ${checked} ${disabled}
+                onchange="toggleResendExhibitor(${ex.id}, this.checked)">
+            <span class="exhibitor-name">${escapeHtml(ex.exhibitorName)}</span>
+            <span class="exhibitor-seat">${escapeHtml(ex.name || '')} / ${emailLabel}</span>
+        </label>`;
+    }).join('');
+
+    updateResendSelectedCount();
+}
+
+// チェックボックスの操作を選択状態へ反映
+window.toggleResendExhibitor = function (id, checked) {
+    if (checked) {
+        resendSelectedIds.add(id);
+    } else {
+        resendSelectedIds.delete(id);
+    }
+    updateResendSelectedCount();
+};
+
+// 表示中の出展者をまとめて選択／解除
+function toggleAllResendExhibitors(e) {
+    const isChecked = e.target.checked;
+    document.querySelectorAll('#resendExhibitorList input[name="resendExhibitor"]').forEach(cb => {
+        if (cb.disabled) return;
+        cb.checked = isChecked;
+        toggleResendExhibitor(parseInt(cb.value, 10), isChecked);
+    });
+}
+
+function updateResendSelectedCount() {
+    const countEl = document.getElementById('resendSelectedCount');
+    if (countEl) countEl.textContent = `${resendSelectedIds.size}名を選択中`;
+}
+
+// 選択した出展者へ確認メールを再送
+async function resendConfirmationEmails() {
+    const statusEl = document.getElementById('resendStatus');
+    const resultsEl = document.getElementById('resendResults');
+    const targets = exhibitors.filter(ex => resendSelectedIds.has(ex.id));
+
+    if (targets.length === 0) {
+        alert('再送する出展者を選択してください');
+        return;
+    }
+
+    const testEmail = (document.getElementById('resendTestEmail')?.value || '').trim();
+    if (testEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+        alert('テスト送信先のメールアドレスの形式が正しくありません');
+        return;
+    }
+
+    // 出展者本人へ届くので、送信前に必ず宛先と件数を確認してもらう
+    const destination = testEmail
+        ? `テスト送信先（${testEmail}）`
+        : '出展者ご本人のメールアドレス';
+    const names = targets.slice(0, 10).map(ex => `・${ex.exhibitorName}`).join('\n');
+    const more = targets.length > 10 ? `\n…ほか${targets.length - 10}名` : '';
+    if (!confirm(`${targets.length}名分の申込時自動返信メールを${destination}へ再送します。\n\n${names}${more}\n\nよろしいですか？`)) {
+        return;
+    }
+
+    const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value || '';
+    const allResults = [];
+    let sent = 0;
+
+    showLoading();
+    statusEl.className = 'status loading';
+    statusEl.textContent = `送信中... (0/${targets.length})`;
+    resultsEl.innerHTML = '';
+
+    try {
+        // GAS側のロックを長く握らないよう、小分けにして送る
+        for (let i = 0; i < targets.length; i += RESEND_CHUNK_SIZE) {
+            const chunk = targets.slice(i, i + RESEND_CHUNK_SIZE);
+
+            const response = await fetch(`${API_BASE}/api/admin/resend-confirmation`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    spreadsheetId,
+                    rowIds: chunk.map(ex => ex.id),
+                    testEmail
+                })
+            });
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.error || '不明なエラー');
+            }
+
+            allResults.push(...(result.results || []));
+            sent += chunk.length;
+            statusEl.textContent = `送信中... (${sent}/${targets.length})`;
+        }
+
+        const succeeded = allResults.filter(r => r.success).length;
+        const failed = allResults.length - succeeded;
+
+        statusEl.className = failed > 0 ? 'status error' : 'status success';
+        statusEl.textContent = failed > 0
+            ? `⚠️ ${succeeded}件を再送しました（${failed}件は失敗）`
+            : `✅ ${succeeded}件の再送が完了しました${testEmail ? `（テスト送信先: ${testEmail}）` : ''}`;
+
+        renderResendResults(allResults);
+
+    } catch (error) {
+        console.error('Resend confirmation error:', error);
+        statusEl.className = 'status error';
+        // GASからの応答が複数行で返ることがあるので、そのまま読める形にする
+        statusEl.style.whiteSpace = 'pre-line';
+        // 途中まで送れている可能性があるので、成功分も残して表示する
+        statusEl.textContent = `❌ エラー: ${error.message}\n（${allResults.filter(r => r.success).length}件は送信済み）`;
+        renderResendResults(allResults);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 再送結果の一覧を表示
+function renderResendResults(results) {
+    const resultsEl = document.getElementById('resendResults');
+    if (!resultsEl) return;
+
+    if (!results || results.length === 0) {
+        resultsEl.innerHTML = '';
+        return;
+    }
+
+    resultsEl.innerHTML = `
+        <div class="exhibitor-list">
+            ${results.map(r => `
+            <div class="exhibitor-item">
+                <span>${r.success ? '✅' : '❌'}</span>
+                <span class="exhibitor-name">${escapeHtml(r.exhibitorName || `${r.rowId}行目`)}</span>
+                <span class="exhibitor-seat">${r.success
+                    ? escapeHtml(r.sentTo || '') + (r.isTest ? '（テスト送信）' : '')
+                    : escapeHtml(r.error || '送信できませんでした')}</span>
+            </div>`).join('')}
+        </div>`;
+}
+
+// ========================================
+// Googleアカウント連携（GASデプロイ用）
+// ========================================
+
+// 連携状態を読み込んで表示する
+async function loadGoogleOAuthStatus() {
+    const statusEl = document.getElementById('googleOauthStatus');
+    if (!statusEl) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/google-oauth/status`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+
+        const result = await response.json();
+
+        if (!result.configured) {
+            statusEl.className = 'status error';
+            statusEl.style.whiteSpace = 'pre-line';
+            // どの名前が見えていないかが分からないと、打ち間違いなのか反映漏れなのか切り分けられない
+            const missing = (result.missing || []).join('\n・');
+            statusEl.textContent = '⚠️ Workerから次のシークレットが見えていません:\n・' + missing
+                + '\n\nCloudflareのWorker設定で、この名前どおりに登録されているか確認してください。'
+                + '\n登録済みなのに出る場合は、変数を保存したあと「デプロイ」を押して新しいバージョンを反映させる必要があります。';
+        } else if (!result.hasStorage) {
+            statusEl.className = 'status error';
+            statusEl.textContent = '⚠️ R2バケット(R2_BUCKET)が見えていません。連携情報を保存できません。';
+        } else if (result.connected) {
+            statusEl.className = 'status success';
+            const when = result.connectedAt ? new Date(result.connectedAt).toLocaleString('ja-JP') : '';
+            statusEl.textContent = `✅ 連携済み${when ? `（${when}）` : ''}`;
+        } else {
+            statusEl.className = 'status loading';
+            statusEl.textContent = '未連携です。「Googleアカウントを連携」を押してください。';
+        }
+    } catch (error) {
+        console.error('Google OAuth status error:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ 連携状態を取得できませんでした: ${error.message}`;
+    }
+}
+
+// 連携を開始する（Googleの同意画面を別タブで開く）
+async function connectGoogle() {
+    showLoading();
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/google-oauth/start`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+
+        const result = await response.json();
+        if (!result.url) throw new Error(result.error || '連携URLを取得できませんでした');
+
+        // ポップアップブロックに掛かることがあるので、開けたかどうかを確認する
+        const opened = window.open(result.url, '_blank');
+        if (!opened) {
+            prompt('別タブを開けませんでした。このURLをコピーしてブラウザで開いてください:', result.url);
+        }
+        alert('別タブでGoogleの連携画面が開きます。\n完了したらこのタブに戻り、デプロイタブを開き直すと連携状態が更新されます。');
+    } catch (error) {
+        console.error('Connect Google error:', error);
+        alert('連携を開始できませんでした: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 連携を解除する
+async function disconnectGoogle() {
+    if (!confirm('Googleアカウントの連携を解除します。GASのデプロイができなくなりますが、よろしいですか？')) return;
+
+    showLoading();
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/google-oauth/disconnect`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+        await response.json();
+        await loadGoogleOAuthStatus();
+    } catch (error) {
+        console.error('Disconnect Google error:', error);
+        alert('連携を解除できませんでした: ' + error.message);
+    } finally {
+        hideLoading();
     }
 }

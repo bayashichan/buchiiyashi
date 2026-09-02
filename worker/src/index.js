@@ -2,7 +2,10 @@
  * ぶち癒しフェスタ東京 Cloudflare Worker
  * フォームデータ中継・画像Base64変換・GAS連携（Drive保存）
  * + 管理API（config更新・GASデプロイ）
+ * + SNS一括投稿API（Facebook / Instagram、即時・予約）
  */
+
+import { handleSocialAPI, runDueJobs } from './social.js';
 
 export default {
     async fetch(request, env, ctx) {
@@ -25,24 +28,41 @@ export default {
             return handleRepeaterSearch(request, env, corsHeaders);
         }
 
+        // Googleからのリダイレクト。ブラウザが直接開くため管理画面の認証ヘッダーが付かない。
+        // 代わりにstateで照合する（handleGoogleOAuthCallback内）
+        if (url.pathname === '/oauth/google/callback') {
+            return handleGoogleOAuthCallback(env, request);
+        }
+
         if (url.pathname.startsWith('/api/admin')) {
-            return handleAdminAPI(request, env, corsHeaders, url);
+            return handleAdminAPI(request, env, corsHeaders, url, ctx);
         }
 
         // 公開用確認データ取得API
         if (url.pathname === '/api/public/exhibitor-data' && request.method === 'GET') {
-            return handlePublicExhibitorData(request, env, corsHeaders, url);
+            return handlePublicExhibitorData(request, env, corsHeaders, url, ctx);
         }
 
         // 既存のフォーム送信処理
         return handleFormSubmission(request, env, corsHeaders);
+    },
+
+    // Cron Trigger: 予約時刻を過ぎたSNS投稿を実行する
+    async scheduled(event, env, ctx) {
+        ctx.waitUntil(
+            runDueJobs(env)
+                .then(count => {
+                    if (count > 0) console.log(`Social scheduler: processed ${count} job(s)`);
+                })
+                .catch(err => console.error('Social scheduler error:', err))
+        );
     }
 };
 
 // ========================================
 // 管理API
 // ========================================
-async function handleAdminAPI(request, env, corsHeaders, url) {
+async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
     // 認証チェック
     const authResult = verifyAuth(request, env);
     if (!authResult.success) {
@@ -53,6 +73,12 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
     }
 
     try {
+        // /api/admin/social/* - SNS投稿（Facebook / Instagram）
+        if (url.pathname.startsWith('/api/admin/social')) {
+            const socialResponse = await handleSocialAPI(request, env, corsHeaders, url, ctx);
+            if (socialResponse) return socialResponse;
+        }
+
         // GET /api/admin/config - 設定取得
         if (url.pathname === '/api/admin/config' && request.method === 'GET') {
             return await getConfig(env, corsHeaders);
@@ -67,6 +93,21 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
         // POST /api/admin/deploy-gas - GASデプロイ
         if (url.pathname === '/api/admin/deploy-gas' && request.method === 'POST') {
             return await deployGas(env, corsHeaders);
+        }
+
+        // GET /api/admin/google-oauth/status - Google連携の状態
+        if (url.pathname === '/api/admin/google-oauth/status' && request.method === 'GET') {
+            return await getGoogleOAuthStatus(env, corsHeaders);
+        }
+
+        // GET /api/admin/google-oauth/start - 連携を開始するURLを返す
+        if (url.pathname === '/api/admin/google-oauth/start' && request.method === 'GET') {
+            return await startGoogleOAuth(env, request, corsHeaders);
+        }
+
+        // POST /api/admin/google-oauth/disconnect - 連携を解除
+        if (url.pathname === '/api/admin/google-oauth/disconnect' && request.method === 'POST') {
+            return await disconnectGoogleOAuth(env, corsHeaders);
         }
 
         // POST /api/admin/create-spreadsheet - 新規スプレッドシート作成
@@ -84,6 +125,12 @@ async function handleAdminAPI(request, env, corsHeaders, url) {
         // GET /api/admin/image-folders - 確認サイト参照先の候補フォルダ一覧取得
         if (url.pathname === '/api/admin/image-folders' && request.method === 'GET') {
             return await getImageFolders(env, corsHeaders);
+        }
+
+        // POST /api/admin/resend-confirmation - 申込時自動返信メールの再送
+        if (url.pathname === '/api/admin/resend-confirmation' && request.method === 'POST') {
+            const body = await request.json();
+            return await resendConfirmation(env, body, corsHeaders);
         }
 
         // POST /api/admin/generate-image - 画像生成
@@ -191,8 +238,8 @@ function verifyAuth(request, env) {
     return { success: false };
 }
 
-// 設定取得（GitHubからconfig.json読み込み）
-async function getConfig(env, corsHeaders) {
+// 設定取得（GitHubからconfig.jsonを読み、オブジェクトで返す）
+async function fetchConfigObject(env) {
     const response = await fetch(
         `https://api.github.com/repos/${env.GITHUB_REPO}/contents/apply/config.json`,
         {
@@ -208,8 +255,12 @@ async function getConfig(env, corsHeaders) {
         throw new Error(`GitHub API error: ${response.status}`);
     }
 
-    const configJson = await response.text();
-    const config = JSON.parse(configJson);
+    return JSON.parse(await response.text());
+}
+
+// 設定取得（管理APIのレスポンス用）
+async function getConfig(env, corsHeaders) {
+    const config = await fetchConfigObject(env);
 
     return new Response(JSON.stringify(config), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -414,53 +465,66 @@ function generateConfigJs(config) {
 }
 
 // GASデプロイ
+/**
+ * GASのWebアプリへPOSTしてJSONを受け取る。
+ *
+ * GASが例外を投げたり承認が必要な状態だと、JSONではなくHTMLのエラーページが返る。
+ * それをそのままJSONとして読むと「Unexpected token '<'」としか分からず、
+ * Googleが何を言っているのか追えない。中身を添えて投げ直す。
+ */
+async function postToGas(env, payload) {
+    const response = await fetch(env.GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+    });
+
+    const text = await response.text();
+
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        const snippet = text
+            .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 400);
+        throw new Error(
+            `GASがJSONではない応答を返しました (HTTP ${response.status})。\n`
+            + `Googleからの表示: ${snippet || '(本文なし)'}`
+        );
+    }
+}
+
+/**
+ * GASのデプロイ。実際の反映はGAS側（selfUpdateFromRepo）が行う。
+ *
+ * サービスアカウントではApps Script APIの書き込みができない。アカウントごとの
+ * 有効化設定を持てないためで、読み取りは通るのに書き込みだけが403になる。
+ * スクリプト自身のトークンなら所有アカウントの権限で動くので、Workerは
+ * 引き金を引くだけにして、GitHubからの取得と反映はGAS側にやらせる。
+ */
 async function deployGas(env, corsHeaders) {
-    // Apps Script APIを使用してデプロイ
-    // サービスアカウント認証でアクセストークンを取得
-    const accessToken = await getGoogleAccessToken(env);
+    // Apps Script APIの呼び出しに使うトークン。スクリプト自身のトークンでは
+    // 操作できない既定のCloudプロジェクトに紐づいてしまうため、所有アカウント
+    // 本人のトークンを渡す
+    const accessToken = await getGoogleUserAccessToken(env);
 
-    // スクリプトの内容を取得
-    const scriptResponse = await fetch(
-        `https://script.googleapis.com/v1/projects/${env.GAS_SCRIPT_ID}/content`,
-        {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-            }
-        }
-    );
+    const result = await postToGas(env, { action: 'self_update', accessToken });
 
-    if (!scriptResponse.ok) {
-        const errorText = await scriptResponse.text();
-        throw new Error(`Apps Script API error: ${scriptResponse.status} ${errorText}`);
+    if (!result.success) {
+        throw new Error(result.error || 'GASでの更新に失敗しました');
     }
 
-    // 新しいバージョンを作成（デプロイ）
-    const versionResponse = await fetch(
-        `https://script.googleapis.com/v1/projects/${env.GAS_SCRIPT_ID}/versions`,
-        {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                description: '管理画面からデプロイ: ' + new Date().toISOString()
-            })
-        }
-    );
-
-    if (!versionResponse.ok) {
-        const errorText = await versionResponse.text();
-        throw new Error(`Version create failed: ${versionResponse.status} ${errorText}`);
-    }
-
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 }
 
-// Googleアクセストークン取得（サービスアカウント）
-async function getGoogleAccessToken(env) {
+async function getGoogleAccessToken(env, scopes) {
     const saKey = JSON.parse(atob(env.GOOGLE_SA_KEY));
 
     // JWT作成
@@ -468,7 +532,7 @@ async function getGoogleAccessToken(env) {
     const now = Math.floor(Date.now() / 1000);
     const payload = {
         iss: saKey.client_email,
-        scope: 'https://www.googleapis.com/auth/script.projects',
+        scope: scopes || 'https://www.googleapis.com/auth/script.projects',
         aud: 'https://oauth2.googleapis.com/token',
         iat: now,
         exp: now + 3600
@@ -697,6 +761,37 @@ async function generateBatchImages(env, body, corsHeaders) {
         });
     } catch (error) {
         console.error('Generate batch images error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// 申込時自動返信メールの再送（GASへ中継）
+async function resendConfirmation(env, body, corsHeaders) {
+    try {
+        const { spreadsheetId, rowIds, testEmail } = body;
+
+        if (!Array.isArray(rowIds) || rowIds.length === 0) {
+            return new Response(JSON.stringify({ error: 'rowIds is required' }), {
+                status: 400,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+
+        const result = await postToGas(env, {
+            action: 'resend_confirmation_email',
+            spreadsheetId: spreadsheetId || '',
+            rowIds,
+            testEmail: testEmail || ''
+        });
+
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Resend confirmation error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -1191,44 +1286,83 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
 /**
  * 公開用確認データ取得（個人情報を除外）
  */
-async function handlePublicExhibitorData(request, env, corsHeaders, url) {
+async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
+    // 中身が変わることは稀なので、エッジキャッシュを挟んで毎回GASを叩かないようにする。
+    // 修正直後に確認したい場合は ?nocache=1 を付ければ素通しできる。
+    const bypassCache = url.searchParams.get('nocache') === '1';
+    const cache = caches.default;
+    const cacheKey = publicExhibitorCacheKey(url);
+
+    if (!bypassCache) {
+        const hit = await cache.match(cacheKey);
+        if (hit) return hit;
+    }
+
     try {
         const spreadsheetId = url.searchParams.get('sid');
-        
-        // 1. 設定を取得 (GitHubから)
-        const configResponse = await getConfig(env, corsHeaders);
-        const config = await configResponse.json();
-        
-        // 2. 出展者一覧を取得 (GASから)
-        const gasUrl = new URL(env.GAS_URL);
-        gasUrl.searchParams.append('action', 'get_exhibitors');
-        if (spreadsheetId) {
-            gasUrl.searchParams.append('spreadsheetId', spreadsheetId);
-        } else if (config.currentSpreadsheetId) {
-            gasUrl.searchParams.append('spreadsheetId', config.currentSpreadsheetId);
-        }
+        const folderIdParam = url.searchParams.get('folderId');
 
-        const exhibitorsRes = await fetch(gasUrl.toString(), { redirect: 'follow' });
-        const exhibitorsData = await exhibitorsRes.json();
+        // 1. 設定を取得 (GitHubから)
+        const configPromise = fetchConfigObject(env);
+
+        // 2/3. 出展者一覧と画像フォルダのスキャンは互いに独立しているので並列で叩く。
+        //      直列にすると往復の遅いGASを2回続けて待つことになる。
+        const exhibitorsPromise = (async () => {
+            const config = await configPromise;
+            const gasUrl = new URL(env.GAS_URL);
+            gasUrl.searchParams.append('action', 'get_exhibitors');
+            const sid = spreadsheetId || config.currentSpreadsheetId;
+            if (sid) {
+                gasUrl.searchParams.append('spreadsheetId', sid);
+            }
+
+            const res = await fetch(gasUrl.toString(), { redirect: 'follow' });
+            return res.json();
+        })();
+
+        // 画像索引が取れなくても登録内容は見せたいので、ここだけは失敗を握って空で返す
+        const imagesPromise = (async () => {
+            try {
+                const folderId = folderIdParam || (await configPromise).introImagesFolderId;
+                if (!folderId) return { success: true, images: {} };
+
+                const imagesGasUrl = new URL(env.GAS_URL);
+                imagesGasUrl.searchParams.append('action', 'get_folder_images');
+                imagesGasUrl.searchParams.append('folderId', folderId);
+                // GAS側のキャッシュも一緒に素通しする
+                if (bypassCache) imagesGasUrl.searchParams.append('nocache', '1');
+
+                const res = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
+                return await res.json();
+            } catch (e) {
+                console.error('Folder images fetch failed:', e);
+                return { success: false, images: {} };
+            }
+        })();
+
+        const [config, exhibitorsData, imagesData] = await Promise.all([
+            configPromise, exhibitorsPromise, imagesPromise
+        ]);
 
         if (!exhibitorsData.success) {
             throw new Error(exhibitorsData.error || 'Failed to fetch exhibitors');
         }
 
-        // 3. 画像フォルダのスキャン (GASから)
-        const folderId = url.searchParams.get('folderId') || config.introImagesFolderId;
-        let imagesData = { success: true, images: {} };
-        
-        if (folderId) {
-            const imagesGasUrl = new URL(env.GAS_URL);
-            imagesGasUrl.searchParams.append('action', 'get_folder_images');
-            imagesGasUrl.searchParams.append('folderId', folderId);
-            
-            const imagesRes = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
-            imagesData = await imagesRes.json();
-        }
-
         // 4. 個人情報の除外と画像IDの紐付け
+        const imageMap = imagesData.images || {};
+
+        // 画像ファイル名が「番号_出展名.jpg」形式でも照合できるようにする別名索引。
+        // GAS側でも同様の別名キーを生成しているが、GASが旧版のままでも動くよう
+        // ここでも正規化キーの先頭に付いた連番を取り除いたキーを用意する。
+        // （正規化済みキーは「_」等の区切り記号が除去済みのため、数字のみを剥がす）
+        const strippedImageMap = {};
+        Object.keys(imageMap).forEach(key => {
+            const stripped = key.replace(/^[0-9０-９]+/, '');
+            if (stripped && stripped !== key && !imageMap[stripped] && !strippedImageMap[stripped]) {
+                strippedImageMap[stripped] = imageMap[key];
+            }
+        });
+
         const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
             // 出展名から正規化キーを作成 (GAS側のnormalizeNameと必ず一致させること)
             // ファイル名に使えない記号（/ \ : * ? " < > |）は画像保存時に除去または
@@ -1246,27 +1380,264 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url) {
                 selfIntro: ex.selfIntro,
                 snsLinks: ex.snsLinks,
                 photoUrl: ex.photoUrl,
-                introImageId: imagesData.images[normalizedName] || null, // フォルダ内の画像ID
+                // フォルダ内の画像ID（「番号_出展名.jpg」形式のファイル名にも対応）
+                introImageId: imageMap[normalizedName] || strippedImageMap[normalizedName] || null,
                 seatNumber: ex.seatNumber,
                 advanceReservation: ex.advanceReservation, // 事前予約の有無（AK列）
                 specialtyGenres: ex.specialtyGenres // 取扱いジャンル（AJ列＝得意ジャンル）
             };
         });
 
-        return new Response(JSON.stringify({
+        const response = new Response(JSON.stringify({
             success: true,
             exhibitors: safeExhibitors,
             captionTemplates: config.captionTemplates,
             eventName: config.eventName
         }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                // ブラウザは1分、エッジは5分。誤字修正が反映されるまでの遅れを
+                // この範囲に収めつつ、連続アクセスではGASまで到達させない
+                'Cache-Control': 'public, max-age=60, s-maxage=300'
+            }
         });
+
+        // レスポンスは一度しか読めないので、複製をキャッシュへ回す。
+        // nocache=1 で来た場合も、せっかく取り直した最新値で古いキャッシュを上書きする。
+        if (ctx) {
+            ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        }
+
+        return response;
 
     } catch (error) {
         console.error('Public data error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                // 失敗はキャッシュに残さない
+                'Cache-Control': 'no-store'
+            }
         });
     }
+}
+
+// エッジキャッシュのキー。参照先が変われば別物として扱いたいのでsid/folderIdだけを残し、
+// nocache等の余計なパラメータは落として同じ内容が別キーに散らばらないようにする
+function publicExhibitorCacheKey(url) {
+    const keyUrl = new URL(url.origin + url.pathname);
+    const sid = url.searchParams.get('sid');
+    const folderId = url.searchParams.get('folderId');
+    if (sid) keyUrl.searchParams.set('sid', sid);
+    if (folderId) keyUrl.searchParams.set('folderId', folderId);
+    return new Request(keyUrl.toString(), { method: 'GET' });
+}
+
+// ========================================
+// Google連携（デプロイ用のユーザー認証）
+// ========================================
+//
+// Apps Script API はサービスアカウントに対応していない。書き込み時に
+// 「アカウントごとの有効化設定がない」として403になるが、サービスアカウントには
+// その設定ページ自体が存在しないため回避できない。
+// またスクリプト自身のトークンを使うと、Apps Scriptが自動作成した既定のCloud
+// プロジェクトに紐づく。このプロジェクトはGoogle管理で利用者が操作できず、
+// Apps Script APIを有効化できない。
+//
+// そこで、所有アカウント本人のOAuth認証を一度だけ通し、そのリフレッシュトークンで
+// デプロイする。認証情報は操作可能なCloudプロジェクトのものになるため、どちらの
+// 制約にも当たらない。
+
+const OAUTH_SCOPES = [
+    'https://www.googleapis.com/auth/script.projects',
+    'https://www.googleapis.com/auth/script.deployments'
+].join(' ');
+
+const OAUTH_TOKEN_KEY = 'config/google-oauth.json';
+const OAUTH_STATE_PREFIX = 'oauth-state/';
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+
+// このWorker自身のコールバックURL。OAuthクライアントにこの値の登録が必要
+function oauthRedirectUri(requestUrl) {
+    return `${new URL(requestUrl).origin}/oauth/google/callback`;
+}
+
+// 連携を開始するURLを組み立てる
+async function startGoogleOAuth(env, request, corsHeaders) {
+    const missing = [];
+    if (!env.GOOGLE_OAUTH_CLIENT_ID) missing.push('GOOGLE_OAUTH_CLIENT_ID');
+    if (!env.GOOGLE_OAUTH_CLIENT_SECRET) missing.push('GOOGLE_OAUTH_CLIENT_SECRET');
+    if (missing.length > 0) {
+        return new Response(JSON.stringify({
+            error: `Workerから次のシークレットが見えていません: ${missing.join(', ')}`
+        }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // 第三者にコールバックを踏ませても連携が成立しないよう、stateを控えて照合する
+    const state = crypto.randomUUID();
+    await env.R2_BUCKET.put(OAUTH_STATE_PREFIX + state, JSON.stringify({ createdAt: Date.now() }), {
+        httpMetadata: { contentType: 'application/json' }
+    });
+
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    url.searchParams.set('client_id', env.GOOGLE_OAUTH_CLIENT_ID);
+    url.searchParams.set('redirect_uri', oauthRedirectUri(request.url));
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('scope', OAUTH_SCOPES);
+    // リフレッシュトークンを受け取るために必要。promptを付けないと2回目以降返らない
+    url.searchParams.set('access_type', 'offline');
+    url.searchParams.set('prompt', 'consent');
+    url.searchParams.set('state', state);
+
+    return new Response(JSON.stringify({ url: url.toString() }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+}
+
+/**
+ * Googleからのリダイレクトを受ける。
+ *
+ * ブラウザから直接開かれるため管理画面の認証ヘッダーが付かない。
+ * 代わりに、連携開始時に控えたstateと一致することを確認する。
+ */
+async function handleGoogleOAuthCallback(env, request) {
+    const page = (title, body) => new Response(
+        `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">`
+        + `<meta name="viewport" content="width=device-width, initial-scale=1">`
+        + `<title>${title}</title></head>`
+        + `<body style="font-family:sans-serif; line-height:1.8; padding:40px; max-width:600px; margin:0 auto;">`
+        + body + '</body></html>',
+        { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } }
+    );
+
+    const url = new URL(request.url);
+    const error = url.searchParams.get('error');
+    if (error) {
+        return page('連携できませんでした', `<h1>連携できませんでした</h1><p>${error}</p>`);
+    }
+
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
+    if (!code || !state) {
+        return page('連携できませんでした', '<h1>連携できませんでした</h1><p>パラメータが足りません。</p>');
+    }
+
+    const stateKey = OAUTH_STATE_PREFIX + state;
+    const savedState = await env.R2_BUCKET.get(stateKey);
+    if (!savedState) {
+        return page('連携できませんでした',
+            '<h1>連携できませんでした</h1><p>この連携リンクは無効か、期限切れです。管理画面からやり直してください。</p>');
+    }
+    await env.R2_BUCKET.delete(stateKey);
+
+    const saved = JSON.parse(await savedState.text());
+    if (Date.now() - saved.createdAt > OAUTH_STATE_TTL_MS) {
+        return page('連携できませんでした',
+            '<h1>連携できませんでした</h1><p>連携の有効期限（10分）が切れています。管理画面からやり直してください。</p>');
+    }
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            code,
+            client_id: env.GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+            redirect_uri: oauthRedirectUri(request.url),
+            grant_type: 'authorization_code'
+        })
+    });
+
+    const token = await tokenResponse.json();
+    if (!tokenResponse.ok || !token.refresh_token) {
+        console.error('OAuth token exchange failed:', token);
+        return page('連携できませんでした',
+            `<h1>連携できませんでした</h1><p>${token.error_description || token.error || 'リフレッシュトークンが返りませんでした'}</p>`);
+    }
+
+    await env.R2_BUCKET.put(OAUTH_TOKEN_KEY, JSON.stringify({
+        refresh_token: token.refresh_token,
+        connected_at: new Date().toISOString()
+    }), { httpMetadata: { contentType: 'application/json' } });
+
+    return page('連携が完了しました',
+        '<h1>✅ 連携が完了しました</h1><p>このタブを閉じて、管理画面に戻ってください。</p>'
+        + '<p>「GASをデプロイ」が使えるようになります。</p>');
+}
+
+// 連携状態を返す（管理画面の表示用）
+async function getGoogleOAuthStatus(env, corsHeaders) {
+    const stored = env.R2_BUCKET ? await env.R2_BUCKET.get(OAUTH_TOKEN_KEY) : null;
+
+    // 「未設定」だけでは、名前の打ち間違いなのか反映されていないのか切り分けられない。
+    // どの名前が見えていないかを返す（値そのものは返さない）
+    const missing = [];
+    if (!env.GOOGLE_OAUTH_CLIENT_ID) missing.push('GOOGLE_OAUTH_CLIENT_ID');
+    if (!env.GOOGLE_OAUTH_CLIENT_SECRET) missing.push('GOOGLE_OAUTH_CLIENT_SECRET');
+    const configured = missing.length === 0;
+
+    let connectedAt = null;
+    if (stored) {
+        try {
+            connectedAt = JSON.parse(await stored.text()).connected_at || null;
+        } catch (e) {
+            connectedAt = null;
+        }
+    }
+
+    return new Response(JSON.stringify({
+        success: true,
+        configured,
+        missing,
+        // R2が無いとリフレッシュトークンを保存できない
+        hasStorage: !!env.R2_BUCKET,
+        connected: !!stored,
+        connectedAt
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+// 連携を解除する
+async function disconnectGoogleOAuth(env, corsHeaders) {
+    await env.R2_BUCKET.delete(OAUTH_TOKEN_KEY);
+    return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+}
+
+// 保存済みのリフレッシュトークンからアクセストークンを取得する
+async function getGoogleUserAccessToken(env) {
+    if (!env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET) {
+        throw new Error('GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET が未設定です');
+    }
+
+    const stored = await env.R2_BUCKET.get(OAUTH_TOKEN_KEY);
+    if (!stored) {
+        throw new Error('Googleアカウントが未連携です。デプロイタブの「Googleアカウントを連携」から連携してください');
+    }
+
+    const { refresh_token } = JSON.parse(await stored.text());
+
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            refresh_token,
+            client_id: env.GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+            grant_type: 'refresh_token'
+        })
+    });
+
+    const token = await response.json();
+    if (!response.ok || !token.access_token) {
+        // 連携が取り消された・期限切れの場合はここに来る。やり直せることを伝える
+        throw new Error(
+            `Googleとの連携が無効になっています（${token.error_description || token.error || response.status}）。\n`
+            + 'デプロイタブの「Googleアカウントを連携」からやり直してください。'
+        );
+    }
+    return token.access_token;
 }

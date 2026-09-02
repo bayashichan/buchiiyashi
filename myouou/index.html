@@ -32,6 +32,8 @@
     src="https://www.facebook.com/tr?id=1143852114505095&ev=PageView&noscript=1"
     /></noscript>
 
+  <link rel="preload" as="image" href="不動明王.jpg">
+
   <style>
     /* 明朝を持たない端末（多くのAndroid）向けの予備フォント。
        このページに出る文字だけに絞った Noto Serif JP で、2つ合わせて約270KB。
@@ -73,6 +75,34 @@
       word-break: auto-phrase;
     }
 
+    /* トップの背景。不動明王の写真の上に、下へいくほど濃くなる幕を重ねている。
+       火の粉のcanvasより下、本文より下のレイヤー。設問へ進むと消える。 */
+    #heroBg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        linear-gradient(180deg,
+          rgba(18,7,5,0.66) 0%,
+          rgba(18,7,5,0.60) 18%,
+          rgba(18,7,5,0.84) 42%,
+          rgba(16,6,6,0.93) 66%,
+          rgba(15,5,7,0.99) 90%),
+        url('不動明王.jpg');
+      background-repeat: no-repeat, no-repeat;
+      background-size: cover, cover;
+      background-position: center, center top;
+      transition: opacity 0.7s ease;
+    }
+    #heroBg.off { opacity: 0; }
+
+    /* 横長の画面では縦位置をずらして、不動明王が画面に入るようにする。 */
+    @media (min-width: 700px) {
+      #heroBg { background-position: center, center 32%; }
+    }
+
+    /* 火の粉。写真の上、本文の下を流れる。 */
     #emberCanvas {
       position: fixed;
       inset: 0;
@@ -92,9 +122,18 @@
     }
     .screen.active { display: flex; animation: fadeUp 0.45s ease both; }
 
+
+
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(20px); }
       to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #scr-hero .hero-eyebrow,
+    #scr-hero .hero-title,
+    #scr-hero .hero-sub,
+    #scr-hero .sect-note {
+      text-shadow: 0 2px 12px rgba(10,4,3,0.85);
     }
 
     .hero-eyebrow {
@@ -122,7 +161,7 @@
 
     .hero-sub {
       font-size: 13px;
-      color: #b7a294;
+      color: #cbb9ab;
       text-align: center;
       line-height: 1.9;
       margin-bottom: 28px;
@@ -133,8 +172,9 @@
        診断開始より必ず上に置く。位置を下げないこと。 */
     .funnu-note {
       max-width: 330px;
-      background: rgba(224, 81, 47, 0.07);
+      background: rgba(24, 9, 6, 0.62);
       border-left: 2px solid #e0512f;
+      backdrop-filter: blur(2px);
       border-radius: 0 10px 10px 0;
       padding: 16px 18px;
       margin-bottom: 34px;
@@ -523,6 +563,7 @@
 </head>
 <body>
 
+<div id="heroBg"></div>
 <canvas id="emberCanvas"></canvas>
 
 <!-- ============================ LP ============================ -->
@@ -849,6 +890,8 @@ function calcResult() {
 }
 
 function show(id) {
+  document.getElementById("heroBg").classList.toggle("off", id !== "scr-hero");
+
   var screens = document.querySelectorAll(".screen");
   for (var i = 0; i < screens.length; i++) screens[i].classList.remove("active");
   document.getElementById(id).classList.add("active");
@@ -881,7 +924,7 @@ function trackLine() {
     return {
       x: Math.random() * cv.width,
       y: atBottom ? cv.height + Math.random() * 60 : Math.random() * cv.height,
-      r: Math.random() * 1.4 + 0.4,
+      r: Math.random() * 1.6 + 0.5,
       vy: Math.random() * 0.45 + 0.15,
       drift: (Math.random() - 0.5) * 0.25,
       phase: Math.random() * Math.PI * 2,
@@ -904,10 +947,17 @@ function trackLine() {
 
       if (e.y < -10) embers[i] = spawn(true);
 
-      var a = (Math.sin(e.phase) + 1) / 2 * 0.6 + 0.12;
+      var a = (Math.sin(e.phase) + 1) / 2 * 0.65 + 0.18;
       // 上にいくほど赤から金へ抜ける
       var t = 1 - (e.y / cv.height);
       var g = Math.round(90 + t * 110);
+
+      // 写真の上でも見えるよう、粒のまわりに薄いにじみを置く
+      cx.beginPath();
+      cx.arc(e.x, e.y, e.r * 3.2, 0, Math.PI * 2);
+      cx.fillStyle = "rgba(255," + g + ",70," + (a * 0.16).toFixed(2) + ")";
+      cx.fill();
+
       cx.beginPath();
       cx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
       cx.fillStyle = "rgba(255," + g + ",70," + a.toFixed(2) + ")";

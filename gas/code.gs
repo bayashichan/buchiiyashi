@@ -139,7 +139,20 @@ function doGet(e) {
     if (action === 'get_folder_images') {
       const folderId = e.parameter.folderId;
       if (!folderId) throw new Error('folderId is required');
-      const result = getFolderImagesList(folderId);
+      // nocache=1 でキャッシュを素通しし、追加直後の画像もその場で拾えるようにする
+      const result = getFolderImagesList(folderId, e.parameter.nocache === '1');
+
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // Drive上の画像をJPEGへ変換してBase64で返す（SNS投稿用）
+    // InstagramはJPEGしか受け付けないため、PNGで作った画像を変換する
+    if (action === 'get_image_jpeg') {
+      const fileId = e.parameter.fileId;
+      if (!fileId) throw new Error('fileId is required');
+      const result = getImageAsJpegBase64(fileId);
 
       return ContentService
         .createTextOutput(JSON.stringify(result))
@@ -523,7 +536,36 @@ function doPost(e) {
       const result = combinePresentationsCleanup(params.targetId);
       return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
     }
+
+    // GASプロジェクトの自己更新アクション（管理画面のデプロイボタン）
+    if (params.action === 'self_update') {
+      const result = selfUpdateFromRepo(params.accessToken);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 申込時自動返信メールの再送アクション（管理画面用）
+    if (params.action === 'resend_confirmation_email') {
+      const result = resendConfirmationEmails(params.spreadsheetId, params.rowIds, params.testEmail);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
+    // ここから下は申込フォームからの送信として処理する。
+    // action付きの未知のリクエストが申込として扱われると、意味の分からない
+    // エラー（Invalid Booth ID など）になるうえ、条件次第ではゴミ行の保存や
+    // 誤ったメール送信につながる。デプロイ済みバージョンが古くてアクションが
+    // 無い場合もここに来るので、何が起きているか分かる形で止める。
+    if (params.action) {
+      throw new Error(
+        `未対応のアクションです: ${params.action}。`
+        + 'Apps Scriptのデプロイ済みバージョンが古い可能性があります'
+        + '（エディタの「デプロイを管理」から新バージョンをデプロイしてください）'
+      );
+    }
+
     // 画像アップロード処理
     // 画像の失敗で申込ごと落とさない。Drive保存に失敗しても申込は受け付け、
     // 「画像だけ未登録」であることを管理者・申込者の双方に伝える。
@@ -1046,8 +1088,13 @@ ${data.notes || 'なし'}
   });
 }
 
-// 申込者へ確認メール送信
-function sendConfirmationEmail(data, calculationResult) {
+/**
+ * 申込者へ確認メールを送る。
+ *
+ * recipientOverride は管理画面からのテスト再送用。指定した場合も本文はそのままに、
+ * 宛先だけを差し替える（申込者に届かない状態で内容を確認できるようにする）。
+ */
+function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   // 会員かどうか
   const isMember = data.isMember === '1';
   
@@ -1162,11 +1209,298 @@ Email: ${CONFIG.REPLY_TO_EMAIL}
   // メール送信
   const subject = `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
   
-  GmailApp.sendEmail(data.email, subject, textBody, {
+  const recipient = recipientOverride || data.email;
+
+  GmailApp.sendEmail(recipient, subject, textBody, {
     name: 'ぶち癒やしフェスタin東京事務局',
     replyTo: CONFIG.REPLY_TO_EMAIL,
     htmlBody: htmlBody
   });
+}
+
+// ========================================
+// 確認メールの再送（管理画面用）
+// ========================================
+
+// 1回のリクエストで再送できる上限。doPost のロックを長時間握らないための保険。
+const RESEND_MAX_PER_REQUEST = 20;
+
+/**
+ * スプレッドシートの申込行をもとに、申込時と同じ確認メールを再送する。
+ *
+ * 申込フォームから届いた生データは残っていないため、シートに保存された内容から
+ * data / calculationResult を組み立て直して sendConfirmationEmail に渡す。
+ *
+ * @param {string} spreadsheetId 対象スプレッドシートID（省略時は CONFIG.SPREADSHEET_ID）
+ * @param {Array<number>} rowIds getExhibitorList が返す id（＝シートの行インデックス）
+ * @param {string} testEmail 指定するとこのアドレスへ送る（申込者には届かない）
+ * @return {{success: boolean, results: Array}}
+ */
+function resendConfirmationEmails(spreadsheetId, rowIds, testEmail) {
+  try {
+    const targets = (rowIds || [])
+      .map(id => parseInt(id, 10))
+      .filter(id => Number.isFinite(id) && id > 0);
+
+    if (targets.length === 0) {
+      return { success: false, error: '再送する出展者が選択されていません', results: [] };
+    }
+    if (targets.length > RESEND_MAX_PER_REQUEST) {
+      return {
+        success: false,
+        error: `一度に再送できるのは${RESEND_MAX_PER_REQUEST}件までです（${targets.length}件が指定されました）`,
+        results: []
+      };
+    }
+
+    const override = String(testEmail || '').trim();
+    if (override && !isValidEmail(override)) {
+      return { success: false, error: `テスト送信先のメールアドレスが正しくありません: ${override}`, results: [] };
+    }
+
+    // 送信途中で日次上限に当たると「一部だけ届いた」状態になるため、先に残数を確認する
+    let remainingQuota = null;
+    try {
+      remainingQuota = MailApp.getRemainingDailyQuota();
+    } catch (quotaError) {
+      console.warn('Failed to read mail quota: ' + quotaError.message);
+    }
+    if (remainingQuota !== null && remainingQuota < targets.length) {
+      return {
+        success: false,
+        error: `本日の送信可能数が足りません（残り${remainingQuota}件 / 再送${targets.length}件）。時間をおいて再度お試しください。`,
+        results: []
+      };
+    }
+
+    const ss = SpreadsheetApp.openById(spreadsheetId || CONFIG.SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+    if (!sheet) {
+      return { success: false, error: 'シートが見つかりません', results: [] };
+    }
+
+    // 表示どおりの文字列で扱う（郵便番号の先頭0や日時の書式をそのまま再現するため）
+    const values = sheet.getDataRange().getDisplayValues();
+    if (values.length <= 1) {
+      return { success: false, error: '申込データがありません', results: [] };
+    }
+
+    const headers = values[0].map(h => String(h).trim());
+    const results = [];
+
+    targets.forEach(rowId => {
+      let exhibitorName = '';
+      try {
+        if (rowId >= values.length) {
+          throw new Error('該当する申込データが見つかりません（一覧を読み込み直してください）');
+        }
+
+        const data = buildApplicationDataFromRow(headers, values[rowId]);
+        exhibitorName = data.exhibitorName || data.name || `${rowId}行目`;
+
+        if (!data.email) {
+          throw new Error('メールアドレスが登録されていません');
+        }
+        if (!override && !isValidEmail(data.email)) {
+          throw new Error(`メールアドレスの形式が正しくありません: ${data.email}`);
+        }
+
+        // ブース名が定義と一致しないと boothId を復元できず、確認メール側の料金計算が
+        // "Invalid Booth ID" で落ちる。どの行のどのブース名が問題なのかを分かるようにする。
+        if (!data.boothId) {
+          throw new Error(`出展ブース「${data.boothName || '（空欄）'}」がブース定義（CONFIG.BOOTHS）と一致しません`);
+        }
+
+        const calculationResult = rebuildCalculationResult(data);
+        const recipient = override || data.email;
+        sendConfirmationEmail(data, calculationResult, recipient);
+
+        results.push({
+          rowId: rowId,
+          exhibitorName: exhibitorName,
+          registeredEmail: data.email,
+          sentTo: recipient,
+          isTest: !!override,
+          success: true
+        });
+      } catch (rowError) {
+        console.error(`Resend failed for row ${rowId}:`, rowError);
+        results.push({
+          rowId: rowId,
+          exhibitorName: exhibitorName,
+          success: false,
+          error: rowError.message
+        });
+      }
+    });
+
+    return {
+      success: true,
+      total: results.length,
+      succeeded: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results: results
+    };
+
+  } catch (error) {
+    console.error('resendConfirmationEmails error:', error);
+    return { success: false, error: error.message, results: [] };
+  }
+}
+
+/**
+ * シート1行分の値を、申込フォームから届く data と同じ形に戻す。
+ *
+ * 列の並びはイベント用（座席番号あり）とマスターDB用（開催回あり）で異なるので、
+ * 位置ではなく見出し名で引く。
+ */
+function buildApplicationDataFromRow(headers, row) {
+  const cell = (name) => {
+    const idx = headers.indexOf(name);
+    if (idx < 0 || idx >= row.length) return '';
+    const val = row[idx];
+    return val !== undefined && val !== null ? String(val).trim() : '';
+  };
+
+  // 「あり」「はい」といった保存済みの表示文字列を、フォームが送ってくる '1' / '0' に戻す
+  const flag = (name, trueLabel) => cell(name) === trueLabel ? '1' : '0';
+
+  const data = {
+    submittedAt: cell('申込日時'),
+    name: cell('氏名'),
+    furigana: cell('フリガナ'),
+    email: cell('メールアドレス'),
+    phoneNumber: cell('電話番号'),
+    postalCode: cell('郵便番号'),
+    address: cell('住所'),
+    isMember: flag('協会会員', 'はい'),
+    category: cell('出展カテゴリ'),
+    exhibitorName: cell('出展名'),
+    specialtyGenres: cell('得意ジャンル'),
+    // 申込フォームは boothId を送ってくるが、シートにはブース名しか残っていない。
+    // 申込時と同じ形で渡せるよう、ブース定義から逆引きする。
+    boothId: findBoothIdByName(cell('出展ブース')),
+    boothName: cell('出展ブース'),
+    equipment: cell('ボディーブース持ち込み物品'),
+    menuName: cell('出展メニュー'),
+    advanceReservation: cell('事前予約') || '不可',
+    selfIntro: cell('自己紹介'),
+    shortPR: cell('一言PR'),
+    photoPermission: cell('写真掲載可否'),
+    profileImageUrl: cell('プロフィール写真'),
+    // シートには "Instagram: https://..." の形で入っているので、
+    // sendConfirmationEmail が期待するJSON文字列へ戻す
+    snsLinks: JSON.stringify(parseSnsLinks(cell('SNS'))),
+    extraStaff: toNumber(cell('参加人数追加オプション')),
+    extraChairs: toNumber(cell('椅子追加')),
+    usePower: flag('コンセント', 'あり'),
+    stampRallyPrize: cell('景品提供') || 'ない',
+    prizeContent: cell('景品内容'),
+    partyAttend: cell('懇親会出欠') || '欠席',
+    partyCount: toNumber(cell('懇親会人数')),
+    secondaryPartyAttend: cell('二次会出欠') || '欠席',
+    secondaryPartyCount: toNumber(cell('二次会人数')),
+    notes: cell('備考・質問'),
+    lineUserId: cell('LINEユーザーID'),
+    lineDisplayName: cell('LINE表示名'),
+    recordedTotalFee: toNumber(cell('合計金額'))
+  };
+
+  // 早割の適用有無も保存されていないため、逆算したブース料が早割価格と一致するかで判定する
+  data.isEarlyBird = inferEarlyBird(data) ? '1' : '0';
+
+  return data;
+}
+
+/**
+ * 再送用に料金内訳を組み立て直す。
+ */
+function rebuildCalculationResult(data) {
+  const options = buildOptionFees(data);
+  const boothFee = deriveBoothFee(data);
+
+  return {
+    totalFee: boothFee + options.total,
+    breakdown: {
+      booth: boothFee,
+      staff: options.staff,
+      chairs: options.chairs,
+      power: options.power,
+      party: options.party,
+      memberDiscount: options.memberDiscount
+    }
+  };
+}
+
+// シートに残っている項目だけでオプション料金を積み直す
+function buildOptionFees(data) {
+  const staff = (parseInt(data.extraStaff || 0, 10) || 0) * CONFIG.UNIT_PRICES.staff;
+  const chairs = (parseInt(data.extraChairs || 0, 10) || 0) * CONFIG.UNIT_PRICES.chair;
+  const power = data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0;
+  const party = (parseInt(data.partyCount || 0, 10) || 0) * CONFIG.UNIT_PRICES.party;
+  const memberDiscount = data.isMember === '1' ? -CONFIG.MEMBER_DISCOUNT : 0;
+
+  return {
+    staff: staff,
+    chairs: chairs,
+    power: power,
+    party: party,
+    memberDiscount: memberDiscount,
+    total: staff + chairs + power + party + memberDiscount
+  };
+}
+
+/**
+ * ブース料を求める。
+ *
+ * 早割の適用有無は保存されていないため、確定額であるシートの合計金額を正とし、
+ * 「合計 − オプション計」で逆算する。こうすると申込時に案内した金額と必ず一致する。
+ * 合計金額が空の行（手入力の行など）だけ、ブース定義の通常価格にフォールバックする。
+ */
+function deriveBoothFee(data) {
+  const recordedTotalFee = parseInt(data.recordedTotalFee || 0, 10) || 0;
+  if (recordedTotalFee > 0) {
+    return recordedTotalFee - buildOptionFees(data).total;
+  }
+
+  const booth = CONFIG.BOOTHS[data.boothId];
+  return booth ? booth.regular : 0;
+}
+
+/**
+ * 早割が適用されていたかを、逆算したブース料から判定する。
+ *
+ * 会員は早割適用外（calculatePrice と同じ扱い）。早割価格と通常価格が同額のブースは
+ * どちらでも結果が変わらないため false を返す。
+ */
+function inferEarlyBird(data) {
+  const booth = CONFIG.BOOTHS[data.boothId];
+  if (!booth) return false;
+  if (data.isMember === '1') return false;
+  if (booth.earlyBird === booth.regular) return false;
+
+  return deriveBoothFee(data) === booth.earlyBird;
+}
+
+// ブース名（シートに保存されている表示名）からブースIDを逆引きする。見つからなければ空文字。
+function findBoothIdByName(boothName) {
+  const target = String(boothName || '').trim();
+  if (!target) return '';
+
+  for (const key in CONFIG.BOOTHS) {
+    if (CONFIG.BOOTHS[key].name === target) return key;
+  }
+  return '';
+}
+
+// "¥30,000" や "3,000円" のような表示文字列から数値を取り出す
+function toNumber(value) {
+  const num = parseInt(String(value || '').replace(/[^0-9-]/g, ''), 10);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
 // ========================================
@@ -1840,42 +2174,140 @@ function combinePresentationsCleanup(targetId) {
     return { success: false, error: error.message };
   }
 }
+
+const FOLDER_IMAGES_CACHE_PREFIX = 'folder_images_';
+const FOLDER_IMAGES_CACHE_SEC = 300; // 画像の入れ替えが反映されるまでの許容待ち時間
+const FOLDER_IMAGES_CACHE_MAX_BYTES = 90000; // CacheServiceの上限(100KB)に対する余裕
+
 /**
  * 指定されたフォルダ内の画像をスキャンして、正規化されたファイル名とIDのマップを返す
+ * ファイル名が「番号_出展名.jpg」形式（例: 12_ぶち工房.jpg）の場合は、
+ * 先頭の連番を除いた「出展名」でも照合できるよう別名キーも登録する。
+ *
+ * 共有設定はフォルダ単位で一度だけ行う。以前はファイル1件ごとに
+ * getSharingAccess()/setSharing() を呼んでいたが、これはファイル数に比例して
+ * Driveへの往復が増え、確認ページの初回表示が数十秒かかる原因になっていた。
+ * フォルダを「リンクを知っている全員が閲覧可能」にしておけば、
+ * 中のファイルはその設定を引き継ぐため、個別に触る必要がない。
+ *
+ * 走査結果はスクリプトキャッシュに置き、短時間に何人が開いてもDriveを叩き直さない。
+ * skipCache=true で素通しできる。
  */
-function getFolderImagesList(folderId) {
+function getFolderImagesList(folderId, skipCache) {
+  const cache = CacheService.getScriptCache();
+  const cacheKey = FOLDER_IMAGES_CACHE_PREFIX + folderId;
+
+  if (!skipCache) {
+    try {
+      const cached = cache.get(cacheKey);
+      if (cached) return { success: true, images: JSON.parse(cached), cached: true };
+    } catch (e) {
+      console.warn('folder images cache read failed: ' + e.message);
+    }
+  }
+
   try {
     const folder = DriveApp.getFolderById(folderId);
+
+    // フォルダごと公開しておき、中のファイルには個別に触らない
+    ensureFolderIsLinkViewable(folder);
+
     const files = folder.getFiles();
     const imageMap = {};
-    
+    const aliasMap = {}; // 連番を除いた別名キー（実ファイル名の一致を優先するため後でマージ）
+
     while (files.hasNext()) {
       const file = files.next();
       const fileName = file.getName();
-      
+
       // 拡張子を除去
       const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
-      
+
       // 正規化（記号・スペースを除去して小文字化）
       const normalized = normalizeName(nameWithoutExt);
-      
-      if (normalized) {
-        // ファイルの共有設定を確認し、必要なら「リンクを知っている全員が閲覧可能」にする
-        try {
-          if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
-            file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-          }
-        } catch (e) {
-          console.warn('Failed to set sharing for ' + fileName);
+
+      // 「番号_出展名」形式なら連番部分を除いたキーも作る
+      const strippedName = stripLeadingNumber(nameWithoutExt);
+      const normalizedStripped = strippedName ? normalizeName(strippedName) : "";
+
+      if (normalized || normalizedStripped) {
+        const fileId = file.getId();
+
+        if (normalized) {
+          imageMap[normalized] = fileId;
         }
-        
-        imageMap[normalized] = file.getId();
+        if (normalizedStripped && normalizedStripped !== normalized && !aliasMap[normalizedStripped]) {
+          aliasMap[normalizedStripped] = fileId;
+        }
       }
     }
-    
+
+    // 別名キーは、同名の正規キーが無い場合のみ採用する
+    Object.keys(aliasMap).forEach(function (key) {
+      if (!imageMap[key]) imageMap[key] = aliasMap[key];
+    });
+
+    try {
+      const serialized = JSON.stringify(imageMap);
+      if (serialized.length < FOLDER_IMAGES_CACHE_MAX_BYTES) {
+        cache.put(cacheKey, serialized, FOLDER_IMAGES_CACHE_SEC);
+      }
+    } catch (e) {
+      console.warn('folder images cache write failed: ' + e.message);
+    }
+
     return { success: true, images: imageMap };
   } catch (error) {
     console.error('getFolderImagesList error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * フォルダを「リンクを知っている全員が閲覧可能」にする（すでにそうなら何もしない）
+ * 失敗しても画像の照合自体は続けられるので、警告だけ残して処理を止めない。
+ */
+function ensureFolderIsLinkViewable(folder) {
+  try {
+    if (folder.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
+  } catch (e) {
+    console.warn('Failed to set sharing for folder: ' + e.message);
+  }
+}
+
+/**
+ * ファイル名の先頭に付いた連番（「12_」「3-」「01. 」など）を取り除く
+ * 区切り文字が無い場合（例:「3期生ぶち工房」）は連番と判断せずそのまま返さない。
+ * ※ この関数は worker/src/index.js の stripLeadingNumber と必ず一致させること
+ */
+function stripLeadingNumber(name) {
+  if (!name) return "";
+  const matched = String(name).match(/^[\s　]*[0-9０-９]+[\s　]*[_＿\-ー－–—.．・,、:：)）\]】][\s　]*(.+)$/);
+  return matched ? matched[1] : "";
+}
+
+/**
+ * Drive上の画像をJPEGに変換してBase64で返す
+ * SNS投稿（Instagram）はJPEGのみ対応のため、PNG等はここで変換する。
+ */
+function getImageAsJpegBase64(fileId) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    let blob = file.getBlob();
+
+    if (blob.getContentType() !== 'image/jpeg') {
+      blob = blob.getAs('image/jpeg');
+    }
+
+    return {
+      success: true,
+      mimeType: 'image/jpeg',
+      base64: Utilities.base64Encode(blob.getBytes())
+    };
+  } catch (error) {
+    console.error('getImageAsJpegBase64 error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -1934,4 +2366,227 @@ function normalizeName(name) {
     .replace(/[ 　\-_.\(\)（）!！?？｜|\/／\\＼:：*＊"＂”<＜>＞]/g, "") // 一般的な記号・スペース＋ファイル名禁止文字を削除
     .toLowerCase();
   // ※ この正規表現は worker/src/index.js の出展名正規化と必ず一致させること
+}
+
+// ========================================
+// GASプロジェクトの自己更新（デプロイ）
+// ========================================
+
+/**
+ * このスクリプト自身を、GitHub上の gas/ の内容へ更新する。
+ *
+ * サービスアカウントではApps Script APIの書き込みができない。アカウントごとの
+ * 有効化設定（script.google.com/home/usersettings）を持てないためで、読み取りは
+ * 通るのに書き込みだけが403になる。スクリプト自身のトークンなら所有アカウントの
+ * 権限で動くので、更新をGAS側で行う。
+ *
+ * 取得元はこのリポジトリのmainに固定している。外部からコードを受け取らないので、
+ * このエンドポイントを誰が呼んでも、公開済みのリポジトリの内容が反映されるだけになる。
+ */
+const SELF_UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/bayashichan/buchiiyashi/main/';
+
+/**
+ * 反映対象のファイル。
+ *
+ * appsscript.json は意図的に含めない。マニフェストはWebアプリの公開設定
+ * （誰がアクセスできるか）を持っており、リポジトリのコピーにはそれが無い。
+ * 上書きすると公開URLが機能しなくなる。
+ */
+const SELF_UPDATE_FILES = [
+  // aliases は「Apps Script側で同じ役割のファイルが別名になっている場合」の受け皿。
+  // 名前が一致しないと既存ファイルを残したまま新しいファイルを作ってしまい、
+  // 同じ関数が二重定義になってプロジェクト全体がコンパイルできなくなる。
+  // 既定のスクリプト名は言語設定によって「コード」だったり「Code」だったりする。
+  { path: 'gas/code.gs', name: 'code', type: 'SERVER_JS', aliases: ['code', 'コード', 'Code'] },
+  { path: 'gas/mail_template.html', name: 'mail_template', type: 'HTML' },
+  { path: 'gas/admin_mail_template.html', name: 'admin_mail_template', type: 'HTML' }
+];
+
+/**
+ * リポジトリの内容をこのプロジェクトへ反映し、Webアプリを更新する。
+ *
+ * @param {string} accessToken Apps Script APIに使うトークン。管理画面からは
+ *   所有アカウント本人のものが渡される。スクリプト自身のトークンは、Apps Scriptが
+ *   自動作成した既定のCloudプロジェクトに紐づき、そのプロジェクトはGoogle管理で
+ *   Apps Script APIを有効化できないため使えない。
+ *   省略した場合は自分のトークンを使う（エディタから直接実行する場合用）。
+ * @return {Object} 反映結果
+ */
+function selfUpdateFromRepo(accessToken) {
+  const scriptId = ScriptApp.getScriptId();
+  const token = accessToken || ScriptApp.getOAuthToken();
+
+  // 1. 現在の内容
+  const current = scriptApi(token, `projects/${scriptId}/content`);
+  const currentFiles = current.files || [];
+
+  // 2. リポジトリの最新を取得。書き込み先の名前は既存ファイルに合わせる
+  const repoFiles = SELF_UPDATE_FILES.map(file => ({
+    name: resolveTargetFileName(currentFiles, file),
+    type: file.type,
+    source: fetchRepoSource(file.path)
+  }));
+
+  // 3. 差分。何が上書きされるのかを管理画面に返すため
+  const changedFiles = repoFiles.filter(file => {
+    const currentFile = currentFiles.filter(f => f.name === file.name)[0];
+    return normalizeSource(currentFile && currentFile.source) !== normalizeSource(file.source);
+  }).map(file => file.name);
+
+  // Apps Script側にしか無いファイル（エディタで直接追加されたもの）は消さずに残す
+  const keptFiles = currentFiles.filter(f => !repoFiles.some(r => r.name === f.name));
+
+  // 残すファイルの中に doPost を持つものがあると、書き込むcode.gsと二重定義になり
+  // プロジェクト全体がコンパイルできなくなる。上書きする前に止める
+  const duplicated = keptFiles.filter(f => f.type === 'SERVER_JS' && /function\s+doPost\s*\(/.test(f.source || ''));
+  if (duplicated.length > 0) {
+    throw new Error(
+      `「${duplicated.map(f => f.name + '.gs').join('、')}」にも doPost があり、二重定義になるため中断しました。`
+      + 'Apps Scriptエディタで不要な方を削除してから、もう一度お試しください。'
+    );
+  }
+
+  let backupVersion = null;
+
+  if (changedFiles.length > 0) {
+    // 4. 上書きの前に、いまのコードをバージョンとして退避する。
+    //    エディタで直接直した内容が入っていても、ここから復元できる。
+    backupVersion = createScriptVersion(token, scriptId, '上書き前の自動バックアップ');
+
+    // 5. 内容を差し替え
+    scriptApi(token, `projects/${scriptId}/content`, 'put', {
+      files: repoFiles.concat(keptFiles)
+    });
+  }
+
+  // 6. 新しいバージョンを作成
+  const versionNumber = createScriptVersion(token, scriptId, '管理画面からデプロイ');
+
+  // 7. 既存のデプロイを新しいバージョンへ向ける（/exec のURLは変わらない）
+  const deployments = updateScriptDeployments(token, scriptId, versionNumber);
+
+  return {
+    success: true,
+    changedFiles: changedFiles,
+    versionNumber: versionNumber,
+    backupVersion: backupVersion,
+    deployments: deployments,
+    message: changedFiles.length > 0
+      ? `${changedFiles.join(', ')} を更新し、バージョン${versionNumber}として公開しました`
+      : `コードに変更はありませんでした。バージョン${versionNumber}として公開し直しました`
+  };
+}
+
+/**
+ * 書き込み先のファイル名を決める。
+ *
+ * 既定のスクリプト名は言語設定によって変わる（日本語なら「コード」）。
+ * 名前が違うまま書き込むと、既存ファイルを残したまま別名のファイルを作ってしまい、
+ * 同じ関数が二重定義になってプロジェクト全体がコンパイルできなくなる。
+ * 同じ役割のファイルが既にあるなら、その名前をそのまま使う。
+ */
+function resolveTargetFileName(currentFiles, file) {
+  const candidates = file.aliases || [file.name];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const existing = currentFiles.filter(f => f.name === candidates[i])[0];
+    if (existing) return existing.name;
+  }
+  return file.name;
+}
+
+/**
+ * リポジトリからファイルの中身を取得する。
+ *
+ * 壊れた内容で自分を上書きすると、この関数ごと失われて元に戻せなくなる。
+ * 取得できた内容が妥当かどうかを、書き込む前に確認する。
+ */
+function fetchRepoSource(path) {
+  // rawはCDNキャッシュが効くため、毎回異なるURLにして最新を取りに行く
+  const url = `${SELF_UPDATE_RAW_BASE}${path}?_=${Date.now()}`;
+  const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+
+  if (response.getResponseCode() !== 200) {
+    throw new Error(`GitHubからの取得に失敗しました (${path}): ${response.getResponseCode()}`);
+  }
+
+  const source = response.getContentText();
+  if (!source || source.length < 500) {
+    throw new Error(`取得した内容が短すぎます (${path}): ${source.length}文字`);
+  }
+  // 通信途中で切れた内容で上書きしないよう、要となる記述が含まれているか確かめる
+  if (path === 'gas/code.gs' && source.indexOf('function selfUpdateFromRepo') < 0) {
+    throw new Error('取得したcode.gsに selfUpdateFromRepo が含まれていません。中断します');
+  }
+
+  return source;
+}
+
+// Apps Script API 呼び出しの共通処理
+function scriptApi(token, path, method, body) {
+  const options = {
+    method: method || 'get',
+    headers: { Authorization: `Bearer ${token}` },
+    muteHttpExceptions: true
+  };
+  if (body) {
+    options.contentType = 'application/json';
+    options.payload = JSON.stringify(body);
+  }
+
+  const response = UrlFetchApp.fetch(`https://script.googleapis.com/v1/${path}`, options);
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+
+  if (code < 200 || code >= 300) {
+    throw new Error(`Apps Script API ${options.method.toUpperCase()} ${path} が失敗しました: ${code} ${text}`);
+  }
+  return JSON.parse(text);
+}
+
+// 新しいバージョンを作成して、そのバージョン番号を返す
+function createScriptVersion(token, scriptId, description) {
+  const version = scriptApi(token, `projects/${scriptId}/versions`, 'post', {
+    description: `${description}: ${new Date().toISOString()}`
+  });
+  return version.versionNumber;
+}
+
+/**
+ * 既存のデプロイを新しいバージョンへ向ける。
+ *
+ * 既存のデプロイを更新するので /exec のURLは変わらない。
+ * バージョンを持たないHEAD（テスト用）デプロイは常に最新コードを返すため触らない。
+ */
+function updateScriptDeployments(token, scriptId, versionNumber) {
+  const list = scriptApi(token, `projects/${scriptId}/deployments`);
+  const results = [];
+
+  (list.deployments || []).forEach(deployment => {
+    const config = deployment.deploymentConfig || {};
+    if (config.versionNumber === undefined || config.versionNumber === null) return;
+
+    try {
+      scriptApi(token, `projects/${scriptId}/deployments/${deployment.deploymentId}`, 'put', {
+        deploymentConfig: {
+          scriptId: scriptId,
+          versionNumber: versionNumber,
+          manifestFileName: config.manifestFileName || 'appsscript',
+          description: config.description || ''
+        }
+      });
+      results.push({ deploymentId: deployment.deploymentId, updated: true });
+    } catch (error) {
+      // 1つ失敗しても他のデプロイの更新は続ける。結果は管理画面に出す
+      console.error(`Failed to update deployment ${deployment.deploymentId}:`, error);
+      results.push({ deploymentId: deployment.deploymentId, updated: false, error: error.message });
+    }
+  });
+
+  return results;
+}
+
+// 改行コードと末尾の空白の違いは差分とみなさない（Apps Script側で正規化されるため）
+function normalizeSource(source) {
+  return String(source || '').replace(/\r\n/g, '\n').replace(/\s+$/, '');
 }
