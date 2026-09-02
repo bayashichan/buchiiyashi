@@ -58,6 +58,8 @@ async function loadData() {
         const params = new URLSearchParams(window.location.search);
         if (params.has('sid')) url.searchParams.append('sid', params.get('sid'));
         if (params.has('folderId')) url.searchParams.append('folderId', params.get('folderId'));
+        // 修正直後の確認用。?nocache=1 を付けるとキャッシュを素通しして取り直す
+        if (params.get('nocache') === '1') url.searchParams.append('nocache', '1');
 
         const response = await fetch(url);
         const result = await response.json();
@@ -95,10 +97,18 @@ function showExhibitor(id) {
     const downloadBtn = document.getElementById('download-image-btn');
     if (currentExhibitor.introImageId) {
         const imageUrl = `https://lh3.googleusercontent.com/d/${currentExhibitor.introImageId}`;
-        introImageEl.src = imageUrl;
+        // 表示は幅1200pxに縮めたものを使う。スマホ写真の原寸をそのまま読むと
+        // 数MBになり、表示までの待ちがそのぶん延びる。
+        // サイズ指定が効かない画像があった場合は原寸へ切り替える。
+        introImageEl.onerror = () => {
+            introImageEl.onerror = null;
+            introImageEl.src = imageUrl;
+        };
+        introImageEl.src = `${imageUrl}=w1200`;
         introImageEl.classList.remove('hidden');
         noImageEl.classList.add('hidden');
         if (downloadBtn) {
+            // ダウンロードは加工前の原寸を渡す
             downloadBtn.href = imageUrl;
             downloadBtn.download = `${currentExhibitor.exhibitorName || '出展者'}_画像.jpg`;
             downloadBtn.classList.remove('hidden');

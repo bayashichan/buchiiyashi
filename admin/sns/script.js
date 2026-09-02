@@ -225,7 +225,8 @@ async function testConnection() {
 async function loadExhibitors() {
     showLoading('出展者データを読み込んでいます…');
     try {
-        const res = await fetch(`${API_BASE}/api/public/exhibitor-data`);
+        // 管理画面は画像を差し替えた直後に開くことが多いので、キャッシュを素通しして最新を取る
+        const res = await fetch(`${API_BASE}/api/public/exhibitor-data?nocache=1`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'データの取得に失敗しました');
 
