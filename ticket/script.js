@@ -390,7 +390,7 @@ function buildTypeCard(type) {
     if (type.note) sub.push(escapeHtml(type.note));
     sub.push(type.capacity_mode === 'limited'
         ? '定員があるため、抽選で落選する場合があります'
-        : 'お申し込みの方は全員ご入場いただけます（整理番号を抽選でお決めします）');
+        : '落選はありません。お申し込みの方全員に整理番号をお出しします');
     if (maxParty > 1) sub.push(`1回のお申し込みで${maxParty}名さままで（番号は連番になります）`);
     if (type.apply_end) sub.push(`受付は ${formatDateTime(type.apply_end)} まで`);
 

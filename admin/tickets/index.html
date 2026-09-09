@@ -87,8 +87,14 @@
                         </div>
                         <div class="field" style="grid-column:1/-1">
                             <label for="f_note">説明文</label>
-                            <input type="text" id="f_note" placeholder="例：会場へのご入場に必要です">
-                            <p class="hint">申込ページで券種名の下に出ます。</p>
+                            <select class="tpl-select" data-target="f_note"></select>
+                            <textarea id="f_note" class="short"
+                                placeholder="例：開場直後の混雑を避けるための整理券です"></textarea>
+                            <p class="hint">
+                                申込ページで券種名の下に出ます。来場者が「自分は申し込むべきか」を
+                                判断する材料になるので、券の目的を書いてください。
+                                空欄でも構いません。
+                            </p>
                         </div>
                     </div>
 

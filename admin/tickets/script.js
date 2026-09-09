@@ -17,7 +17,10 @@ const TEXT_FIELDS = [
     'issue_end', 'slot_start_time', 'fixed_time_label', 'color',
     'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind', 'capacity_mode'
 ];
-const MESSAGE_FIELDS = ['msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'];
+const MESSAGE_FIELDS = ['note', 'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'];
+// 案内文は空欄だと何が届くか分からなくなるので既定を入れる。
+// 説明文は券種ごとに中身が違うため、選ぶまで空欄のままにする。
+const PREFILL_FIELDS = ['msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'];
 const NUMBER_FIELDS = [
     'sort_order', 'number_start', 'number_end', 'max_party_size',
     'slot_interval_min', 'slot_capacity'
@@ -31,6 +34,29 @@ const CHECK_FIELDS = ['enabled', 'slot_enabled'];
 // 新しい券種にも、文面が入っていない券種にも、読み込み時にこれを入れておく。
 // ============================================================
 const TEMPLATES = {
+    note: [
+        {
+            label: '混雑対策の整理券（入場整理券むけ）',
+            text: '開場直後は受付が混み合うため、ご来場の時間帯を抽選でお決めします。'
+                + 'ご入場に必ず必要なものではありません。'
+                + '混雑が落ち着いたあとは、整理券がなくてもそのままご入場いただけます。'
+        },
+        {
+            label: '混雑対策の整理券（時間を明記する）',
+            text: '開場直後は受付が混み合うため、ご来場の時間帯を抽選でお決めします。'
+                + 'ご入場に必ず必要なものではありません。'
+                + '13時以降にお越しの場合は、お申し込みなしでお待たせせずにご入場いただけます。'
+        },
+        {
+            label: '混雑対策の整理券（短め）',
+            text: '開場直後の混雑を避けるための整理券です。ご入場に必ず必要なものではありません。'
+        },
+        {
+            label: '定員制の券種むけ（座席に限りがある）',
+            text: '座席数に限りがあるため、抽選で当落をお決めします。'
+        }
+    ],
+
     msg_receipt: [
         {
             label: '標準（抽選であることを伝える）',
@@ -78,6 +104,17 @@ const TEMPLATES = {
 {{time}} を目安にお越しください。
 この時刻より前にお越しいただいても、順番は変わりません。
 会場前が混み合わないよう、ご協力をお願いいたします。`
+        },
+        {
+            label: '混雑対策の整理券むけ（遅れても入れる）',
+            text: `{{name}} 様
+
+【{{type}}】の整理番号をお送りします。
+整理番号は {{number}} 番です。
+
+{{time}} を目安にお越しください。
+この時刻より前にお越しいただいても、順番は変わりません。
+お時間を過ぎてしまっても、そのままご入場いただけますのでご安心ください。`
         },
         {
             label: '開始時刻が決まっている券種向け（講演会）',
@@ -265,7 +302,7 @@ function initMessageEditors() {
 
 /** 文面が空の欄に既定の文例を入れる。何が送られるか分からない状態を作らないため */
 function fillMissingMessages() {
-    for (const key of MESSAGE_FIELDS) {
+    for (const key of PREFILL_FIELDS) {
         const textarea = document.getElementById(`f_${key}`);
         if (textarea && !textarea.value.trim()) {
             textarea.value = TEMPLATES[key][0].text;
@@ -275,7 +312,7 @@ function fillMissingMessages() {
 }
 
 function renderAllPreviews() {
-    for (const key of MESSAGE_FIELDS) renderPreview(key);
+    for (const key of PREFILL_FIELDS) renderPreview(key);
 }
 
 function renderPreview(key) {
