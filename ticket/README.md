@@ -281,6 +281,12 @@ node --test "worker/test/**/*.test.mjs"
 **`tickets.test.mjs`** — 抽選の番号割り当て。番号の重複・欠番・グループの分割は、
 当日そのまま受付の事故になる。`planAssignment` を変更したら必ず通すこと。
 
+**`lottery-run.test.mjs`** — 抽選の実行そのもの。D1と同じ形のシムを
+`node:sqlite` の上に作り、`runLottery` と `deliverMessages` を本番と同じ経路で
+呼ぶ。番号の割り当てだけをテストしていたときに、それを呼ぶ側の変数の消し忘れを
+素通しして本番で抽選が動かなくなったため、呼び出し口ごと通すようにした。
+LINEのトークンは渡さないので外部への通信は起きない。
+
 **`schema.test.mjs`** — スキーマと、Workerが実際に発行するSQLの突き合わせ。
 実物のSQLite（`node:sqlite`）にスキーマとシードを流し、管理画面の INSERT/UPDATE、
 申込ページの SELECT、抽選の INSERT を同じ形で実行する。

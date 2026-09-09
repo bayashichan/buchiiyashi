@@ -423,7 +423,7 @@ export function planAssignment(type, applications, seed) {
  * 二重実行を防ぐため、lottery_status を 'pending' → 'running' に
  * 条件つきUPDATEで書き換えられた実行だけが先に進む。
  */
-async function runLottery(env, ticketTypeId, options = {}) {
+export async function runLottery(env, ticketTypeId, options = {}) {
     const { trigger = 'manual', seed: providedSeed = null, force = false } = options;
     const database = db(env);
     const startedAt = nowIso();
@@ -479,8 +479,9 @@ async function runLottery(env, ticketTypeId, options = {}) {
              ORDER BY created_at ASC, id ASC`
         ).bind(ticketTypeId).all();
 
+        const entries = applications || [];
         const { winners, losers, lastNumber, extendedBeyondRange } =
-            planAssignment(type, applications || [], seed);
+            planAssignment(type, entries, seed);
 
         const issuedAt = nowIso();
         const statements = [];
@@ -519,7 +520,7 @@ async function runLottery(env, ticketTypeId, options = {}) {
             database.prepare(
                 `UPDATE lottery_runs SET status = 'done', finished_at = ?, total_applications = ?,
                  won_applications = ?, lost_applications = ?, issued_numbers = ? WHERE id = ?`
-            ).bind(issuedAt, shuffled.length, winners.length, losers.length, issuedNumbers, runId),
+            ).bind(issuedAt, entries.length, winners.length, losers.length, issuedNumbers, runId),
             database.prepare(
                 `UPDATE ticket_types SET lottery_status = 'done', lottery_seed = ?,
                  lottery_done_at = ?, updated_at = ? WHERE id = ?`
@@ -530,7 +531,7 @@ async function runLottery(env, ticketTypeId, options = {}) {
             ok: true,
             runId,
             seed,
-            total: shuffled.length,
+            total: entries.length,
             won: winners.length,
             lost: losers.length,
             issuedNumbers,
@@ -593,7 +594,7 @@ function defaultBody(kind, won, type, vars) {
  * 1回の呼び出しで送る件数に上限を設けているのは、Workerの外部リクエスト数の
  * 制限に当たらないため。残りはcronの次の実行か、管理画面の再実行で片づく。
  */
-async function deliverMessages(env, ticketTypeId, options = {}) {
+export async function deliverMessages(env, ticketTypeId, options = {}) {
     const { kind = 'result', limit = 60, retryFailed = false } = options;
     const database = db(env);
 
