@@ -418,6 +418,23 @@ export function planAssignment(type, applications, seed) {
 }
 
 /**
+ * 発行済みの整理券を捨てて、申込を抽選前に戻す。
+ *
+ * やり直しと、途中で落ちた実行の後始末で使う。どちらも
+ * 「この券種にはまだ有効な整理券が無い」状態に揃えるための処理。
+ */
+async function clearIssued(database, ticketTypeId, at) {
+    await database.batch([
+        database.prepare('DELETE FROM tickets WHERE ticket_type_id = ?').bind(ticketTypeId),
+        database.prepare(
+            `UPDATE applications SET status = 'applied', result_notified_at = NULL,
+             remind_notified_at = NULL, notify_error = NULL, updated_at = ?
+             WHERE ticket_type_id = ? AND status IN ('won','lost')`
+        ).bind(at, ticketTypeId)
+    ]);
+}
+
+/**
  * 1つの券種の抽選を実行して、番号と集合時刻を確定させる。
  *
  * 二重実行を防ぐため、lottery_status を 'pending' → 'running' に
@@ -439,17 +456,10 @@ export async function runLottery(env, ticketTypeId, options = {}) {
         return { ok: false, error: 'この券種の抽選はすでに完了しています', alreadyDone: true };
     }
     if (force) {
-        await database.batch([
-            database.prepare('DELETE FROM tickets WHERE ticket_type_id = ?').bind(ticketTypeId),
-            database.prepare(
-                `UPDATE applications SET status = 'applied', result_notified_at = NULL,
-                 remind_notified_at = NULL, notify_error = NULL, updated_at = ?
-                 WHERE ticket_type_id = ? AND status IN ('won','lost')`
-            ).bind(startedAt, ticketTypeId),
-            database.prepare(
-                `UPDATE ticket_types SET lottery_status = 'pending', updated_at = ? WHERE id = ?`
-            ).bind(startedAt, ticketTypeId)
-        ]);
+        await clearIssued(database, ticketTypeId, startedAt);
+        await database.prepare(
+            `UPDATE ticket_types SET lottery_status = 'pending', updated_at = ? WHERE id = ?`
+        ).bind(startedAt, ticketTypeId).run();
     }
 
     // ここで確保できた実行だけが抽選を行う
@@ -469,6 +479,11 @@ export async function runLottery(env, ticketTypeId, options = {}) {
         `INSERT INTO lottery_runs (id, ticket_type_id, seed, trigger, status, started_at)
          VALUES (?, ?, ?, ?, 'running', ?)`
     ).bind(runId, ticketTypeId, seed, trigger, startedAt).run();
+
+    // 実行を確保できたということは、この券種の抽選はまだ完了していない。
+    // それでも整理券の行が残っているなら、途中で落ちた実行の残骸なので捨てる。
+    // これがないと、次の実行が application_id の重複で必ず落ちる。
+    await clearIssued(database, ticketTypeId, startedAt);
 
     try {
         // 基準の並びを固定してからシャッフルする。
@@ -540,14 +555,19 @@ export async function runLottery(env, ticketTypeId, options = {}) {
         };
     } catch (error) {
         const message = String(error?.message || error).slice(0, 500);
-        // 失敗したら pending に戻す。人手で直したあと再実行できる状態にしておく。
+        const failedAt = nowIso();
+
+        // 失敗した実行の痕跡を残さない。整理券の書き込みまで進んでから落ちると、
+        // 番号だけが残って次の実行が重複で弾かれる。そのまま pending に戻すと
+        // 「やり直せるはずなのに何度やっても失敗する」状態になる。
+        await clearIssued(database, ticketTypeId, failedAt);
         await database.batch([
             database.prepare(
                 `UPDATE lottery_runs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?`
-            ).bind(message, nowIso(), runId),
+            ).bind(message, failedAt, runId),
             database.prepare(
                 `UPDATE ticket_types SET lottery_status = 'pending', updated_at = ? WHERE id = ?`
-            ).bind(nowIso(), ticketTypeId)
+            ).bind(failedAt, ticketTypeId)
         ]);
         console.error('抽選に失敗:', message);
         return { ok: false, error: message };

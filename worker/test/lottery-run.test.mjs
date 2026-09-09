@@ -51,9 +51,18 @@ class Stmt {
 }
 
 class D1Shim {
-    constructor(db) { this.db = db; }
+    constructor(db) {
+        this.db = db;
+        this.batchCount = 0;
+        // n回目のbatchで例外を投げる（途中で落ちた実行を再現するため）
+        this.failOnBatch = null;
+    }
     prepare(sql) { return new Stmt(this.db, sql, []); }
     async batch(statements) {
+        this.batchCount += 1;
+        if (this.failOnBatch === this.batchCount) {
+            throw new Error('意図的な失敗（テスト）');
+        }
         // D1のbatchはトランザクション。途中で失敗したら全部戻す
         this.db.exec('BEGIN');
         try {
@@ -204,4 +213,50 @@ test('配信できなかった相手は未達として記録され、残り件�
 
     const rows = db.prepare('SELECT notify_error FROM applications').all();
     assert.ok(rows.every(r => r.notify_error), '未達の理由が記録されていません');
+});
+
+test('整理券を書いたあとで落ちても、痕跡を残さずやり直せる', async () => {
+    const { env, db } = makeEnv([2, 1, 3]);
+
+    // 整理券のINSERTは通り、そのあとの記録更新で落ちる状況を作る。
+    // 実際に「shuffled is not defined」で起きたのがこの形で、
+    // 番号だけが残って次の実行が application_id の重複で弾かれていた。
+    env.TICKETS_DB.failOnBatch = 2;
+
+    const failed = await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'boom' });
+    assert.equal(failed.ok, false, '失敗するはずの実行が成功しています');
+
+    // 券種は抽選前に戻り、書きかけの整理券は消えている
+    const type = db.prepare("SELECT lottery_status FROM ticket_types WHERE id='type_entry_6th'").get();
+    assert.equal(type.lottery_status, 'pending');
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 0, '書きかけの整理券が残っています');
+    assert.equal(
+        db.prepare("SELECT COUNT(*) c FROM applications WHERE status='applied'").get().c, 3,
+        '申込が抽選前に戻っていません'
+    );
+
+    const run = db.prepare("SELECT status FROM lottery_runs WHERE seed='boom'").get();
+    assert.equal(run.status, 'failed');
+
+    // そのまま同じ手順でやり直せる
+    env.TICKETS_DB.failOnBatch = null;
+    const retry = await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'retry' });
+    assert.equal(retry.ok, true, `やり直しに失敗: ${retry.error}`);
+    assert.equal(retry.won, 3);
+    assert.equal(retry.issuedNumbers, 6);
+});
+
+test('整理券が残ったまま抽選前になっていても、実行すれば直る', async () => {
+    // 古い版で落ちたあとのデータベースを再現する（番号が残り、状態はpending）
+    const { env, db } = makeEnv([1, 1]);
+    db.prepare(
+        `INSERT INTO tickets (id, application_id, ticket_type_id, number_start, number_end, slot_time, issued_at)
+         VALUES ('tkt_old', 'app_0', 'type_entry_6th', 1, 1, '10:45', 'past')`
+    ).run();
+    db.prepare("UPDATE applications SET status='won' WHERE id='app_0'").run();
+
+    const result = await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'heal' });
+    assert.equal(result.ok, true, `残骸があると実行できません: ${result.error}`);
+    assert.equal(result.won, 2);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 2, '古い整理券が残っています');
 });
