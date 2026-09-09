@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整理券管理 | ぶち癒しフェスタ東京</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <!-- ログイン -->
+    <div id="loginScreen">
+        <div class="login-container">
+            <h1>🎟️ 整理券管理</h1>
+            <input type="password" id="passwordInput" placeholder="管理パスワード">
+            <button id="loginBtn">ログイン</button>
+            <p id="loginError" class="error hidden">パスワードが正しくありません</p>
+        </div>
+    </div>
+
+    <!-- 管理画面 -->
+    <div id="mainScreen" class="hidden">
+        <header>
+            <h1>🎟️ 整理券管理</h1>
+            <div class="header-actions">
+                <a href="../" class="btn btn-secondary">← 管理画面へ戻る</a>
+                <button id="logoutBtn" class="btn btn-secondary">ログアウト</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="type-bar">
+                <label for="typeSelect">対象の券種</label>
+                <select id="typeSelect"></select>
+                <span id="typeStatusBadge"></span>
+                <button id="newTypeBtn" class="btn btn-secondary">＋ 券種を追加</button>
+            </div>
+
+            <nav class="tabs">
+                <button class="tab active" data-tab="settings">設定</button>
+                <button class="tab" data-tab="applications">申込一覧</button>
+                <button class="tab" data-tab="lottery">抽選と配信</button>
+                <button class="tab" data-tab="reception">当日受付</button>
+            </nav>
+
+            <!-- ===================== 設定 ===================== -->
+            <section id="tab-settings" class="tab-content active">
+                <div class="panel">
+                    <h2>券種の設定</h2>
+                    <p class="panel-sub">
+                        ここで設定した内容は、抽選のあとでも変更できます。
+                        すでに確定した整理番号や集合時刻は変わりません。
+                    </p>
+
+                    <div id="settingsMessage"></div>
+
+                    <h3>基本</h3>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="f_name">券種名</label>
+                            <input type="text" id="f_name" placeholder="例：入場整理券">
+                            <p class="hint">申込ページと整理券に表示されます。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_sort_order">表示順</label>
+                            <input type="number" id="f_sort_order" value="0">
+                            <p class="hint">小さい順に並びます。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_color">券面の色</label>
+                            <input type="color" id="f_color" value="#B01B54">
+                            <p class="hint">受付で券種を見分けるための色です。</p>
+                        </div>
+                        <div class="field check">
+                            <input type="checkbox" id="f_enabled" checked>
+                            <label for="f_enabled">申込ページに表示する</label>
+                        </div>
+                        <div class="field" style="grid-column:1/-1">
+                            <label for="f_note">説明文</label>
+                            <input type="text" id="f_note" placeholder="例：会場へのご入場に必要です">
+                            <p class="hint">申込ページで券種名の下に出ます。</p>
+                        </div>
+                    </div>
+
+                    <h3>期間</h3>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="f_apply_start">申込開始</label>
+                            <input type="datetime-local" id="f_apply_start">
+                        </div>
+                        <div class="field">
+                            <label for="f_apply_end">申込締切</label>
+                            <input type="datetime-local" id="f_apply_end">
+                        </div>
+                        <div class="field">
+                            <label for="f_lottery_at">抽選日時</label>
+                            <input type="datetime-local" id="f_lottery_at">
+                            <p class="hint">この時刻を過ぎると自動で抽選し、結果を配信します。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_remind_at">リマインド送信日時</label>
+                            <input type="datetime-local" id="f_remind_at">
+                            <p class="hint">当選者に整理券をもう一度送ります。前日の設定を推奨。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_issue_start">整理券の表示開始</label>
+                            <input type="datetime-local" id="f_issue_start">
+                            <p class="hint">空欄なら抽選後すぐ表示します。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_issue_end">整理券の表示終了</label>
+                            <input type="datetime-local" id="f_issue_end">
+                            <p class="hint">空欄なら表示し続けます。</p>
+                        </div>
+                    </div>
+
+                    <h3>番号と定員</h3>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="f_number_start">開始番号</label>
+                            <input type="number" id="f_number_start" value="1" min="1">
+                        </div>
+                        <div class="field">
+                            <label for="f_number_end">最終番号</label>
+                            <input type="number" id="f_number_end" value="400" min="1">
+                            <p class="hint">来場率は7〜8割です。定員より多めをおすすめします。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_capacity_mode">定員の扱い</label>
+                            <select id="f_capacity_mode">
+                                <option value="all_win">全員当選（番号だけ抽選）</option>
+                                <option value="limited">定員制（落選あり）</option>
+                            </select>
+                            <p class="hint">全員当選では、番号が足りない場合も落選を出しません。</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_max_party_size">1申込の上限人数</label>
+                            <input type="number" id="f_max_party_size" value="5" min="1" max="20">
+                            <p class="hint">グループは連番になります。</p>
+                        </div>
+                    </div>
+
+                    <h3>集合時刻</h3>
+                    <div class="grid">
+                        <div class="field check">
+                            <input type="checkbox" id="f_slot_enabled" checked>
+                            <label for="f_slot_enabled">時間枠を割り当てる</label>
+                        </div>
+                        <div class="field">
+                            <label for="f_slot_start_time">最初の枠の時刻</label>
+                            <input type="time" id="f_slot_start_time" value="10:45">
+                        </div>
+                        <div class="field">
+                            <label for="f_slot_interval_min">枠の間隔（分）</label>
+                            <input type="number" id="f_slot_interval_min" value="30" min="1">
+                        </div>
+                        <div class="field">
+                            <label for="f_slot_capacity">1枠あたりの人数</label>
+                            <input type="number" id="f_slot_capacity" value="50" min="1">
+                            <p class="hint">グループは分割しないため、枠の人数は数名前後します。</p>
+                        </div>
+                        <div class="field" style="grid-column:1/-1">
+                            <label for="f_fixed_time_label">時間枠を使わない場合の表示</label>
+                            <input type="text" id="f_fixed_time_label" placeholder="例：14:00 開演">
+                            <p class="hint">講演会など、開始時刻が決まっている券種で使います。</p>
+                        </div>
+                    </div>
+
+                    <h3>案内文</h3>
+                    <p class="hint" style="margin-bottom:14px;">
+                        差込タグ： <code>{{name}}</code> お名前 ／ <code>{{number}}</code> 整理番号 ／
+                        <code>{{time}}</code> 集合時刻 ／ <code>{{party}}</code> 人数 ／
+                        <code>{{type}}</code> 券種名 ／ <code>{{receipt}}</code> 受付番号 ／
+                        <code>{{lottery}}</code> 抽選日時（受付時のみ）。
+                        空欄にすると既定の文面を使います。
+                    </p>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="f_msg_receipt">申込を受け付けたとき</label>
+                            <textarea id="f_msg_receipt"></textarea>
+                        </div>
+                        <div class="field">
+                            <label for="f_msg_win">当選のお知らせ</label>
+                            <textarea id="f_msg_win"></textarea>
+                        </div>
+                        <div class="field">
+                            <label for="f_msg_lose">落選のお知らせ</label>
+                            <textarea id="f_msg_lose"></textarea>
+                        </div>
+                        <div class="field">
+                            <label for="f_msg_remind">前日リマインド</label>
+                            <textarea id="f_msg_remind"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="btn-row">
+                        <button id="saveTypeBtn" class="btn btn-primary">保存する</button>
+                        <button id="deleteTypeBtn" class="btn btn-danger">この券種を削除</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================== 申込一覧 ===================== -->
+            <section id="tab-applications" class="tab-content">
+                <div class="panel">
+                    <h2>申込一覧</h2>
+                    <p class="panel-sub">抽選後は整理番号順、抽選前は申込順に並びます。</p>
+                    <div class="btn-row" style="margin-top:0;margin-bottom:16px;">
+                        <button id="reloadAppsBtn" class="btn btn-secondary">再読み込み</button>
+                        <button id="exportCsvBtn" class="btn btn-secondary">CSVをダウンロード</button>
+                    </div>
+                    <div id="appsTable" class="table-wrap"></div>
+                </div>
+            </section>
+
+            <!-- ===================== 抽選と配信 ===================== -->
+            <section id="tab-lottery" class="tab-content">
+                <div class="panel">
+                    <h2>状況</h2>
+                    <p class="panel-sub">申込・抽選・配信の状態です。</p>
+                    <div id="statsBox" class="stats"></div>
+                    <button id="reloadStatsBtn" class="btn btn-secondary">再読み込み</button>
+                </div>
+
+                <div class="panel">
+                    <h2>抽選</h2>
+                    <p class="panel-sub">
+                        設定した抽選日時を過ぎると自動で実行されます。ここでは前倒しで実行できます。
+                    </p>
+                    <div id="lotteryMessage"></div>
+
+                    <div class="grid">
+                        <div class="field" style="grid-column:1/-1">
+                            <label for="f_seed">シード値（任意）</label>
+                            <input type="text" id="f_seed" placeholder="空欄なら自動で決まります">
+                            <p class="hint">
+                                同じシード値なら何度実行しても同じ結果になります。
+                                抽選後に公開すると、第三者が結果を検証できます。
+                            </p>
+                        </div>
+                        <div class="field check">
+                            <input type="checkbox" id="f_deliver" checked>
+                            <label for="f_deliver">抽選後すぐに結果をLINEで配信する</label>
+                        </div>
+                    </div>
+
+                    <div class="btn-row">
+                        <button id="runLotteryBtn" class="btn btn-primary">抽選を実行する</button>
+                        <button id="rerunLotteryBtn" class="btn btn-danger">やり直す（番号を破棄）</button>
+                    </div>
+
+                    <h3>抽選の記録</h3>
+                    <div id="runsTable" class="table-wrap"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>配信</h2>
+                    <p class="panel-sub">
+                        1回で送る件数には上限があります。残りがある場合は自動で続けて送ります。
+                    </p>
+                    <div id="deliverMessage"></div>
+                    <div class="btn-row" style="margin-top:0;">
+                        <button id="deliverResultBtn" class="btn btn-primary">抽選結果を配信する</button>
+                        <button id="deliverRemindBtn" class="btn btn-secondary">前日リマインドを送る</button>
+                        <button id="retryFailedBtn" class="btn btn-secondary">未達の人に再送する</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================== 当日受付 ===================== -->
+            <section id="tab-reception" class="tab-content">
+                <div class="panel">
+                    <h2>当日受付</h2>
+                    <p class="panel-sub">
+                        整理券が見つからない方は、お名前・電話番号の下4桁・整理番号・受付番号のいずれかで探せます。
+                    </p>
+                    <div class="search-bar">
+                        <input type="search" id="searchInput" placeholder="お名前 / 電話下4桁 / 整理番号 / 受付番号">
+                        <button id="searchBtn" class="btn btn-primary">検索</button>
+                    </div>
+                    <div id="searchResults"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div id="loadingOverlay" class="overlay hidden">
+        <div class="box">処理しています…</div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整理券 | ぶち癒しフェスタ in 東京</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="../style.css">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+
+<body>
+    <header class="page-header">
+        <div class="inner">
+            <h1>整理券</h1>
+            <div class="event-meta">
+                <div id="eventName">ぶち癒しフェスタ in 東京</div>
+                <div id="eventDate"></div>
+                <div id="eventLocation"></div>
+            </div>
+        </div>
+    </header>
+
+    <div class="wrap">
+
+        <div id="loadingScreen" class="loading">
+            <div class="spinner"></div>
+            <div>整理券を読み込んでいます…</div>
+        </div>
+
+        <!-- 整理券の一覧 -->
+        <div id="ticketScreen" class="hidden">
+            <div id="ticketList"></div>
+
+            <div class="notice no-print">
+                <h3>当日の受付</h3>
+                <p>受付でこの画面をお見せください。整理番号とお名前を確認してお通しします。
+                    <strong>読み取り機はありません</strong>ので、画面を見せていただくだけで大丈夫です。</p>
+                <p>ご一緒の方は、代表者さまと一緒にお越しください。</p>
+            </div>
+
+            <p class="print-hint no-print">
+                <button class="btn-secondary" onclick="window.print()">この整理券を印刷する</button>
+            </p>
+            <p class="print-hint no-print">
+                紙でお持ちになりたい方は、ご家族に印刷していただくこともできます。
+            </p>
+        </div>
+
+        <!-- 申込が見つからない -->
+        <div id="emptyScreen" class="hidden">
+            <div class="card">
+                <h2 style="border:none;padding:0;margin-bottom:10px;">お申し込みが見つかりません</h2>
+                <p style="font-size:15px;line-height:1.8;">
+                    このLINEアカウントでのお申し込みは確認できませんでした。
+                </p>
+                <p style="font-size:15px;line-height:1.8;margin-top:12px;">
+                    受付期間中であれば、<a href="../">こちら</a>からお申し込みいただけます。
+                </p>
+            </div>
+        </div>
+
+        <!-- LINE連携できていない -->
+        <div id="errorScreen" class="hidden">
+            <div class="status-box warn">
+                <strong>LINEの情報を取得できていません</strong>
+                <div style="margin-top:6px;">
+                    お手数ですが、公式LINEのメニューからこのページを開き直してください。
+                </div>
+                <a id="reopenLink" class="line-button" href="#">LINEアプリで開き直す</a>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
