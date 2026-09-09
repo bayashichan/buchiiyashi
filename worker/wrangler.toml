@@ -15,7 +15,7 @@ TICKET_SITE_URL = "https://buchiiyashifestatokyo.com"
 # LINEに送る「整理券を開く」ボタンをLIFFのURLにするために使う。
 # 素のURLだと開いた先でログインし直す画面が挟まるため、必ず設定すること。
 # 未設定のときは TICKET_SITE_URL を使って動作する（案内は届くが一手間増える）。
-TICKET_LIFF_ID = ""
+TICKET_LIFF_ID = "2008192225-DM5KQsJL"
 
 # LINE管理アプリ(line-manager)連携。未設定なら連携をスキップする
 LINE_MANAGER_URL = "https://line-manager-omega.vercel.app"
