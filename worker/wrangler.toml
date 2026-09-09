@@ -60,7 +60,7 @@ bucket_name = "buchiiyashi-images"
 [[d1_databases]]
 binding = "TICKETS_DB"
 database_name = "buchiiyashi-tickets"
-database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+database_id = "be26d64e-8d89-456a-a88d-2ce0e3f3589a"
 
 # 予約投稿の実行トリガー（5分ごとに予約時刻を過ぎた投稿を処理する）
 [triggers]
