@@ -949,6 +949,9 @@ export async function handleTicketAdminAPI(request, env, corsHeaders, url) {
         if (path === '/api/admin/tickets/applications' && request.method === 'GET') {
             return await listApplications(env, corsHeaders, url);
         }
+        if (path === '/api/admin/tickets/applications/delete' && request.method === 'POST') {
+            return await deleteApplication(request, env, corsHeaders);
+        }
         if (path === '/api/admin/tickets/stats' && request.method === 'GET') {
             return await getStats(env, corsHeaders, url);
         }
@@ -1072,6 +1075,47 @@ async function listApplications(env, corsHeaders, url) {
     ).bind(ticketTypeId).all();
 
     return json({ applications: results || [] }, corsHeaders);
+}
+
+/**
+ * 申込を1件消す。
+ *
+ * 主な用途は、主催者が自分のLINEで申込から整理券までを繰り返し試すこと。
+ * 1人1申込の制約があるので、消せないと2回目が試せない。
+ *
+ * 発行済みの整理番号も一緒に消える。すでに当選をお知らせした相手だと、
+ * 本人の手元には番号が残ったまま無効になるため、その旨を返して
+ * 管理画面側で確認の文言を変えている。
+ */
+async function deleteApplication(request, env, corsHeaders) {
+    const { applicationId } = await request.json();
+    if (!applicationId) return json({ error: '申込IDがありません' }, corsHeaders, 400);
+
+    const database = db(env);
+    const target = await database.prepare(
+        `SELECT a.id, a.name, a.receipt_no, a.status, a.result_notified_at,
+                t.number_start, t.number_end
+         FROM applications a
+         LEFT JOIN tickets t ON t.application_id = a.id
+         WHERE a.id = ?`
+    ).bind(applicationId).first();
+
+    if (!target) return json({ error: 'この申込は見つかりません' }, corsHeaders, 404);
+
+    await database.batch([
+        database.prepare('DELETE FROM tickets WHERE application_id = ?').bind(applicationId),
+        database.prepare('DELETE FROM applications WHERE id = ?').bind(applicationId)
+    ]);
+
+    console.log(`整理券: 申込を削除 (${target.name} / 受付番号 ${target.receipt_no})`);
+
+    return json({
+        ok: true,
+        name: target.name,
+        receiptNo: target.receipt_no,
+        hadNumber: target.number_start !== null && target.number_start !== undefined,
+        wasNotified: !!target.result_notified_at
+    }, corsHeaders);
 }
 
 async function getStats(env, corsHeaders, url) {

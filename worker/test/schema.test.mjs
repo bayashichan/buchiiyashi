@@ -213,3 +213,55 @@ test('Workerのソースが参照する ticket_types の列がスキーマに存
     const missing = [...referenced].filter(name => !columns.has(name));
     assert.deepEqual(missing, [], `ticket_types に無い列を参照しています: ${missing.join(', ')}`);
 });
+
+test('申込を消すと整理券も消え、同じ人がもう一度申し込める', () => {
+    const db = freshDb();
+    db.exec(seedSql);
+
+    const apply = () => db.prepare(
+        `INSERT INTO applications
+         (id, ticket_type_id, receipt_no, line_user_id, name, phone, party_size,
+          status, created_at, updated_at)
+         VALUES (?, 'type_entry_6th', '000001', 'U_owner', '主催者', '09000000000', 1,
+                 'applied', 'now', 'now')`
+    ).run(`app_${Math.random()}`);
+
+    apply();
+    const appId = db.prepare("SELECT id FROM applications WHERE line_user_id='U_owner'").get().id;
+    db.prepare(
+        `INSERT INTO tickets (id, application_id, ticket_type_id, number_start, number_end, slot_time, issued_at)
+         VALUES ('tkt_1', ?, 'type_entry_6th', 1, 1, '10:45', 'now')`
+    ).run(appId);
+
+    // 同じ人はもう申し込めない
+    assert.throws(apply, /UNIQUE/);
+
+    // deleteApplication と同じ削除
+    db.prepare('DELETE FROM tickets WHERE application_id = ?').run(appId);
+    db.prepare('DELETE FROM applications WHERE id = ?').run(appId);
+
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 0, '整理券が残っています');
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM applications').get().c, 0);
+
+    // 消したので、また申し込める（テストを繰り返すための本題）
+    assert.doesNotThrow(apply, '削除したのに再申込できません');
+    db.close();
+});
+
+test('申込を消しても券種の設定は残る', () => {
+    const db = freshDb();
+    db.exec(seedSql);
+    db.prepare(
+        `INSERT INTO applications
+         (id, ticket_type_id, receipt_no, line_user_id, name, phone, party_size,
+          status, created_at, updated_at)
+         VALUES ('app_1', 'type_entry_6th', '000001', 'U1', 'A', '09000000001', 1,
+                 'applied', 'now', 'now')`
+    ).run();
+
+    db.prepare('DELETE FROM applications WHERE id = ?').run('app_1');
+
+    const types = db.prepare('SELECT COUNT(*) c FROM ticket_types').get();
+    assert.equal(types.c, 2, '券種まで消えています');
+    db.close();
+});

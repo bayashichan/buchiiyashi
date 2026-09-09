@@ -611,6 +611,11 @@ async function loadApplications() {
             <td>${delivery}</td>
             <td>${a.checked_in_at ? '受付済' : '—'}</td>
             <td class="num">${escapeHtml(formatDateTime(a.created_at))}</td>
+            <td><button class="btn btn-danger btn-sm"
+                    data-delete-app="${escapeHtml(a.id)}"
+                    data-name="${escapeHtml(a.name)}"
+                    data-numbers="${escapeHtml(numbers)}"
+                    data-notified="${a.result_notified_at ? '1' : '0'}">削除</button></td>
         </tr>`;
     }).join('');
 
@@ -619,9 +624,50 @@ async function loadApplications() {
             <thead><tr>
                 <th>整理番号</th><th>集合時刻</th><th>状態</th><th>お名前</th><th>人数</th>
                 <th>電話番号</th><th>受付番号</th><th>結果配信</th><th>当日</th><th>申込日時</th>
+                <th>操作</th>
             </tr></thead>
             <tbody>${rows}</tbody>
         </table>`;
+
+    container.querySelectorAll('button[data-delete-app]').forEach(button => {
+        button.addEventListener('click', () => deleteApplication(button.dataset));
+    });
+}
+
+/**
+ * 申込を1件消す。
+ *
+ * 主催者が自分のLINEで申込から整理券までを繰り返し試すための機能。
+ * 1人1申込なので、消さないと2回目が試せない。
+ *
+ * 当選番号を配信済みの相手は、本人の手元に番号が残ったまま無効になる。
+ * 取り返しがつかないので、そのときだけ確認の文言を変える。
+ */
+async function deleteApplication({ deleteApp, name, numbers, notified }) {
+    const message = notified === '1'
+        ? `${name} 様の申込を削除します。\n\n` +
+          `この方には整理番号 ${numbers} 番をすでにLINEでお知らせ済みです。\n` +
+          '削除すると、お手元に残った番号が無効になります。当日その番号で来場されても記録がありません。\n\n' +
+          '本当に削除しますか？'
+        : `${name} 様の申込を削除します。よろしいですか？`;
+
+    if (!confirm(message)) return;
+
+    showLoading(true);
+    try {
+        const result = await api('/api/admin/tickets/applications/delete', {
+            method: 'POST',
+            body: JSON.stringify({ applicationId: deleteApp })
+        });
+        await loadApplications();
+        await loadStats();
+        alert(`${result.name} 様の申込（受付番号 ${result.receiptNo}）を削除しました。` +
+            (result.hadNumber ? '\n整理番号も取り消されています。' : ''));
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        showLoading(false);
+    }
 }
 
 async function exportCsv() {
