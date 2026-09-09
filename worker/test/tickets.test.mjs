@@ -9,7 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { planAssignment } from '../src/tickets.js';
+import { planAssignment, formatJapaneseDateTime } from '../src/tickets.js';
 
 /** 券種設定の雛形 */
 function makeType(overrides = {}) {
@@ -186,4 +186,37 @@ test('申込が0件でも落ちない', () => {
     assert.equal(winners.length, 0);
     assert.equal(losers.length, 0);
     assert.equal(lastNumber, 0);
+});
+
+// ============================================================
+// 来場者に見せる日時の表記
+//
+// "2026-09-16 20:00" のような区切りは、見慣れていない人には一瞬で読めない。
+// LINEの文面・管理画面のプレビュー・整理券ページで表記を揃えている。
+// ============================================================
+
+test('日時は「2026年9月16日(水) 20:00」の形になる', () => {
+    assert.equal(formatJapaneseDateTime('2026-09-16T20:00:00+09:00'), '2026年9月16日(水) 20:00');
+});
+
+test('管理画面から来るタイムゾーンなしの値もJSTとして扱う', () => {
+    // datetime-local は "2026-08-06T09:05" のように返ってくる
+    assert.equal(formatJapaneseDateTime('2026-08-06T09:05'), '2026年8月6日(木) 09:05');
+});
+
+test('月と日は0埋めしない（8月6日であって08月06日ではない）', () => {
+    const label = formatJapaneseDateTime('2026-08-06T09:05:00+09:00');
+    assert.ok(!label.includes('08月'), `0埋めされています: ${label}`);
+    assert.ok(!label.includes('06日'), `0埋めされています: ${label}`);
+});
+
+test('日付が未設定なら空文字を返す', () => {
+    assert.equal(formatJapaneseDateTime(null), '');
+    assert.equal(formatJapaneseDateTime(''), '');
+    assert.equal(formatJapaneseDateTime('これは日付ではない'), '');
+});
+
+test('日付をまたぐ時刻でも曜日がずれない', () => {
+    // UTCでは前日になる時刻。JSTの日付と曜日で出る必要がある
+    assert.equal(formatJapaneseDateTime('2026-09-19T00:30:00+09:00'), '2026年9月19日(土) 00:30');
 });

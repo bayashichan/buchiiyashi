@@ -66,6 +66,24 @@ function isAfter(value, now = new Date()) {
     return date ? date.getTime() > now.getTime() : false;
 }
 
+/**
+ * 日時を "2026年9月16日(水) 20:00" の形にする。
+ *
+ * 来場者に見せる文面で使う。"2026-09-16 20:00" のような区切りは、
+ * 見慣れていない人には一瞬で読めない。
+ */
+export function formatJapaneseDateTime(value) {
+    const date = parseJst(value);
+    if (!date) return '';
+
+    const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    const p = n => String(n).padStart(2, '0');
+
+    return `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日` +
+        `(${days[jst.getUTCDay()]}) ${p(jst.getUTCHours())}:${p(jst.getUTCMinutes())}`;
+}
+
 function newId(prefix) {
     return `${prefix}_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
 }
@@ -838,9 +856,7 @@ async function submitApplication(request, env, corsHeaders) {
 
     // 受付の通知。「申し込んだ＝当選した」という誤解が当日のトラブルの大半なので、
     // まだ整理券ではないことをここで必ず伝える。
-    const lotteryLabel = type.lottery_at
-        ? String(type.lottery_at).replace('T', ' ').replace(/(\+09:00|Z)$/, '').slice(0, 16)
-        : '';
+    const lotteryLabel = formatJapaneseDateTime(type.lottery_at);
     const receiptText = fillTemplate(type.msg_receipt, {
         name, party: partySize, receipt: receiptNo, type: type.name, lottery: lotteryLabel
     }).trim() || [

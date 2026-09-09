@@ -558,7 +558,10 @@ function hexToSoft(hex) {
     return `rgba(${r}, ${g}, ${b}, 0.10)`;
 }
 
-/** "2026-09-16T20:00:00+09:00" を "9月16日(水) 20:00" にする */
+/**
+ * "2026-09-16T20:00:00+09:00" を "2026年9月16日(水) 20:00" にする。
+ * LINEに届く文面と同じ表記に揃えている。
+ */
 function formatDateTime(value) {
     if (!value) return '';
     const date = new Date(String(value).length === 16 ? `${value}:00+09:00` : value);
@@ -567,8 +570,8 @@ function formatDateTime(value) {
     const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
     const days = ['日', '月', '火', '水', '木', '金', '土'];
     const p = n => String(n).padStart(2, '0');
-    return `${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日(${days[jst.getUTCDay()]}) ` +
-        `${p(jst.getUTCHours())}:${p(jst.getUTCMinutes())}`;
+    return `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日` +
+        `(${days[jst.getUTCDay()]}) ${p(jst.getUTCHours())}:${p(jst.getUTCMinutes())}`;
 }
 
 function escapeHtml(str) {

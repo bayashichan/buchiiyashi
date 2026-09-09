@@ -290,7 +290,7 @@ function renderPreview(key) {
         time: (slotEnabled
             ? document.getElementById('f_slot_start_time')?.value
             : document.getElementById('f_fixed_time_label')?.value) || '（未設定）',
-        lottery: formatDateTime(document.getElementById('f_lottery_at')?.value) || '（未設定）'
+        lottery: formatJapaneseDateTime(document.getElementById('f_lottery_at')?.value) || '（未設定）'
     };
 
     const filled = textarea.value.replace(/\{\{(\w+)\}\}/g, (_, tag) => {
@@ -935,6 +935,23 @@ async function checkIn(ticketId, undo) {
 // ============================================================
 // ユーティリティ
 // ============================================================
+
+/**
+ * 日時を "2026年9月16日(水) 20:00" の形にする。
+ * 来場者に届く文面と同じ表記。プレビューが実物と食い違わないよう、
+ * Workerの formatJapaneseDateTime と同じ結果を返す。
+ */
+function formatJapaneseDateTime(value) {
+    if (!value) return '';
+    const date = new Date(String(value).length === 16 ? `${value}:00+09:00` : value);
+    if (isNaN(date.getTime())) return '';
+
+    const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    const p = n => String(n).padStart(2, '0');
+    return `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日` +
+        `(${days[jst.getUTCDay()]}) ${p(jst.getUTCHours())}:${p(jst.getUTCMinutes())}`;
+}
 
 /** 保存値（ISO8601）を datetime-local の値にする */
 function toInputDateTime(value) {
