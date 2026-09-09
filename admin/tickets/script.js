@@ -429,6 +429,16 @@ function onTypeChanged() {
     fillForm(type);
     renderTypeBadge(type);
     clearMessage('settingsMessage');
+
+    // 抽選が終わると申込ページは「抽選終了」に変わる。設定を見ただけでは
+    // 気づけないので、ここで理由と戻し方を出しておく。
+    if (type.lottery_status === 'done') {
+        showMessage('settingsMessage', 'warn',
+            'この券種は抽選が完了しています。申込ページには「抽選終了」と表示され、' +
+            '新しいお申し込みは受け付けません。\n' +
+            'もう一度受け付ける状態に戻すには、「抽選と配信」タブの' +
+            '「やり直す（番号を破棄）」を実行してください（確定した整理番号は破棄されます）。');
+    }
     clearMessage('lotteryMessage');
     clearMessage('deliverMessage');
 
