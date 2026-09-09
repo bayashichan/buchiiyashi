@@ -259,13 +259,30 @@ npx wrangler d1 execute buchiiyashi-tickets --remote --command="
 **抽選のやり直しは番号を破棄する。** すでに当選をお知らせした方の番号が変わるため、
 配信後のやり直しは原則行わない。
 
+## データベースの変更
+
+列を足したり変えたりしたときは、`worker/schema/tickets.sql` を直すだけでは
+すでに動いているデータベースに反映されない。`worker/schema/migrations/` に
+ALTER 文を1ファイル置いて、本番にも流すこと。
+
+```bash
+npx wrangler d1 execute buchiiyashi-tickets --remote \
+  --file=./schema/migrations/<ファイル名>.sql
+```
+
 ## 開発
 
-抽選の番号割り当てにはテストがある。デプロイ前に GitHub Actions でも実行される。
+テストは2種類ある。どちらもデプロイ前に GitHub Actions で実行される。
 
 ```bash
 node --test "worker/test/**/*.test.mjs"
 ```
 
-番号の重複・欠番・グループの分割は、当日そのまま受付の事故になる。
-`planAssignment` を変更したときは必ずテストを通すこと。
+**`tickets.test.mjs`** — 抽選の番号割り当て。番号の重複・欠番・グループの分割は、
+当日そのまま受付の事故になる。`planAssignment` を変更したら必ず通すこと。
+
+**`schema.test.mjs`** — スキーマと、Workerが実際に発行するSQLの突き合わせ。
+実物のSQLite（`node:sqlite`）にスキーマとシードを流し、管理画面の INSERT/UPDATE、
+申込ページの SELECT、抽選の INSERT を同じ形で実行する。
+列名の食い違いは管理画面を開くまで誰も気づけないので、ここで落とす。
+`tickets.js` のSQLを変えたときは、このテストも合わせて直すこと。

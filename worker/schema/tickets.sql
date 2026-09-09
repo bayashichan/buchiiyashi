@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS ticket_types (
     -- 券面の色（LINEのFlex Messageと整理券ページで使う）
     color             TEXT NOT NULL DEFAULT '#B01B54',
 
+    -- 申込ページで券種名の下に出す説明文
+    note              TEXT,
+
     -- 案内文（管理画面から編集。差込タグ {{name}} {{number}} {{time}} {{party}} が使える）
     msg_receipt       TEXT,   -- 申込を受け付けた直後
     msg_win           TEXT,   -- 当選
