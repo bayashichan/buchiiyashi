@@ -14,14 +14,161 @@ let currentTypeId = null;
 // 設定フォームの入力欄。IDの接頭辞 f_ を外したものがAPIのフィールド名になる。
 const TEXT_FIELDS = [
     'name', 'note', 'apply_start', 'apply_end', 'lottery_at', 'remind_at',
-    'issue_start', 'issue_end', 'slot_start_time', 'fixed_time_label', 'color',
+    'issue_end', 'slot_start_time', 'fixed_time_label', 'color',
     'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind', 'capacity_mode'
 ];
+const MESSAGE_FIELDS = ['msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'];
 const NUMBER_FIELDS = [
     'sort_order', 'number_start', 'number_end', 'max_party_size',
     'slot_interval_min', 'slot_capacity'
 ];
 const CHECK_FIELDS = ['enabled', 'slot_enabled'];
+
+// ============================================================
+// 案内文の文例
+//
+// 各欄の1つ目が既定の文面。空欄のまま運用されると何が届くのか分からなくなるため、
+// 新しい券種にも、文面が入っていない券種にも、読み込み時にこれを入れておく。
+// ============================================================
+const TEMPLATES = {
+    msg_receipt: [
+        {
+            label: '標準（抽選であることを伝える）',
+            text: `{{name}} 様
+
+【{{type}}】のお申し込みを受け付けました。
+受付番号：{{receipt}}
+ご参加人数：{{party}}名
+
+※これは受付の確認です。整理券ではありません。
+抽選日時：{{lottery}}
+抽選の結果は、あらためてこのLINEでお知らせします。`
+        },
+        {
+            label: '定員制の券種向け（落選がありうる）',
+            text: `{{name}} 様
+
+【{{type}}】のお申し込みを受け付けました。
+受付番号：{{receipt}}
+ご参加人数：{{party}}名
+
+座席数に限りがあるため、抽選となります。
+※これは受付の確認です。整理券ではありません。
+抽選日時：{{lottery}}`
+        },
+        {
+            label: '短め',
+            text: `{{name}} 様
+
+【{{type}}】のお申し込みを受け付けました（受付番号 {{receipt}}／{{party}}名）。
+
+まだ整理券ではありません。
+{{lottery}} に抽選を行い、結果をこのLINEでお送りします。`
+        }
+    ],
+
+    msg_win: [
+        {
+            label: '集合時刻を割り当てる券種向け（入場整理券）',
+            text: `{{name}} 様
+
+【{{type}}】の抽選結果をお知らせします。
+ご当選です。整理番号は {{number}} 番です。
+
+{{time}} を目安にお越しください。
+この時刻より前にお越しいただいても、順番は変わりません。
+会場前が混み合わないよう、ご協力をお願いいたします。`
+        },
+        {
+            label: '開始時刻が決まっている券種向け（講演会）',
+            text: `{{name}} 様
+
+【{{type}}】の抽選結果をお知らせします。
+ご当選です。整理番号は {{number}} 番です。
+
+{{time}}
+整理番号順にご入室いただきますので、お時間までにお越しください。`
+        },
+        {
+            label: '短め',
+            text: `{{name}} 様
+
+【{{type}}】にご当選です。
+整理番号 {{number}} 番／{{time}}／{{party}}名
+
+当日は受付でこの画面をお見せください。`
+        }
+    ],
+
+    msg_lose: [
+        {
+            label: '当日枠の案内あり',
+            text: `{{name}} 様
+
+【{{type}}】にお申し込みいただき、ありがとうございました。
+厳正な抽選の結果、誠に申し訳ございませんが今回はご用意できませんでした。
+
+当日は空き状況に応じて当日枠のご案内も予定しております。
+またの機会をお待ちしております。`
+        },
+        {
+            label: '入場は別途できる場合（講演会などの落選）',
+            text: `{{name}} 様
+
+【{{type}}】にお申し込みいただき、ありがとうございました。
+座席数に限りがあり、厳正な抽選の結果、今回はご用意できませんでした。
+誠に申し訳ございません。
+
+当日、開演10分前に空席があればご案内いたします。
+入場整理券をお持ちの方は、そのままご来場いただけます。`
+        },
+        {
+            label: '当日枠なし',
+            text: `{{name}} 様
+
+【{{type}}】にお申し込みいただき、ありがとうございました。
+厳正な抽選の結果、誠に申し訳ございませんが今回はご用意できませんでした。
+
+今回は当日のご用意がございません。
+またの機会をお待ちしております。`
+        }
+    ],
+
+    msg_remind: [
+        {
+            label: '集合時刻を割り当てる券種向け',
+            text: `{{name}} 様
+
+明日はいよいよ当日です。
+整理番号は {{number}} 番、集合時刻は {{time}} です。
+
+当日は受付でこの画面をお見せください。
+お気をつけてお越しください。`
+        },
+        {
+            label: '開始時刻が決まっている券種向け',
+            text: `{{name}} 様
+
+明日の【{{type}}】の整理番号は {{number}} 番です。
+{{time}}
+
+整理番号順にご入室いただきます。
+当日は受付でこの画面をお見せください。`
+        },
+        {
+            label: '短め',
+            text: `{{name}} 様
+
+明日はいよいよ当日です。
+整理番号 {{number}} 番／{{time}}
+
+当日は受付でこの画面をお見せください。`
+        }
+    ]
+};
+
+/** プレビューに使う架空の申込者。実際の設定値と混ぜて、届く姿を見せる */
+const PREVIEW_SAMPLE = { name: '山田 花子', party: 3, number: '128', receipt: '123456' };
 
 // ============================================================
 // 初期化
@@ -67,7 +214,92 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('searchInput').addEventListener('keypress', e => {
         if (e.key === 'Enter') runSearch();
     });
+
+    initMessageEditors();
 });
+
+// ============================================================
+// 案内文の編集
+// ============================================================
+
+function initMessageEditors() {
+    for (const key of MESSAGE_FIELDS) {
+        const select = document.querySelector(`.tpl-select[data-target="f_${key}"]`);
+        const textarea = document.getElementById(`f_${key}`);
+        if (!select || !textarea) continue;
+
+        select.innerHTML = '<option value="">文例を選ぶ…</option>' +
+            TEMPLATES[key].map((t, i) =>
+                `<option value="${i}">${escapeHtml(t.label)}${i === 0 ? '（既定）' : ''}</option>`
+            ).join('');
+
+        select.addEventListener('change', () => {
+            // 「文例を選ぶ…」は Number('') が 0 になり、既定の文例で
+            // 上書きしてしまうので、先に弾く
+            if (select.value === '') return;
+
+            const index = Number(select.value);
+            select.value = '';
+            if (!TEMPLATES[key][index]) return;
+
+            // 書きかけの文面を黙って捨てない
+            const current = textarea.value.trim();
+            const isUntouched = TEMPLATES[key].some(t => t.text.trim() === current);
+            if (current && !isUntouched && !confirm('いま入力されている文面を、選んだ文例で置き換えます。よろしいですか？')) {
+                return;
+            }
+
+            textarea.value = TEMPLATES[key][index].text;
+            renderPreview(key);
+        });
+
+        textarea.addEventListener('input', () => renderPreview(key));
+    }
+
+    // 券種名・抽選日時・集合時刻はプレビューに差し込まれるので、変えたら反映する
+    for (const id of ['f_name', 'f_lottery_at', 'f_slot_start_time', 'f_fixed_time_label', 'f_slot_enabled']) {
+        document.getElementById(id)?.addEventListener('input', renderAllPreviews);
+        document.getElementById(id)?.addEventListener('change', renderAllPreviews);
+    }
+}
+
+/** 文面が空の欄に既定の文例を入れる。何が送られるか分からない状態を作らないため */
+function fillMissingMessages() {
+    for (const key of MESSAGE_FIELDS) {
+        const textarea = document.getElementById(`f_${key}`);
+        if (textarea && !textarea.value.trim()) {
+            textarea.value = TEMPLATES[key][0].text;
+        }
+    }
+    renderAllPreviews();
+}
+
+function renderAllPreviews() {
+    for (const key of MESSAGE_FIELDS) renderPreview(key);
+}
+
+function renderPreview(key) {
+    const textarea = document.getElementById(`f_${key}`);
+    const box = document.querySelector(`.preview[data-preview-for="f_${key}"]`);
+    if (!textarea || !box) return;
+
+    const slotEnabled = document.getElementById('f_slot_enabled')?.checked;
+    const vars = {
+        ...PREVIEW_SAMPLE,
+        type: document.getElementById('f_name')?.value.trim() || '整理券',
+        time: (slotEnabled
+            ? document.getElementById('f_slot_start_time')?.value
+            : document.getElementById('f_fixed_time_label')?.value) || '（未設定）',
+        lottery: formatDateTime(document.getElementById('f_lottery_at')?.value) || '（未設定）'
+    };
+
+    const filled = textarea.value.replace(/\{\{(\w+)\}\}/g, (_, tag) => {
+        const value = vars[tag];
+        return value === null || value === undefined ? '' : String(value);
+    });
+
+    box.textContent = filled.trim();
+}
 
 async function handleLogin() {
     const password = document.getElementById('passwordInput').value;
@@ -231,6 +463,8 @@ function fillForm(type) {
     document.getElementById('f_color').value =
         /^#[0-9A-Fa-f]{6}$/.test(type.color || '') ? type.color : '#B01B54';
     document.getElementById('f_seed').value = type.lottery_seed || '';
+
+    fillMissingMessages();
 }
 
 function startNewType() {
@@ -254,6 +488,8 @@ function startNewType() {
     document.getElementById('f_enabled').checked = true;
     document.getElementById('f_slot_enabled').checked = true;
     document.getElementById('f_seed').value = '';
+
+    fillMissingMessages();
 
     switchTab('settings');
     clearMessage('settingsMessage');

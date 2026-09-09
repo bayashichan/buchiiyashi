@@ -16,7 +16,7 @@
 -- ============================================================
 INSERT OR IGNORE INTO ticket_types (
     id, name, sort_order, enabled,
-    apply_start, apply_end, lottery_at, remind_at, issue_start, issue_end,
+    apply_start, apply_end, lottery_at, remind_at, issue_end,
     number_start, number_end, capacity_mode, max_party_size,
     slot_enabled, slot_start_time, slot_interval_min, slot_capacity, fixed_time_label,
     color, note,
@@ -29,9 +29,8 @@ INSERT OR IGNORE INTO ticket_types (
     1,
     '2026-09-10T12:00:00+09:00',   -- 申込開始
     '2026-09-15T23:59:00+09:00',   -- 申込締切
-    '2026-09-16T20:00:00+09:00',   -- 抽選
+    '2026-09-16T20:00:00+09:00',   -- 抽選（この時点で整理券が発行される）
     '2026-09-18T18:00:00+09:00',   -- 前日リマインド
-    '2026-09-16T20:00:00+09:00',   -- 整理券の表示開始
     '2026-09-19T23:59:00+09:00',   -- 整理券の表示終了
     1, 400,                        -- 番号範囲。来場率7〜8割を見込んで定員より多めに
     'all_win',                     -- 全員当選
@@ -89,7 +88,7 @@ INSERT OR IGNORE INTO ticket_types (
 -- ============================================================
 INSERT OR IGNORE INTO ticket_types (
     id, name, sort_order, enabled,
-    apply_start, apply_end, lottery_at, remind_at, issue_start, issue_end,
+    apply_start, apply_end, lottery_at, remind_at, issue_end,
     number_start, number_end, capacity_mode, max_party_size,
     slot_enabled, slot_start_time, slot_interval_min, slot_capacity, fixed_time_label,
     color, note,
@@ -104,7 +103,6 @@ INSERT OR IGNORE INTO ticket_types (
     '2026-09-15T23:59:00+09:00',
     '2026-09-16T20:00:00+09:00',
     '2026-09-18T18:00:00+09:00',
-    '2026-09-16T20:00:00+09:00',
     '2026-09-19T23:59:00+09:00',
     1, 120,                        -- 座席数に合わせて調整すること
     'limited',                     -- 定員制。あふれた申込は落選になる

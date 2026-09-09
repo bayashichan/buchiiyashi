@@ -76,7 +76,14 @@
                         </div>
                         <div class="field check">
                             <input type="checkbox" id="f_enabled" checked>
-                            <label for="f_enabled">申込ページに表示する</label>
+                            <label for="f_enabled">整理券の申込ページ（/ticket/）に表示する</label>
+                        </div>
+                        <div class="field" style="grid-column:1/-1">
+                            <p class="hint">
+                                来場者が整理券を申し込むページに、この券種を出すかどうかの設定です。
+                                出展申込フォームとは関係ありません。
+                                受付を止めたいときは、券種を削除せずにこのチェックを外してください。
+                            </p>
                         </div>
                         <div class="field" style="grid-column:1/-1">
                             <label for="f_note">説明文</label>
@@ -98,7 +105,10 @@
                         <div class="field">
                             <label for="f_lottery_at">抽選日時</label>
                             <input type="datetime-local" id="f_lottery_at">
-                            <p class="hint">この時刻を過ぎると自動で抽選し、結果を配信します。</p>
+                            <p class="hint">
+                                この時刻を過ぎると自動で抽選します。整理券はこの時点で発行され、
+                                番号と集合時刻がすぐLINEに届きます。
+                            </p>
                         </div>
                         <div class="field">
                             <label for="f_remind_at">リマインド送信日時</label>
@@ -106,14 +116,13 @@
                             <p class="hint">当選者に整理券をもう一度送ります。前日の設定を推奨。</p>
                         </div>
                         <div class="field">
-                            <label for="f_issue_start">整理券の表示開始</label>
-                            <input type="datetime-local" id="f_issue_start">
-                            <p class="hint">空欄なら抽選後すぐ表示します。</p>
-                        </div>
-                        <div class="field">
                             <label for="f_issue_end">整理券の表示終了</label>
                             <input type="datetime-local" id="f_issue_end">
-                            <p class="hint">空欄なら表示し続けます。</p>
+                            <p class="hint">
+                                整理券は抽選と同時に発行されます。ここは「いつまで見られるか」だけの設定です。
+                                イベント当日の終了時刻を入れておくと、次回に古い番号を見せられずに済みます。
+                                空欄なら表示し続けます。
+                            </p>
                         </div>
                     </div>
 
@@ -174,25 +183,35 @@
                         差込タグ： <code>{{name}}</code> お名前 ／ <code>{{number}}</code> 整理番号 ／
                         <code>{{time}}</code> 集合時刻 ／ <code>{{party}}</code> 人数 ／
                         <code>{{type}}</code> 券種名 ／ <code>{{receipt}}</code> 受付番号 ／
-                        <code>{{lottery}}</code> 抽選日時（受付時のみ）。
-                        空欄にすると既定の文面を使います。
+                        <code>{{lottery}}</code> 抽選日時（受付時のみ）。<br>
+                        欄には既定の文面が入っています。このままでも使えますし、
+                        「文例を選ぶ」から別の書き方に差し替えたり、直接書き換えたりできます。
+                        下に、実際に届く見た目のプレビューが出ます。
                     </p>
                     <div class="grid">
                         <div class="field">
                             <label for="f_msg_receipt">申込を受け付けたとき</label>
+                            <select class="tpl-select" data-target="f_msg_receipt"></select>
                             <textarea id="f_msg_receipt"></textarea>
+                            <div class="preview" data-preview-for="f_msg_receipt"></div>
                         </div>
                         <div class="field">
                             <label for="f_msg_win">当選のお知らせ</label>
+                            <select class="tpl-select" data-target="f_msg_win"></select>
                             <textarea id="f_msg_win"></textarea>
+                            <div class="preview" data-preview-for="f_msg_win"></div>
                         </div>
                         <div class="field">
                             <label for="f_msg_lose">落選のお知らせ</label>
+                            <select class="tpl-select" data-target="f_msg_lose"></select>
                             <textarea id="f_msg_lose"></textarea>
+                            <div class="preview" data-preview-for="f_msg_lose"></div>
                         </div>
                         <div class="field">
                             <label for="f_msg_remind">前日リマインド</label>
+                            <select class="tpl-select" data-target="f_msg_remind"></select>
                             <textarea id="f_msg_remind"></textarea>
+                            <div class="preview" data-preview-for="f_msg_remind"></div>
                         </div>
                     </div>
 

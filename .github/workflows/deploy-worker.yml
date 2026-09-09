@@ -42,6 +42,16 @@ jobs:
       - name: Run tests
         run: node --test "worker/test/**/*.test.mjs"
 
+      # D1を作る前にデプロイすると、Cloudflareからは
+      # 「binding TICKETS_DB of type d1 must have a valid database_id」という
+      # エラーコードだけが返り、何をすればよいか分からない。ここで先に止める。
+      - name: Check D1 database_id
+        run: |
+          if grep -q 'PLACEHOLDER_RUN_WRANGLER_D1_CREATE' worker/wrangler.toml; then
+            echo "::error::D1データベースが未作成です。worker/wrangler.toml の database_id がプレースホルダのままなのでデプロイできません。手順は ticket/README.md の「1. データベースを作る」を参照してください。"
+            exit 1
+          fi
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:

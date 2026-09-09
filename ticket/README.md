@@ -25,24 +25,97 @@
 
 ### 1. データベースを作る
 
+> **順番が大事。** `wrangler.toml` の `database_id` がプレースホルダのままだと
+> Worker のデプロイが失敗する。**D1を作って database_id を書き込むまで、この
+> ブランチを main にマージしないこと。**（デプロイが失敗しても現在動いている
+> Worker はそのまま動き続けるので、出展申込フォームが止まることはない。ただし
+> 以後どんな変更もデプロイされなくなる。）
+>
+> **すでにマージしてしまった場合も、壊れたものは何もない。** 下の手順をそのまま
+> 実行し、`database_id` を書いた `wrangler.toml` を main に push すれば、
+> デプロイがやり直されて復旧する。失敗したデプロイを個別に消す必要はない。
+
+#### 1-1. 手元にリポジトリを用意する
+
 ```bash
+git clone https://github.com/bayashichan/buchiiyashi.git
+cd buchiiyashi/worker
+```
+
+すでにクローン済みなら、最新を取り込んでおく。
+
+```bash
+git checkout main && git pull
 cd worker
+```
+
+#### 1-2. Cloudflareにログインする
+
+```bash
+npx wrangler login          # ブラウザが開くので許可する
+npx wrangler whoami         # 目的のアカウントか確認する
+```
+
+#### 1-3. データベースを作る
+
+```bash
 npx wrangler d1 create buchiiyashi-tickets
 ```
 
-出力された `database_id` を `worker/wrangler.toml` の
-`PLACEHOLDER_RUN_WRANGLER_D1_CREATE` と差し替える。続けてテーブルを作る。
+次のような出力が返る。
+
+```
+✅ Successfully created DB 'buchiiyashi-tickets'
+
+[[d1_databases]]
+binding = "DB"
+database_name = "buchiiyashi-tickets"
+database_id = "12345678-90ab-cdef-1234-567890abcdef"
+```
+
+#### 1-4. database_id を書き込む
+
+`worker/wrangler.toml` の `PLACEHOLDER_RUN_WRANGLER_D1_CREATE` を、出力された
+`database_id` と差し替える。
+
+```toml
+[[d1_databases]]
+binding = "TICKETS_DB"                                    # ← 変えない
+database_name = "buchiiyashi-tickets"
+database_id = "12345678-90ab-cdef-1234-567890abcdef"      # ← ここだけ差し替える
+```
+
+`binding` は `TICKETS_DB` のままにすること。出力例の `DB` に合わせると
+コードから見つけられなくなる。`database_id` は秘密の値ではないので、
+公開リポジトリにそのままコミットしてよい（操作にはAPIトークンが必要）。
+
+#### 1-5. テーブルを作る
 
 ```bash
 npx wrangler d1 execute buchiiyashi-tickets --remote --file=./schema/tickets.sql
 ```
 
-第6回向けの券種をそのまま入れる場合は、続けて以下を実行する。日時・番号・人数・
-文面はあとから管理画面で変更できる。
+**`--remote` を必ず付けること。** 付けないと手元のシミュレータにテーブルが
+作られるだけで、本番のデータベースには何も起きない。実行の前に確認を求められたら
+`y` で進める。
+
+#### 1-6. 第6回の券種を入れる
 
 ```bash
 npx wrangler d1 execute buchiiyashi-tickets --remote --file=./schema/seed-6th.sql
 ```
+
+日時・番号・人数・文面はあとから管理画面で変更できる。このファイルは
+`INSERT OR IGNORE` なので、二度実行しても既存の設定を上書きしない。
+
+#### 1-7. 入ったことを確認する
+
+```bash
+npx wrangler d1 execute buchiiyashi-tickets --remote \
+  --command="SELECT id, name, apply_start, apply_end, number_start, number_end, capacity_mode FROM ticket_types"
+```
+
+`入場整理券` と `講演会整理券` の2行が返れば成功。
 
 ### 2. LIFFアプリを作る
 
@@ -54,17 +127,61 @@ LINE Developers コンソールで、整理券専用のLIFFアプリを新規作
 | サイズ | Full |
 | スコープ | `profile` |
 
-発行されたLIFF IDを `ticket/config.json` の `liffId` に設定する。
+「友だち追加オプション」は **aggressive** にする。友だちでない人には整理券を
+配信できない（LINEが403を返す）ため、申込の前に友だちになってもらう必要がある。
+すでに友だちの人には表示されないので、既存の友だちの体験は変わらない。
+これが効くのは、LINEログインチャネルの「リンクされたLINE公式アカウント」に
+配信用の公式アカウントが設定されている場合だけなので、あわせて確認すること。
+
+発行されたLIFF IDを2か所に設定する。
+
+- `ticket/config.json` の `liffId`
+- `worker/wrangler.toml` の `TICKET_LIFF_ID`
 
 出展申込のLIFFアプリとは**別に作ること**。LIFFのログイン後のリダイレクト先は
 エンドポイントURL配下に限られるため、既存のIDを流用すると `/ticket/` で
 ログインできない。`/ticket/my/` は `/ticket/` の配下なので同じIDで動く。
 
+#### リッチメニューからの導線
+
+LIFFアプリには `https://liff.line.me/{LIFF_ID}` というURLが発行される。
+リッチメニューのリンク先にこれを指定すれば、タップした人がログイン済みのまま
+申込ページに入る。ボタンは2つ置くとよい。
+
+| ボタン | リンク先 |
+| --- | --- |
+| 整理券を申し込む | `https://liff.line.me/{LIFF_ID}` |
+| 整理券を見る | `https://liff.line.me/{LIFF_ID}/my/` |
+
+LIFFのURLは末尾にパスを足せるので、1つのLIFFアプリで両方のページに入れる。
+
+**素のURL（`https://buchiiyashifestatokyo.com/ticket/`）を直接指定しないこと。**
+開いた先でログインし直す画面が挟まり、そこで諦める人が出る。
+
 ### 3. Workerをデプロイする
 
-`worker/` 配下の変更を main にマージすると GitHub Actions が自動でデプロイする。
+`database_id` を書き込んだ `wrangler.toml` を main に push する。
+`worker/` 配下が変わると GitHub Actions が自動でデプロイする。
+
+```bash
+git add wrangler.toml
+git commit -m "D1のdatabase_idを設定する"
+git push origin main
+```
+
+GitHub の Actions タブで「Deploy Worker」が緑になれば成功。
+
 `LINE_CHANNEL_ACCESS_TOKEN` は設定済みのものをそのまま使う（整理券の配信にも
-このトークンを使う）。
+このトークンを使う）。新しく登録が必要なシークレットはない。
+
+デプロイ後、APIが繋がったことを確認する。
+
+```bash
+curl https://buchiiyashi-festa-form.wakaossan2001.workers.dev/api/tickets/types
+```
+
+券種2件がJSONで返れば、WorkerとD1が繋がっている。
+`TICKETS_DB が未設定です` が返る場合は、`database_id` か `binding` を見直す。
 
 ### 4. 動作を確認する
 
@@ -74,7 +191,20 @@ LINE Developers コンソールで、整理券専用のLIFFアプリを新規作
 4. 管理画面の「抽選と配信」で抽選を実行し、整理券が届くことを確認する
 5. 「やり直す（番号を破棄）」で元に戻す
 
-本番の申込を受け付ける前に、テストで入れた申込は削除しておくこと。
+本番の申込を受け付ける前に、テストで入れた申込は削除しておくこと。管理画面には
+申込を消す機能を置いていない（運用中に誤って押すと取り返しがつかないため）。
+テストデータの削除は手元から実行する。
+
+```bash
+npx wrangler d1 execute buchiiyashi-tickets --remote --command="
+  DELETE FROM tickets;
+  DELETE FROM applications;
+  DELETE FROM lottery_runs;
+  UPDATE ticket_types SET lottery_status='pending', lottery_seed=NULL, lottery_done_at=NULL;
+"
+```
+
+申込がすべて消え、券種は抽選前の状態に戻る。券種の設定と文面は残る。
 
 ## 運用の流れ
 
