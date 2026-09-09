@@ -32,6 +32,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 整理券の番号割り当てが壊れると当日そのまま受付の事故になるため、
+      # デプロイの前に必ず通す。
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run tests
+        run: node --test "worker/test/**/*.test.mjs"
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:

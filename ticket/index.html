@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>整理券のお申し込み | ぶち癒しフェスタ in 東京</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+</head>
+
+<body>
+    <header class="page-header">
+        <div class="inner">
+            <h1>整理券のお申し込み</h1>
+            <div class="event-meta">
+                <div id="eventName">ぶち癒しフェスタ in 東京</div>
+                <div id="eventDate"></div>
+                <div id="eventLocation"></div>
+            </div>
+        </div>
+    </header>
+
+    <div class="wrap">
+
+        <!-- 読み込み中 -->
+        <div id="loadingScreen" class="loading">
+            <div class="spinner"></div>
+            <div>準備しています…</div>
+        </div>
+
+        <!-- 申込フォーム -->
+        <div id="formScreen" class="hidden">
+
+            <!-- 抽選であることを最初に伝える。当日のトラブルの大半が
+                 「申し込んだ＝当選した」という思い込みから起きるため。 -->
+            <div class="notice">
+                <h3>先着順ではありません</h3>
+                <p>お申し込みいただいた方の中から<strong>抽選</strong>で整理番号をお決めします。
+                    受付の順番は結果に影響しませんので、期間中にごゆっくりお申し込みください。</p>
+                <p>抽選の結果は、このLINEにあらためてお送りします。</p>
+            </div>
+
+            <!-- LINE連携の状態 -->
+            <div id="liffStatus" class="status-box">LINEの情報を確認しています…</div>
+
+            <section>
+                <h2>ご希望の整理券</h2>
+                <div id="typeList" class="type-list"></div>
+            </section>
+
+            <section>
+                <h2>代表者さまのご連絡先</h2>
+                <div class="card">
+                    <div class="field">
+                        <label for="name">お名前<span class="req">必須</span></label>
+                        <input type="text" id="name" autocomplete="name" placeholder="例：山田 花子">
+                        <p class="hint">当日の受付で、このお名前を確認します。</p>
+                    </div>
+                    <div class="field">
+                        <label for="nameKana">フリガナ<span class="opt">任意</span></label>
+                        <input type="text" id="nameKana" placeholder="例：ヤマダ ハナコ">
+                    </div>
+                    <div class="field">
+                        <label for="phone">電話番号<span class="req">必須</span></label>
+                        <input type="tel" id="phone" autocomplete="tel" inputmode="numeric"
+                            placeholder="例：09012345678">
+                        <p class="hint">整理券が見つからないときに、当日の受付でお調べするために使います。</p>
+                    </div>
+                    <div class="field">
+                        <label for="email">メールアドレス<span class="opt">任意</span></label>
+                        <input type="email" id="email" autocomplete="email" placeholder="例：hanako@example.com">
+                        <p class="hint">LINEが届かなかった場合のご連絡先です。</p>
+                    </div>
+                </div>
+            </section>
+
+            <div class="submit-area">
+                <button id="submitBtn" class="btn-primary">この内容で申し込む</button>
+                <div id="formError" class="error-box hidden"></div>
+            </div>
+        </div>
+
+        <!-- 送信中 -->
+        <div id="sendingScreen" class="loading hidden">
+            <div class="spinner"></div>
+            <div>お申し込みを送信しています…</div>
+        </div>
+
+        <!-- 完了 -->
+        <div id="doneScreen" class="hidden">
+            <div class="done-mark">✓</div>
+            <div class="done-title">お申し込みを受け付けました</div>
+            <div id="receiptList" class="receipt-list"></div>
+
+            <div class="notice">
+                <h3>まだ整理券ではありません</h3>
+                <p id="doneLotteryNote">抽選の結果が出ましたら、このLINEで整理番号をお送りします。
+                    それまでお待ちください。</p>
+            </div>
+
+            <p class="print-hint">
+                受付内容の確認は<a href="my/">こちら</a>からいつでもご覧いただけます。
+            </p>
+        </div>
+
+        <!-- 申込を受け付けていないとき -->
+        <div id="closedScreen" class="hidden">
+            <div class="card">
+                <h2 style="border:none;padding:0;margin-bottom:10px;">現在受付中の整理券はありません</h2>
+                <p style="font-size:15px;line-height:1.8;">
+                    申込期間が始まりましたら、公式LINEでお知らせします。
+                </p>
+                <p class="print-hint" style="text-align:left;margin-top:14px;">
+                    お申し込み済みの方は<a href="my/">こちら</a>から内容をご確認いただけます。
+                </p>
+            </div>
+        </div>
+
+        <!-- 設定が終わっていないとき（運用者向け） -->
+        <div id="setupScreen" class="hidden">
+            <div class="notice">
+                <h3>準備中です</h3>
+                <p id="setupMessage"></p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

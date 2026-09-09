@@ -6,6 +6,7 @@
  */
 
 import { handleSocialAPI, runDueJobs } from './social.js';
+import { handleTicketAPI, handleTicketAdminAPI, runTicketSchedule } from './tickets.js';
 
 export default {
     async fetch(request, env, ctx) {
@@ -43,11 +44,17 @@ export default {
             return handlePublicExhibitorData(request, env, corsHeaders, url, ctx);
         }
 
+        // 整理券システム（来場者向け）
+        if (url.pathname.startsWith('/api/tickets/')) {
+            const ticketResponse = await handleTicketAPI(request, env, corsHeaders, url);
+            if (ticketResponse) return ticketResponse;
+        }
+
         // 既存のフォーム送信処理
         return handleFormSubmission(request, env, corsHeaders);
     },
 
-    // Cron Trigger: 予約時刻を過ぎたSNS投稿を実行する
+    // Cron Trigger: 予約時刻を過ぎたSNS投稿の実行と、整理券の抽選・配信
     async scheduled(event, env, ctx) {
         ctx.waitUntil(
             runDueJobs(env)
@@ -55,6 +62,22 @@ export default {
                     if (count > 0) console.log(`Social scheduler: processed ${count} job(s)`);
                 })
                 .catch(err => console.error('Social scheduler error:', err))
+        );
+
+        // 抽選日時が来た券種の抽選と、送りきれていない配信の続き。
+        // SNS投稿とは独立させ、片方が落ちてももう片方は動くようにする。
+        ctx.waitUntil(
+            runTicketSchedule(env)
+                .then(result => {
+                    if (result.lotteries || result.delivered || result.reminded || result.recovered) {
+                        console.log(
+                            `整理券スケジューラ: 抽選${result.lotteries}件 / ` +
+                            `結果配信${result.delivered}件 / リマインド${result.reminded}件 / ` +
+                            `復旧${result.recovered}件`
+                        );
+                    }
+                })
+                .catch(err => console.error('整理券スケジューラ エラー:', err))
         );
     }
 };
@@ -77,6 +100,12 @@ async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
         if (url.pathname.startsWith('/api/admin/social')) {
             const socialResponse = await handleSocialAPI(request, env, corsHeaders, url, ctx);
             if (socialResponse) return socialResponse;
+        }
+
+        // /api/admin/tickets/* - 整理券（券種設定・抽選・配信・当日受付）
+        if (url.pathname.startsWith('/api/admin/tickets')) {
+            const ticketResponse = await handleTicketAdminAPI(request, env, corsHeaders, url);
+            if (ticketResponse) return ticketResponse;
         }
 
         // GET /api/admin/config - 設定取得
