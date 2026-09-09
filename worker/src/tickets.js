@@ -864,8 +864,7 @@ async function getMyTickets(request, env, corsHeaders) {
         `SELECT a.id, a.receipt_no, a.name, a.party_size, a.status, a.created_at,
                 t.number_start, t.number_end, t.slot_time, t.checked_in_at,
                 ty.id AS type_id, ty.name AS type_name, ty.color, ty.slot_enabled,
-                ty.fixed_time_label, ty.lottery_status, ty.lottery_at,
-                ty.issue_start, ty.issue_end
+                ty.fixed_time_label, ty.lottery_status, ty.lottery_at, ty.issue_end
          FROM applications a
          JOIN ticket_types ty ON ty.id = a.ticket_type_id
          LEFT JOIN tickets t ON t.application_id = a.id
@@ -875,10 +874,11 @@ async function getMyTickets(request, env, corsHeaders) {
 
     const now = new Date();
     const items = (results || []).map(row => {
-        // 発行期間の外なら番号を出さない（管理画面で期間を設定できる）
-        const beforeIssue = row.issue_start ? isAfter(row.issue_start, now) : false;
+        // 当選が確定した時点で整理券は発行済み。表示開始を別に設けると、
+        // LINEには番号が届いているのにページでは見られない、という食い違いが起きる。
+        // 表示終了だけは残す（イベント後に古い番号が出続けるのを防ぐため）。
         const afterIssue = row.issue_end ? isBefore(row.issue_end, now) : false;
-        const visible = row.status === 'won' && !beforeIssue && !afterIssue;
+        const visible = row.status === 'won' && !afterIssue;
         return {
             applicationId: row.id,
             receiptNo: row.receipt_no,
@@ -978,7 +978,6 @@ async function upsertType(request, env, corsHeaders) {
         apply_end: data.apply_end || null,
         lottery_at: data.lottery_at || null,
         remind_at: data.remind_at || null,
-        issue_start: data.issue_start || null,
         issue_end: data.issue_end || null,
         number_start: numberStart,
         number_end: numberEnd,

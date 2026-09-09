@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS ticket_types (
     apply_end         TEXT,
     lottery_at        TEXT,    -- この時刻を過ぎるとcronが抽選を実行する
     remind_at         TEXT,    -- この時刻を過ぎるとcronが前日リマインドを送る
-    issue_start       TEXT,    -- 整理券を表示できる期間
-    issue_end         TEXT,
+    issue_end         TEXT,    -- この時刻を過ぎたら整理券を表示しない
+                               -- （発行は抽選と同時。開始時刻の設定は持たない）
 
     -- 番号設定
     number_start      INTEGER NOT NULL DEFAULT 1,
