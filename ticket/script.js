@@ -169,14 +169,17 @@ function render() {
     const hasTicket = mine.some(item => item.ticketVisible);
     document.getElementById('dayGuide').classList.toggle('hidden', !hasTicket);
 
-    const nothingToShow = mine.length === 0 && !applicableTypes().length;
+    // 券種が1つも公開されていないときだけ「ありません」を出す。
+    // 受付前・受付終了・抽選済みの券種は、理由を添えて表示する（消してしまうと
+    // 来場者も運用者も、なぜ出ないのか分からなくなる）。
+    const nothingToShow = mine.length === 0 && types.length === 0;
     document.getElementById('emptyState').classList.toggle('hidden', !nothingToShow);
 }
 
-/** まだ申し込んでおらず、いま受付中の券種 */
-function applicableTypes() {
+/** まだ申し込んでいない券種（受付中かどうかは問わない） */
+function unappliedTypes() {
     const appliedIds = new Set(mine.map(item => item.typeId));
-    return types.filter(type => type.acceptingNow && !appliedIds.has(type.id));
+    return types.filter(type => !appliedIds.has(type.id));
 }
 
 function renderLiffStatus() {
@@ -302,30 +305,76 @@ function buildPending(item) {
     return el;
 }
 
-/** まだ申し込んでいない券種だけを、申込フォームに出す */
+/**
+ * まだ申し込んでいない券種を並べる。
+ *
+ * 受付中のものは選べる形で、そうでないものは理由を添えた読み取り専用で出す。
+ * 受付中の券種が1つもなければ、連絡先の入力欄と送信ボタンは出さない。
+ */
 function renderApplySection() {
-    const available = applicableTypes();
+    const remaining = unappliedTypes();
+    const available = remaining.filter(type => type.acceptingNow);
     const section = document.getElementById('applySection');
 
-    if (available.length === 0 || liffState.status !== 'linked') {
+    if (remaining.length === 0 || liffState.status !== 'linked') {
         section.classList.add('hidden');
         return;
     }
     section.classList.remove('hidden');
 
-    // すでに何かに申し込んでいる人には、追加の申込であることを分かるようにする
-    document.getElementById('applyHeading').textContent =
-        mine.length > 0 ? '追加でお申し込みできる整理券' : 'ご希望の整理券';
+    document.getElementById('applyHeading').textContent = available.length === 0
+        ? '現在お申し込みいただけない整理券'
+        : (mine.length > 0 ? '追加でお申し込みできる整理券' : 'ご希望の整理券');
 
     const list = document.getElementById('typeList');
     list.innerHTML = '';
     selection.clear();
 
-    for (const type of available) {
-        list.appendChild(buildTypeCard(type));
+    for (const type of remaining) {
+        list.appendChild(type.acceptingNow ? buildTypeCard(type) : buildUnavailableCard(type));
     }
 
-    prefillName();
+    const canApply = available.length > 0;
+    document.getElementById('applyNotice').classList.toggle('hidden', !canApply);
+    document.getElementById('contactSection').classList.toggle('hidden', !canApply);
+    document.getElementById('submitArea').classList.toggle('hidden', !canApply);
+
+    if (canApply) prefillName();
+}
+
+/** 受付中でない券種。なぜ申し込めないのかを必ず書く */
+function buildUnavailableCard(type) {
+    const card = document.createElement('div');
+    card.className = 'type-card unavailable';
+
+    let badge;
+    let reason;
+    if (type.notYetOpen) {
+        badge = '受付開始前';
+        reason = type.apply_start
+            ? `${formatDateTime(type.apply_start)} から受付を開始します。`
+            : '受付開始までお待ちください。';
+    } else if (type.closed) {
+        badge = '受付終了';
+        reason = 'お申し込みの受付は終了しました。';
+    } else if (type.lottery_status === 'done') {
+        badge = '抽選終了';
+        reason = '抽選が終了したため、これ以上のお申し込みは受け付けていません。';
+    } else {
+        badge = '受付停止中';
+        reason = '現在お申し込みを受け付けていません。';
+    }
+
+    card.innerHTML = `
+        <div class="type-head" style="cursor:default;">
+            <span>
+                <span class="type-name">${escapeHtml(type.name)}</span>
+                <span class="type-sub">${escapeHtml(reason)}</span>
+                <span class="type-badge closed">${escapeHtml(badge)}</span>
+            </span>
+        </div>
+    `;
+    return card;
 }
 
 function buildTypeCard(type) {

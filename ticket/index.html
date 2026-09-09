@@ -42,9 +42,9 @@
             <!-- すでに申し込み済みの券種（受付済み／抽選待ち／整理券／落選） -->
             <div id="statusList"></div>
 
-            <!-- まだ申し込んでいない券種の申込フォーム -->
+            <!-- まだ申し込んでいない券種。受付中でないものも状況を添えて出す -->
             <div id="applySection" class="hidden">
-                <div class="notice">
+                <div id="applyNotice" class="notice hidden">
                     <h3>先着順ではありません</h3>
                     <p>お申し込みいただいた方の中から<strong>抽選</strong>で整理番号をお決めします。
                         受付の順番は結果に影響しませんので、期間中にごゆっくりお申し込みください。</p>
@@ -56,7 +56,7 @@
                     <div id="typeList" class="type-list"></div>
                 </section>
 
-                <section>
+                <section id="contactSection" class="hidden">
                     <h2>代表者さまのご連絡先</h2>
                     <div class="card">
                         <div class="field">
@@ -82,7 +82,7 @@
                     </div>
                 </section>
 
-                <div class="submit-area">
+                <div class="submit-area hidden" id="submitArea">
                     <button id="submitBtn" class="btn-primary">この内容で申し込む</button>
                     <div id="formError" class="error-box hidden"></div>
                 </div>
