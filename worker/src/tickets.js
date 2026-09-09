@@ -226,7 +226,14 @@ function buildTicketFlex(type, ticket, application, env) {
         ? `${ticket.number_start}`
         : `${ticket.number_start} – ${ticket.number_end}`;
     const time = slotLabel(type, ticket.slot_time);
+    // LINEのトークから開くときは、LIFFのURLを使うとログイン済みのまま整理券が出る。
+    // 素のURLだとログインし直す画面が挟まり、そこで諦める人が出る。
+    // TICKET_LIFF_ID が未設定のときだけ、素のURLで代替する。
+    const liffId = String(env.TICKET_LIFF_ID || '').trim();
     const siteUrl = (env.TICKET_SITE_URL || '').replace(/\/$/, '');
+    const ticketPageUrl = liffId
+        ? `https://liff.line.me/${liffId}/my/`
+        : (siteUrl ? `${siteUrl}/ticket/my/` : '');
 
     const rows = [
         ['お名前', `${application.name} 様`],
@@ -293,7 +300,7 @@ function buildTicketFlex(type, ticket, application, env) {
         }
     };
 
-    if (siteUrl) {
+    if (ticketPageUrl) {
         bubble.footer = {
             type: 'box',
             layout: 'vertical',
@@ -303,7 +310,7 @@ function buildTicketFlex(type, ticket, application, env) {
                 style: 'primary',
                 color,
                 height: 'sm',
-                action: { type: 'uri', label: '整理券を開く（印刷用）', uri: `${siteUrl}/ticket/my/` }
+                action: { type: 'uri', label: '整理券を開く（印刷用）', uri: ticketPageUrl }
             }]
         };
     }

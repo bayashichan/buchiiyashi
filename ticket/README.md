@@ -127,11 +127,36 @@ LINE Developers コンソールで、整理券専用のLIFFアプリを新規作
 | サイズ | Full |
 | スコープ | `profile` |
 
-発行されたLIFF IDを `ticket/config.json` の `liffId` に設定する。
+「友だち追加オプション」は **aggressive** にする。友だちでない人には整理券を
+配信できない（LINEが403を返す）ため、申込の前に友だちになってもらう必要がある。
+すでに友だちの人には表示されないので、既存の友だちの体験は変わらない。
+これが効くのは、LINEログインチャネルの「リンクされたLINE公式アカウント」に
+配信用の公式アカウントが設定されている場合だけなので、あわせて確認すること。
+
+発行されたLIFF IDを2か所に設定する。
+
+- `ticket/config.json` の `liffId`
+- `worker/wrangler.toml` の `TICKET_LIFF_ID`
 
 出展申込のLIFFアプリとは**別に作ること**。LIFFのログイン後のリダイレクト先は
 エンドポイントURL配下に限られるため、既存のIDを流用すると `/ticket/` で
 ログインできない。`/ticket/my/` は `/ticket/` の配下なので同じIDで動く。
+
+#### リッチメニューからの導線
+
+LIFFアプリには `https://liff.line.me/{LIFF_ID}` というURLが発行される。
+リッチメニューのリンク先にこれを指定すれば、タップした人がログイン済みのまま
+申込ページに入る。ボタンは2つ置くとよい。
+
+| ボタン | リンク先 |
+| --- | --- |
+| 整理券を申し込む | `https://liff.line.me/{LIFF_ID}` |
+| 整理券を見る | `https://liff.line.me/{LIFF_ID}/my/` |
+
+LIFFのURLは末尾にパスを足せるので、1つのLIFFアプリで両方のページに入れる。
+
+**素のURL（`https://buchiiyashifestatokyo.com/ticket/`）を直接指定しないこと。**
+開いた先でログインし直す画面が挟まり、そこで諦める人が出る。
 
 ### 3. Workerをデプロイする
 
