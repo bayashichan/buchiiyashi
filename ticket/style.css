@@ -140,8 +140,10 @@ h2 {
     flex: none;
     accent-color: var(--rose);
 }
-.type-head .type-name { font-size: 18px; font-weight: 700; line-height: 1.5; }
-.type-head .type-sub { font-size: 14px; color: var(--ink-3); margin-top: 4px; line-height: 1.7; }
+/* span のままだと名前と説明が同じ行に流れるので、明示的にブロックにする */
+.type-head > span { display: block; }
+.type-head .type-name { display: block; font-size: 18px; font-weight: 700; line-height: 1.5; }
+.type-head .type-sub { display: block; font-size: 14px; color: var(--ink-3); margin-top: 5px; line-height: 1.7; }
 
 .type-badge {
     display: inline-block;
@@ -316,9 +318,21 @@ h2 {
     padding: 20px;
     margin-bottom: 20px;
 }
-.ticket-pending .kind { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
-.ticket-pending .msg { font-size: 15px; color: var(--ink-2); line-height: 1.8; }
-.ticket-pending .receipt { font-size: 14px; color: var(--ink-3); margin-top: 8px; }
+.ticket-pending .kind { font-size: 14px; font-weight: 700; color: var(--rose); }
+.ticket-pending .pending-title { font-size: 18px; font-weight: 700; margin: 4px 0 10px; line-height: 1.5; }
+.ticket-pending .msg {
+    font-size: 15px;
+    color: var(--ink-2);
+    line-height: 1.85;
+    white-space: pre-line;   /* 案内文の改行をそのまま出す */
+}
+.ticket-pending .receipt {
+    font-size: 14px;
+    color: var(--ink-3);
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
 
 .print-hint {
     font-size: 14px;

@@ -1,12 +1,23 @@
 /**
- * 整理券の申込ページ
+ * 整理券ページ（申込と表示を兼ねる）
  *
- * 1件の申込 = 1グループ。券種を複数選べる場合は、券種ごとに1件ずつ送る。
- * LINEログインで本人が特定できるため、入力してもらう項目は最小限にしている。
+ * リンクは1つだけ。開いた人の状況で中身が変わる。
+ *   まだ申し込んでいない  → 申込フォーム
+ *   申込済み・抽選前      → 受付内容と、いつ抽選するか
+ *   当選                  → 整理券（番号と集合時刻）
+ *   落選                  → その案内
+ *
+ * 券種ごとに状態が違うので、両方が同時に出ることもある
+ * （入場は当選済み、講演会はまだ受付中、など）。
+ *
+ * 表示がどうであれ二重申込は起きない。同じ人が同じ券種に申し込めないことは
+ * データベースの制約で担保していて、画面はその状態を映しているだけ。
  */
 
 let CONFIG = null;
-let types = [];
+let types = [];      // 公開されている券種
+let mine = [];       // この人の申込・整理券
+let mineFailed = false;
 let liffState = { status: 'pending', userId: '', displayName: '', error: '' };
 
 // 券種ID -> { selected: boolean, partySize: number }
@@ -16,36 +27,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         CONFIG = await loadConfig();
     } catch (error) {
-        showSetup('設定ファイルを読み込めませんでした。しばらくしてからもう一度お試しください。');
+        showSetup('設定を読み込めませんでした。しばらくしてからもう一度お試しください。');
         return;
     }
 
     renderEventMeta();
 
     if (!CONFIG.liffId) {
-        // LIFFアプリが未登録。誰のお申し込みか特定できないので受け付けない。
         showSetup(
-            'お申し込みの準備が完了していません。お手数ですが、しばらくしてから' +
+            '準備が完了していません。お手数ですが、しばらくしてから' +
             '公式LINEのメニューからもう一度お開きください。'
         );
         console.error('ticket/config.json の liffId が未設定です');
         return;
     }
 
-    await Promise.all([initLiff(), loadTypes()]);
+    await initLiff();
+    await loadAll();
 
     document.getElementById('loadingScreen').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
 
-    if (types.length === 0) {
-        document.getElementById('closedScreen').classList.remove('hidden');
-        return;
-    }
-
-    document.getElementById('formScreen').classList.remove('hidden');
-    renderLiffStatus();
-    renderTypes();
-    prefillName();
-
+    render();
     document.getElementById('submitBtn').addEventListener('click', handleSubmit);
 });
 
@@ -112,120 +115,280 @@ async function initLiff() {
     }
 }
 
+// ============================================================
+// データの取得
+// ============================================================
+
+async function loadAll() {
+    // 券種一覧と自分の申込を同時に取りに行く。
+    // 片方が失敗しても、取れた方だけで画面を作る。
+    const [typesResult, mineResult] = await Promise.allSettled([loadTypes(), loadMine()]);
+
+    if (typesResult.status === 'rejected') {
+        console.error('券種の取得に失敗:', typesResult.reason);
+        types = [];
+    }
+    if (mineResult.status === 'rejected') {
+        console.error('申込状況の取得に失敗:', mineResult.reason);
+        mine = [];
+        mineFailed = true;
+    }
+}
+
+async function loadTypes() {
+    const response = await fetch(`${CONFIG.workerUrl}/api/tickets/types`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    types = data.types || [];
+}
+
+async function loadMine() {
+    if (liffState.status !== 'linked') {
+        mine = [];
+        return;
+    }
+    const response = await fetch(`${CONFIG.workerUrl}/api/tickets/mine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineUserId: liffState.userId })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    mine = data.items || [];
+}
+
+// ============================================================
+// 画面の組み立て
+// ============================================================
+
+function render() {
+    renderLiffStatus();
+    renderStatusList();
+    renderApplySection();
+
+    const hasTicket = mine.some(item => item.ticketVisible);
+    document.getElementById('dayGuide').classList.toggle('hidden', !hasTicket);
+
+    const nothingToShow = mine.length === 0 && !applicableTypes().length;
+    document.getElementById('emptyState').classList.toggle('hidden', !nothingToShow);
+}
+
+/** まだ申し込んでおらず、いま受付中の券種 */
+function applicableTypes() {
+    const appliedIds = new Set(mine.map(item => item.typeId));
+    return types.filter(type => type.acceptingNow && !appliedIds.has(type.id));
+}
+
 function renderLiffStatus() {
     const box = document.getElementById('liffStatus');
 
     if (liffState.status === 'linked') {
-        box.className = 'status-box ok';
-        box.innerHTML = `✓ LINEを確認しました：<strong>${escapeHtml(liffState.displayName)}</strong> さん`;
+        box.classList.add('hidden');
         return;
     }
 
+    box.classList.remove('hidden');
     box.className = 'status-box warn';
     box.innerHTML = `
         <strong>LINEの情報を取得できていません</strong>
-        <div style="margin-top:6px;">このままではお申し込みができません。
+        <div style="margin-top:6px;">このままではお申し込みや整理券の表示ができません。
         公式LINEのメニューからこのページを開き直してください。</div>
         <a class="line-button" href="https://liff.line.me/${encodeURIComponent(CONFIG.liffId)}">
             LINEアプリで開き直す</a>
     `;
 }
 
+/** 申込済みの券種を、状態ごとの見た目で並べる */
+function renderStatusList() {
+    const list = document.getElementById('statusList');
+    list.innerHTML = '';
+
+    if (mineFailed && liffState.status === 'linked') {
+        const warn = document.createElement('div');
+        warn.className = 'status-box warn';
+        warn.innerHTML = `
+            <strong>お申し込み状況を確認できませんでした</strong>
+            <div style="margin-top:6px;">電波の良い場所で、もう一度お開きください。
+            すでにお申し込み済みの場合、重ねて申し込むことはできませんのでご安心ください。</div>
+        `;
+        list.appendChild(warn);
+    }
+
+    if (mine.length === 0) return;
+
+    const heading = document.createElement('h2');
+    heading.textContent = 'お申し込み済みの整理券';
+    list.appendChild(heading);
+
+    for (const item of mine) {
+        list.appendChild(item.ticketVisible ? buildTicket(item) : buildPending(item));
+    }
+}
+
+function buildTicket(item) {
+    const el = document.createElement('div');
+    el.className = 'ticket';
+
+    const color = /^#[0-9A-Fa-f]{6}$/.test(item.color || '') ? item.color : '#B01B54';
+    const range = item.numberStart === item.numberEnd
+        ? null
+        : `${item.numberStart} 〜 ${item.numberEnd}`;
+
+    el.innerHTML = `
+        <div class="band" style="background:${color}"></div>
+        <div class="ticket-body">
+            <div class="kind" style="color:${color}">${escapeHtml(item.typeName)}</div>
+            <div class="event">${escapeHtml(CONFIG.eventName || '')}</div>
+            <div class="num-label">整理番号</div>
+            <div class="num">${item.numberStart}<small>番</small></div>
+            ${item.timeLabel ? `
+            <div class="when" style="background:${hexToSoft(color)}">
+                <div class="l">${item.slotEnabled ? '集合時刻' : 'ご案内'}</div>
+                <div class="v">${escapeHtml(item.timeLabel)}</div>
+            </div>` : ''}
+        </div>
+        <div class="rows">
+            <div class="row"><span>お名前</span><span>${escapeHtml(item.name)} 様</span></div>
+            <div class="row"><span>人数</span><span>${item.partySize}名</span></div>
+            ${range ? `<div class="row"><span>同行者番号</span><span>${range}</span></div>` : ''}
+            <div class="row"><span>会場</span><span>${escapeHtml(CONFIG.eventLocation || '')}</span></div>
+            ${item.checkedIn ? '<div class="row"><span>受付</span><span>受付済み</span></div>' : ''}
+        </div>
+    `;
+    return el;
+}
+
+/**
+ * 抽選前・落選・表示期間外のときの表示。
+ *
+ * 抽選前の人がここを開く動機は「自分の申込が通っているか」と
+ * 「いつ結果が分かるか」の2つなので、その2つを最初に出す。
+ */
+function buildPending(item) {
+    const el = document.createElement('div');
+    el.className = 'ticket-pending';
+
+    let title;
+    let message;
+
+    if (item.status === 'lost') {
+        title = '今回はご用意できませんでした';
+        message = '厳正な抽選の結果、誠に申し訳ございませんが今回はご用意できませんでした。' +
+            '当日は空き状況に応じてご案内できる場合があります。';
+    } else if (item.lotteryStatus !== 'done') {
+        title = 'お申し込みを受け付けています';
+        message = item.lotteryAt
+            ? `${formatDateTime(item.lotteryAt)} に抽選を行います。\n` +
+              '結果はこのLINEでお知らせし、当選された方の整理番号はこのページに表示されます。\n' +
+              'それまでお待ちください。'
+            : '抽選の結果が出ましたら、このLINEでお知らせします。\n' +
+              '当選された方の整理番号は、このページに表示されます。';
+    } else {
+        title = 'お申し込みを受け付けています';
+        message = '整理券の表示期間外です。表示が始まりましたらこのLINEでお知らせします。';
+    }
+
+    // 券種の色は受付での見分けにも使うので、抽選前・落選のカードでも揃える
+    const color = /^#[0-9A-Fa-f]{6}$/.test(item.color || '') ? item.color : '#B01B54';
+
+    el.innerHTML = `
+        <div class="kind" style="color:${color}">${escapeHtml(item.typeName)}</div>
+        <div class="pending-title">${escapeHtml(title)}</div>
+        <div class="msg">${escapeHtml(message)}</div>
+        <div class="receipt">
+            受付番号 ${escapeHtml(item.receiptNo)}／${escapeHtml(item.name)} 様（${item.partySize}名）
+        </div>
+    `;
+    return el;
+}
+
+/** まだ申し込んでいない券種だけを、申込フォームに出す */
+function renderApplySection() {
+    const available = applicableTypes();
+    const section = document.getElementById('applySection');
+
+    if (available.length === 0 || liffState.status !== 'linked') {
+        section.classList.add('hidden');
+        return;
+    }
+    section.classList.remove('hidden');
+
+    // すでに何かに申し込んでいる人には、追加の申込であることを分かるようにする
+    document.getElementById('applyHeading').textContent =
+        mine.length > 0 ? '追加でお申し込みできる整理券' : 'ご希望の整理券';
+
+    const list = document.getElementById('typeList');
+    list.innerHTML = '';
+    selection.clear();
+
+    for (const type of available) {
+        list.appendChild(buildTypeCard(type));
+    }
+
+    prefillName();
+}
+
+function buildTypeCard(type) {
+    const card = document.createElement('div');
+    card.className = 'type-card';
+    card.dataset.typeId = type.id;
+
+    const maxParty = Math.max(1, Number(type.max_party_size) || 1);
+    const options = [];
+    for (let n = 1; n <= maxParty; n++) options.push(`<option value="${n}">${n}名</option>`);
+
+    const sub = [];
+    if (type.note) sub.push(escapeHtml(type.note));
+    sub.push(type.capacity_mode === 'limited'
+        ? '定員があるため、抽選で落選する場合があります'
+        : 'お申し込みの方は全員ご入場いただけます（整理番号を抽選でお決めします）');
+    if (maxParty > 1) sub.push(`1回のお申し込みで${maxParty}名さままで（番号は連番になります）`);
+    if (type.apply_end) sub.push(`受付は ${formatDateTime(type.apply_end)} まで`);
+
+    card.innerHTML = `
+        <label class="type-head">
+            <input type="checkbox">
+            <span>
+                <span class="type-name">${escapeHtml(type.name)}</span>
+                <span class="type-sub">${sub.join('<br>')}</span>
+                <span class="type-badge open">受付中</span>
+            </span>
+        </label>
+        <div class="type-party hidden">
+            <label for="party_${type.id}">ご参加人数</label>
+            <select id="party_${type.id}">${options.join('')}</select>
+            <span class="hint">
+                LINEをお持ちでない方も、人数に含めてお申し込みいただけます。
+                ご一緒の方は連番になりますので、当日は代表者さまと一緒にお越しください。
+            </span>
+        </div>
+    `;
+
+    selection.set(type.id, { selected: false, partySize: 1 });
+
+    const checkbox = card.querySelector('input[type="checkbox"]');
+    const partyBox = card.querySelector('.type-party');
+    const partySelect = card.querySelector('select');
+
+    checkbox.addEventListener('change', () => {
+        selection.get(type.id).selected = checkbox.checked;
+        card.classList.toggle('selected', checkbox.checked);
+        partyBox.classList.toggle('hidden', !checkbox.checked);
+    });
+    partySelect.addEventListener('change', () => {
+        selection.get(type.id).partySize = Number(partySelect.value) || 1;
+    });
+
+    return card;
+}
+
 /** LINEの表示名を初期値に入れておく。多くの方はそのまま使える */
 function prefillName() {
     const nameInput = document.getElementById('name');
-    if (!nameInput.value && liffState.displayName) {
-        nameInput.value = liffState.displayName;
-    }
-}
-
-// ============================================================
-// 券種
-// ============================================================
-
-async function loadTypes() {
-    try {
-        const response = await fetch(`${CONFIG.workerUrl}/api/tickets/types`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        types = data.types || [];
-    } catch (error) {
-        console.error('券種の取得に失敗:', error);
-        types = [];
-    }
-}
-
-function renderTypes() {
-    const list = document.getElementById('typeList');
-    list.innerHTML = '';
-
-    for (const type of types) {
-        const available = type.acceptingNow;
-        const card = document.createElement('div');
-        card.className = `type-card${available ? '' : ' unavailable'}`;
-        card.dataset.typeId = type.id;
-
-        const maxParty = Math.max(1, Number(type.max_party_size) || 1);
-        const options = [];
-        for (let n = 1; n <= maxParty; n++) {
-            options.push(`<option value="${n}">${n}名</option>`);
-        }
-
-        const badge = available
-            ? '<span class="type-badge open">受付中</span>'
-            : `<span class="type-badge closed">${type.notYetOpen ? '受付開始前' : '受付終了'}</span>`;
-
-        const sub = [];
-        if (type.note) sub.push(escapeHtml(type.note));
-        if (type.capacity_mode === 'limited') {
-            sub.push('定員があるため、抽選で落選する場合があります');
-        } else {
-            sub.push('お申し込みの方は全員ご入場いただけます（整理番号を抽選でお決めします）');
-        }
-        if (available && maxParty > 1) {
-            sub.push(`1回のお申し込みで${maxParty}名さままで（番号は連番になります）`);
-        }
-        if (type.apply_end) sub.push(`受付は ${formatDateTime(type.apply_end)} まで`);
-
-        card.innerHTML = `
-            <label class="type-head">
-                <input type="checkbox" ${available ? '' : 'disabled'}>
-                <span>
-                    <span class="type-name">${escapeHtml(type.name)}</span>
-                    <span class="type-sub">${sub.join('<br>')}</span>
-                    ${badge}
-                </span>
-            </label>
-            ${available ? `
-            <div class="type-party hidden">
-                <label for="party_${type.id}">ご参加人数</label>
-                <select id="party_${type.id}">${options.join('')}</select>
-                <span class="hint">
-                    LINEをお持ちでない方も、人数に含めてお申し込みいただけます。
-                    ご一緒の方は連番になりますので、当日は代表者さまと一緒にお越しください。
-                </span>
-            </div>` : ''}
-        `;
-
-        if (available) {
-            selection.set(type.id, { selected: false, partySize: 1 });
-
-            const checkbox = card.querySelector('input[type="checkbox"]');
-            const partyBox = card.querySelector('.type-party');
-            const partySelect = card.querySelector('select');
-
-            checkbox.addEventListener('change', () => {
-                const state = selection.get(type.id);
-                state.selected = checkbox.checked;
-                card.classList.toggle('selected', checkbox.checked);
-                partyBox.classList.toggle('hidden', !checkbox.checked);
-            });
-            partySelect.addEventListener('change', () => {
-                selection.get(type.id).partySize = Number(partySelect.value) || 1;
-            });
-        }
-
-        list.appendChild(card);
+    if (nameInput && !nameInput.value) {
+        // 追加申込のときは、前回と同じ内容を初期値にする
+        const previous = mine.find(item => item.name);
+        nameInput.value = previous ? previous.name : (liffState.displayName || '');
     }
 }
 
@@ -238,7 +401,6 @@ async function handleSubmit() {
     errorBox.classList.add('hidden');
 
     const chosen = [...selection.entries()].filter(([, state]) => state.selected);
-
     const name = document.getElementById('name').value.trim();
     const phone = document.getElementById('phone').value.replace(/[^\d]/g, '');
 
@@ -257,7 +419,7 @@ async function handleSubmit() {
         return;
     }
 
-    document.getElementById('formScreen').classList.add('hidden');
+    document.getElementById('content').classList.add('hidden');
     document.getElementById('sendingScreen').classList.remove('hidden');
 
     const common = {
@@ -269,7 +431,7 @@ async function handleSubmit() {
         email: document.getElementById('email').value.trim()
     };
 
-    // 券種ごとに1件ずつ送る。1つ失敗しても他は成立させ、結果をそのまま表示する。
+    // 券種ごとに1件ずつ送る。1つ失敗しても他は成立させる。
     const results = [];
     for (const [typeId, state] of chosen) {
         const type = types.find(t => t.id === typeId);
@@ -285,8 +447,7 @@ async function handleSubmit() {
                 ok: response.ok,
                 receiptNo: data.receiptNo,
                 partySize: state.partySize,
-                error: data.error,
-                lotteryAt: data.lotteryAt
+                error: data.error
             });
         } catch (error) {
             results.push({
@@ -297,53 +458,58 @@ async function handleSubmit() {
         }
     }
 
+    // 申込後の状態をサーバーから読み直す。画面が推測で状態を持たないようにする。
+    await loadAll();
+
     document.getElementById('sendingScreen').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
 
-    if (results.every(r => !r.ok)) {
-        // 全部だめだったときは入力内容を消さずにフォームへ戻す
-        document.getElementById('formScreen').classList.remove('hidden');
-        errorBox.innerHTML = results.map(r =>
-            `${escapeHtml(r.typeName)}：${escapeHtml(r.error || 'お申し込みできませんでした')}`
-        ).join('<br>');
-        errorBox.classList.remove('hidden');
-        errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-    }
-
-    renderDone(results);
+    render();
+    renderFlash(results);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function renderDone(results) {
-    const list = document.getElementById('receiptList');
-    list.innerHTML = '';
+/** 申込直後のお知らせ。成功も失敗もここにまとめて出す */
+function renderFlash(results) {
+    const flash = document.getElementById('flash');
+    const succeeded = results.filter(r => r.ok);
+    const failed = results.filter(r => !r.ok);
 
-    for (const r of results) {
-        const item = document.createElement('div');
-        item.className = `receipt-item${r.ok ? '' : ' failed'}`;
-        item.innerHTML = r.ok
-            ? `<div class="name">${escapeHtml(r.typeName)}（${r.partySize}名）</div>
-               <div class="no">受付番号 <b>${escapeHtml(r.receiptNo || '')}</b></div>`
-            : `<div class="name">${escapeHtml(r.typeName)}</div>
-               <div class="no">${escapeHtml(r.error || 'お申し込みできませんでした')}</div>`;
-        list.appendChild(item);
+    const parts = [];
+    if (succeeded.length > 0) {
+        parts.push(`
+            <div class="notice" style="background:#E9F8EF;border-color:#9BD9B4;">
+                <h3 style="color:#17663C;">お申し込みを受け付けました</h3>
+                ${succeeded.map(r => `<p>${escapeHtml(r.typeName)}（${r.partySize}名）／受付番号 <strong>${escapeHtml(r.receiptNo || '')}</strong></p>`).join('')}
+                <p>まだ整理券ではありません。抽選の結果は、このLINEでお知らせします。</p>
+            </div>
+        `);
+    }
+    if (failed.length > 0) {
+        parts.push(`
+            <div class="error-box" style="margin-top:0;margin-bottom:16px;">
+                ${failed.map(r => `${escapeHtml(r.typeName)}：${escapeHtml(r.error || 'お申し込みできませんでした')}`).join('<br>')}
+            </div>
+        `);
     }
 
-    const lotteryAt = results.find(r => r.ok && r.lotteryAt);
-    if (lotteryAt) {
-        document.getElementById('doneLotteryNote').textContent =
-            `${formatDateTime(lotteryAt.lotteryAt)} に抽選を行い、結果をこのLINEでお送りします。` +
-            'それまでお待ちください。';
-    }
-
-    document.getElementById('doneScreen').classList.remove('hidden');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    flash.innerHTML = parts.join('');
+    flash.classList.toggle('hidden', parts.length === 0);
 }
 
 // ============================================================
 // ユーティリティ
 // ============================================================
 
-/** "2026-09-16T23:59:00+09:00" を "9月16日(火) 23:59" にする */
+/** 券面の色から、集合時刻の帯に使う淡い背景色を作る */
+function hexToSoft(hex) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, 0.10)`;
+}
+
+/** "2026-09-16T20:00:00+09:00" を "9月16日(水) 20:00" にする */
 function formatDateTime(value) {
     if (!value) return '';
     const date = new Date(String(value).length === 16 ? `${value}:00+09:00` : value);
