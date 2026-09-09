@@ -77,7 +77,8 @@ const TYPE_FIELDS = [
     'name', 'sort_order', 'enabled', 'apply_start', 'apply_end', 'lottery_at', 'remind_at',
     'issue_end', 'number_start', 'number_end', 'capacity_mode', 'max_party_size',
     'slot_enabled', 'slot_start_time', 'slot_interval_min', 'slot_capacity',
-    'fixed_time_label', 'color', 'note', 'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'
+    'fixed_time_label', 'color', 'note', 'open_time', 'free_entry_time',
+    'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'
 ];
 
 test('管理画面が書き込む列がすべて存在する', () => {
@@ -263,5 +264,30 @@ test('申込を消しても券種の設定は残る', () => {
 
     const types = db.prepare('SELECT COUNT(*) c FROM ticket_types').get();
     assert.equal(types.c, 2, '券種まで消えています');
+    db.close();
+});
+
+test('初期データに会場の時刻が入っている', () => {
+    const db = freshDb();
+    db.exec(seedSql);
+
+    const entry = db.prepare("SELECT open_time, free_entry_time, note FROM ticket_types WHERE id='type_entry_6th'").get();
+    assert.equal(entry.open_time, '10:30');
+    assert.equal(entry.free_entry_time, '13:00');
+    assert.ok(entry.note.includes('{{open}}'), '説明文が時刻を直接書いています');
+    assert.ok(entry.note.includes('{{free}}'), '説明文が時刻を直接書いています');
+    db.close();
+});
+
+test('講演会の文面は時刻を直接書かず fixed_time_label を差し込む', () => {
+    const db = freshDb();
+    db.exec(seedSql);
+
+    const talk = db.prepare("SELECT fixed_time_label, msg_win, msg_remind FROM ticket_types WHERE id='type_talk_6th'").get();
+    assert.ok(talk.fixed_time_label.includes('14:00'), '時刻の置き場所が fixed_time_label ではありません');
+    for (const [label, text] of [['当選', talk.msg_win], ['リマインド', talk.msg_remind]]) {
+        assert.ok(text.includes('{{time}}'), `${label}の文面が {{time}} を使っていません`);
+        assert.ok(!/\d{1,2}:\d{2}/.test(text), `${label}の文面に時刻が直接書かれています`);
+    }
     db.close();
 });

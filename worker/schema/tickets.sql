@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS ticket_types (
     -- 1申込あたりの上限人数（グループ申込）
     max_party_size    INTEGER NOT NULL DEFAULT 5,
 
+    -- 会場の時刻。案内文に {{open}} {{free}} として差し込む。
+    -- 文面に時刻を直接書くと、時間が変わったとき全部の文面を直すことになる。
+    open_time         TEXT,    -- 開場時刻 'HH:MM'
+    free_entry_time   TEXT,    -- 整理券なしで入場できるようになる時刻 'HH:MM'
+
     -- 時間枠設定
     slot_enabled      INTEGER NOT NULL DEFAULT 1,
     slot_start_time   TEXT DEFAULT '10:45',  -- 最初の枠の集合時刻 'HH:MM'

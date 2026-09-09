@@ -18,6 +18,7 @@ INSERT OR IGNORE INTO ticket_types (
     id, name, sort_order, enabled,
     apply_start, apply_end, lottery_at, remind_at, issue_end,
     number_start, number_end, capacity_mode, max_party_size,
+    open_time, free_entry_time,
     slot_enabled, slot_start_time, slot_interval_min, slot_capacity, fixed_time_label,
     color, note,
     msg_receipt, msg_win, msg_lose, msg_remind,
@@ -35,10 +36,11 @@ INSERT OR IGNORE INTO ticket_types (
     1, 400,                        -- 番号範囲。来場率7〜8割を見込んで定員より多めに
     'all_win',                     -- 全員当選
     5,                             -- 1申込あたり5名まで
+    '10:30', '13:00',              -- 開場時刻 / 整理券なしで入れる時刻（案内文に差し込む）
     1, '10:45', 30, 50,            -- 10:45から30分刻み・1枠50名
     NULL,
     '#B01B54',
-    '開場直後は受付が混み合うため、ご来場の時間帯を抽選でお決めします。ご入場に必ず必要なものではありません。混雑が落ち着いたあとは、整理券がなくてもそのままご入場いただけます。',
+    '{{open}} の開場直後は受付が混み合うため、ご来場の時間帯を抽選でお決めします。ご入場に必ず必要なものではありません。{{free}} 以降にお越しの場合は、お申し込みなしでお待たせせずにご入場いただけます。',
 
     '{{name}} 様
 
@@ -92,6 +94,7 @@ INSERT OR IGNORE INTO ticket_types (
     id, name, sort_order, enabled,
     apply_start, apply_end, lottery_at, remind_at, issue_end,
     number_start, number_end, capacity_mode, max_party_size,
+    open_time, free_entry_time,
     slot_enabled, slot_start_time, slot_interval_min, slot_capacity, fixed_time_label,
     color, note,
     msg_receipt, msg_win, msg_lose, msg_remind,
@@ -109,6 +112,7 @@ INSERT OR IGNORE INTO ticket_types (
     1, 120,                        -- 座席数に合わせて調整すること
     'limited',                     -- 定員制。あふれた申込は落選になる
     2,                             -- 1申込あたり2名まで
+    '10:30', NULL,                 -- 開場時刻（講演会は「整理券なしで入れる時刻」を持たない）
     0, '14:00', 30, 50,            -- 時間枠は使わない
     '14:00 開演（13:45 入室開始）',
     '#37456B',
@@ -129,8 +133,8 @@ INSERT OR IGNORE INTO ticket_types (
 【{{type}}】の抽選結果をお知らせします。
 ご当選です。整理番号は {{number}} 番です。
 
-13:45 から整理番号順にご入室いただきます。
-14:00 の開演までにお越しください。',
+{{time}}
+整理番号順にご入室いただきますので、お時間までにお越しください。',
 
     '{{name}} 様
 
@@ -144,8 +148,9 @@ INSERT OR IGNORE INTO ticket_types (
     '{{name}} 様
 
 明日の講演会の整理番号は {{number}} 番です。
-13:45 から整理番号順にご入室いただきます。
+{{time}}
 
+整理番号順にご入室いただきます。
 当日は受付でこの画面をお見せください。',
 
     'pending',

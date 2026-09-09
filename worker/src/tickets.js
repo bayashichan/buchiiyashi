@@ -158,6 +158,22 @@ function addMinutesToTime(hhmm, minutes) {
 }
 
 /**
+ * 券種の設定から取れる、時刻の差込タグ。
+ *
+ * 文面に「10:30開場」「13時以降は不要」と直接書くと、時間が変わったときに
+ * 案内文4つと説明文を全部直すことになる。設定を1か所変えれば全部に効くようにする。
+ */
+function typeTimeVars(type) {
+    return {
+        open: type.open_time || '',
+        free: type.free_entry_time || '',
+        slotFirst: type.slot_enabled
+            ? (type.slot_start_time || '')
+            : (type.fixed_time_label || '')
+    };
+}
+
+/**
  * 券種の設定から集合時刻を組み立てる。
  * 枠を使わない券種（講演会など）は固定の文言を券面に出す。
  */
@@ -670,6 +686,7 @@ export async function deliverMessages(env, ticketTypeId, options = {}) {
             : null;
 
         const vars = {
+            ...typeTimeVars(type),
             name: row.name,
             party: row.party_size,
             number: ticket ? (ticket.number_start === ticket.number_end
@@ -749,7 +766,7 @@ async function listPublicTypes(env, corsHeaders) {
         `SELECT id, name, apply_start, apply_end, lottery_at, number_start, number_end,
                 capacity_mode, max_party_size, slot_enabled, slot_start_time,
                 slot_interval_min, slot_capacity, fixed_time_label, color, note,
-                lottery_status
+                open_time, free_entry_time, lottery_status
          FROM ticket_types WHERE enabled = 1 ORDER BY sort_order ASC, created_at ASC`
     ).all();
 
@@ -858,6 +875,7 @@ async function submitApplication(request, env, corsHeaders) {
     // まだ整理券ではないことをここで必ず伝える。
     const lotteryLabel = formatJapaneseDateTime(type.lottery_at);
     const receiptText = fillTemplate(type.msg_receipt, {
+        ...typeTimeVars(type),
         name, party: partySize, receipt: receiptNo, type: type.name, lottery: lotteryLabel
     }).trim() || [
         `${name} 様`,
@@ -1029,6 +1047,8 @@ async function upsertType(request, env, corsHeaders) {
         slot_start_time: String(data.slot_start_time || '10:45').slice(0, 5),
         slot_interval_min: Math.max(1, Number(data.slot_interval_min) || 30),
         slot_capacity: Math.max(1, Number(data.slot_capacity) || 50),
+        open_time: data.open_time || null,
+        free_entry_time: data.free_entry_time || null,
         fixed_time_label: data.fixed_time_label || null,
         color: /^#[0-9A-Fa-f]{6}$/.test(data.color || '') ? data.color : '#B01B54',
         note: data.note || null,

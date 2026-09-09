@@ -158,6 +158,29 @@
                         </div>
                     </div>
 
+                    <h3>会場の時刻</h3>
+                    <p class="hint" style="margin-bottom:14px;">
+                        ここに入れた時刻は、説明文と案内文に <code>{{open}}</code>
+                        <code>{{free}}</code> として差し込まれます。
+                        文面に時刻を直接書かずにこちらを使うと、時間が変わったときに
+                        1か所直すだけで全部の文面に反映されます。
+                    </p>
+                    <div class="grid">
+                        <div class="field">
+                            <label for="f_open_time">開場時刻 <code>{{open}}</code></label>
+                            <input type="time" id="f_open_time">
+                            <p class="hint">例：10:30</p>
+                        </div>
+                        <div class="field">
+                            <label for="f_free_entry_time">整理券なしで入場できる時刻 <code>{{free}}</code></label>
+                            <input type="time" id="f_free_entry_time">
+                            <p class="hint">
+                                混雑が落ち着き、整理券がなくても待たずに入れる見込みの時刻です。
+                                説明文で「◯時以降は不要」と伝えるのに使います。
+                            </p>
+                        </div>
+                    </div>
+
                     <h3>集合時刻</h3>
                     <div class="grid">
                         <div class="field check">
@@ -187,9 +210,11 @@
                     <h3>案内文</h3>
                     <p class="hint" style="margin-bottom:14px;">
                         差込タグ： <code>{{name}}</code> お名前 ／ <code>{{number}}</code> 整理番号 ／
-                        <code>{{time}}</code> 集合時刻 ／ <code>{{party}}</code> 人数 ／
+                        <code>{{time}}</code> その方の集合時刻 ／ <code>{{party}}</code> 人数 ／
                         <code>{{type}}</code> 券種名 ／ <code>{{receipt}}</code> 受付番号 ／
-                        <code>{{lottery}}</code> 抽選日時（受付時のみ）。<br>
+                        <code>{{lottery}}</code> 抽選日時（受付時のみ） ／
+                        <code>{{open}}</code> 開場時刻 ／ <code>{{free}}</code> 整理券なしで入れる時刻 ／
+                        <code>{{slotFirst}}</code> 最初の集合時刻。<br>
                         欄には既定の文面が入っています。このままでも使えますし、
                         「文例を選ぶ」から別の書き方に差し替えたり、直接書き換えたりできます。
                         下に、実際に届く見た目のプレビューが出ます。

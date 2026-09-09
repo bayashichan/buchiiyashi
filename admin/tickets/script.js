@@ -15,6 +15,7 @@ let currentTypeId = null;
 const TEXT_FIELDS = [
     'name', 'note', 'apply_start', 'apply_end', 'lottery_at', 'remind_at',
     'issue_end', 'slot_start_time', 'fixed_time_label', 'color',
+    'open_time', 'free_entry_time',
     'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind', 'capacity_mode'
 ];
 const MESSAGE_FIELDS = ['note', 'msg_receipt', 'msg_win', 'msg_lose', 'msg_remind'];
@@ -43,9 +44,9 @@ const TEMPLATES = {
         },
         {
             label: '混雑対策の整理券（時間を明記する）',
-            text: '開場直後は受付が混み合うため、ご来場の時間帯を抽選でお決めします。'
+            text: '{{open}} の開場直後は受付が混み合うため、ご来場の時間帯を抽選でお決めします。'
                 + 'ご入場に必ず必要なものではありません。'
-                + '13時以降にお越しの場合は、お申し込みなしでお待たせせずにご入場いただけます。'
+                + '{{free}} 以降にお越しの場合は、お申し込みなしでお待たせせずにご入場いただけます。'
         },
         {
             label: '混雑対策の整理券（短め）',
@@ -294,7 +295,8 @@ function initMessageEditors() {
     }
 
     // 券種名・抽選日時・集合時刻はプレビューに差し込まれるので、変えたら反映する
-    for (const id of ['f_name', 'f_lottery_at', 'f_slot_start_time', 'f_fixed_time_label', 'f_slot_enabled']) {
+    for (const id of ['f_name', 'f_lottery_at', 'f_slot_start_time', 'f_fixed_time_label',
+        'f_slot_enabled', 'f_open_time', 'f_free_entry_time']) {
         document.getElementById(id)?.addEventListener('input', renderAllPreviews);
         document.getElementById(id)?.addEventListener('change', renderAllPreviews);
     }
@@ -321,8 +323,14 @@ function renderPreview(key) {
     if (!textarea || !box) return;
 
     const slotEnabled = document.getElementById('f_slot_enabled')?.checked;
+    const slotFirst = (slotEnabled
+        ? document.getElementById('f_slot_start_time')?.value
+        : document.getElementById('f_fixed_time_label')?.value) || '（未設定）';
     const vars = {
         ...PREVIEW_SAMPLE,
+        open: document.getElementById('f_open_time')?.value || '（未設定）',
+        free: document.getElementById('f_free_entry_time')?.value || '（未設定）',
+        slotFirst,
         type: document.getElementById('f_name')?.value.trim() || '整理券',
         time: (slotEnabled
             ? document.getElementById('f_slot_start_time')?.value

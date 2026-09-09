@@ -387,7 +387,7 @@ function buildTypeCard(type) {
     for (let n = 1; n <= maxParty; n++) options.push(`<option value="${n}">${n}名</option>`);
 
     const sub = [];
-    if (type.note) sub.push(escapeHtml(type.note));
+    if (type.note) sub.push(escapeHtml(fillTypeTags(type.note, type)));
     sub.push(type.capacity_mode === 'limited'
         ? '定員があるため、抽選で落選する場合があります'
         : '落選はありません。お申し込みの方全員に整理番号をお出しします');
@@ -549,6 +549,22 @@ function renderFlash(results) {
 // ============================================================
 // ユーティリティ
 // ============================================================
+
+/**
+ * 説明文の差込タグを、券種の設定から埋める。
+ *
+ * 文面に時刻を直接書くと、時間が変わったときに直し漏れる。
+ * LINEの案内文と同じタグが使えるようにしてある。
+ */
+function fillTypeTags(text, type) {
+    const vars = {
+        open: type.open_time || '',
+        free: type.free_entry_time || '',
+        slotFirst: (type.slot_enabled ? type.slot_start_time : type.fixed_time_label) || '',
+        type: type.name || ''
+    };
+    return String(text || '').replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? '');
+}
 
 /** 券面の色から、集合時刻の帯に使う淡い背景色を作る */
 function hexToSoft(hex) {

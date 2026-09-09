@@ -260,3 +260,41 @@ test('整理券が残ったまま抽選前になっていても、実行すれ�
     assert.equal(result.won, 2);
     assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 2, '古い整理券が残っています');
 });
+
+test('LINEに送る本文で、会場の時刻の差込タグが埋まる', async () => {
+    const { env, db } = makeEnv([1]);
+
+    db.prepare(
+        `UPDATE ticket_types
+         SET msg_win = '{{name}} 様{{number}}番／集合 {{time}}／開場 {{open}}／{{free}} 以降は不要',
+             open_time = '10:30', free_entry_time = '13:00'
+         WHERE id = 'type_entry_6th'`
+    ).run();
+
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'vars' });
+
+    // 送信内容を捕まえる。実際に外へは出さない。
+    const sent = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+        sent.push(JSON.parse(options.body));
+        return { ok: true, status: 200, text: async () => '' };
+    };
+
+    try {
+        const result = await deliverMessages(
+            { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' },
+            'type_entry_6th',
+            { kind: 'result' }
+        );
+        assert.equal(result.sent, 1, `配信できていません（失敗 ${result.failed}件）`);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+
+    const text = sent[0].messages[0].text;
+    assert.match(text, /開場 10:30/, `開場時刻が埋まっていません: ${text}`);
+    assert.match(text, /13:00 以降は不要/, `解放時刻が埋まっていません: ${text}`);
+    assert.match(text, /集合 10:45/, `集合時刻が埋まっていません: ${text}`);
+    assert.ok(!text.includes('{{'), `埋まっていないタグが残っています: ${text}`);
+});
