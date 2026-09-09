@@ -30,13 +30,22 @@
 > ブランチを main にマージしないこと。**（デプロイが失敗しても現在動いている
 > Worker はそのまま動き続けるので、出展申込フォームが止まることはない。ただし
 > 以後どんな変更もデプロイされなくなる。）
+>
+> **すでにマージしてしまった場合も、壊れたものは何もない。** 下の手順をそのまま
+> 実行し、`database_id` を書いた `wrangler.toml` を main に push すれば、
+> デプロイがやり直されて復旧する。失敗したデプロイを個別に消す必要はない。
 
 #### 1-1. 手元にリポジトリを用意する
 
 ```bash
 git clone https://github.com/bayashichan/buchiiyashi.git
-cd buchiiyashi
-git checkout claude/modest-bell-wd8gl6
+cd buchiiyashi/worker
+```
+
+すでにクローン済みなら、最新を取り込んでおく。
+
+```bash
+git checkout main && git pull
 cd worker
 ```
 
@@ -126,14 +135,16 @@ LINE Developers コンソールで、整理券専用のLIFFアプリを新規作
 
 ### 3. Workerをデプロイする
 
-`database_id` を書き込んだ `wrangler.toml` をコミットして push し、main に
-マージする。`worker/` 配下が変わると GitHub Actions が自動でデプロイする。
+`database_id` を書き込んだ `wrangler.toml` を main に push する。
+`worker/` 配下が変わると GitHub Actions が自動でデプロイする。
 
 ```bash
 git add wrangler.toml
 git commit -m "D1のdatabase_idを設定する"
-git push
+git push origin main
 ```
+
+GitHub の Actions タブで「Deploy Worker」が緑になれば成功。
 
 `LINE_CHANNEL_ACCESS_TOKEN` は設定済みのものをそのまま使う（整理券の配信にも
 このトークンを使う）。新しく登録が必要なシークレットはない。
