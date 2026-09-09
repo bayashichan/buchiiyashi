@@ -232,8 +232,8 @@ function buildTicketFlex(type, ticket, application, env) {
     const liffId = String(env.TICKET_LIFF_ID || '').trim();
     const siteUrl = (env.TICKET_SITE_URL || '').replace(/\/$/, '');
     const ticketPageUrl = liffId
-        ? `https://liff.line.me/${liffId}/my/`
-        : (siteUrl ? `${siteUrl}/ticket/my/` : '');
+        ? `https://liff.line.me/${liffId}`
+        : (siteUrl ? `${siteUrl}/ticket/` : '');
 
     const rows = [
         ['お名前', `${application.name} 様`],
@@ -310,7 +310,7 @@ function buildTicketFlex(type, ticket, application, env) {
                 style: 'primary',
                 color,
                 height: 'sm',
-                action: { type: 'uri', label: '整理券を開く（印刷用）', uri: ticketPageUrl }
+                action: { type: 'uri', label: '整理券を開く', uri: ticketPageUrl }
             }]
         };
     }
@@ -885,6 +885,8 @@ async function getMyTickets(request, env, corsHeaders) {
             name: row.name,
             partySize: row.party_size,
             status: row.status,
+            // 申込ページが「この券種はもう申し込み済み」を判定するのに使う
+            typeId: row.type_id,
             typeName: row.type_name,
             color: row.color,
             slotEnabled: !!row.slot_enabled,
