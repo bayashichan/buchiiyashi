@@ -12,7 +12,6 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -25,15 +24,56 @@ const schemaSql = readFileSync(join(SCHEMA_DIR, 'tickets.sql'), 'utf8');
 const seedSql = readFileSync(join(SCHEMA_DIR, 'seed-6th.sql'), 'utf8');
 const workerSource = readFileSync(SRC, 'utf8');
 
-/** 列を足す前の、古いスキーマのデータベースを作る */
+/**
+ * 列を足す前の、古いスキーマのデータベースを作る。
+ *
+ * 過去のコミットを git から読む書き方にしていたが、CIはリポジトリを
+ * 浅く取得するのでそのコミットが無く、手元では通るのにCIで落ちた。
+ * テストが外の状態に依存しないよう、ここに直接書いておく。
+ */
+const LEGACY_SCHEMA = `
+CREATE TABLE ticket_types (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    apply_start TEXT,
+    apply_end TEXT,
+    lottery_at TEXT,
+    number_start INTEGER NOT NULL DEFAULT 1,
+    number_end INTEGER NOT NULL DEFAULT 100,
+    capacity_mode TEXT NOT NULL DEFAULT 'all_win',
+    max_party_size INTEGER NOT NULL DEFAULT 5,
+    slot_enabled INTEGER NOT NULL DEFAULT 1,
+    slot_start_time TEXT,
+    slot_interval_min INTEGER,
+    slot_capacity INTEGER,
+    fixed_time_label TEXT,
+    color TEXT NOT NULL DEFAULT '#B01B54',
+    msg_receipt TEXT, msg_win TEXT, msg_lose TEXT, msg_remind TEXT,
+    lottery_status TEXT NOT NULL DEFAULT 'pending',
+    lottery_seed TEXT,
+    lottery_done_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE applications (
+    id TEXT PRIMARY KEY,
+    ticket_type_id TEXT NOT NULL,
+    receipt_no TEXT NOT NULL,
+    line_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    party_size INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'applied',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+`;
+
 function legacyDb() {
-    // 最初に本番へ流したスキーマ（note も open_time も無い）
-    const old = execFileSync('git', ['show', 'f865d52:worker/schema/tickets.sql'], {
-        cwd: join(dirname(fileURLToPath(import.meta.url)), '..', '..'),
-        encoding: 'utf8'
-    });
     const db = new DatabaseSync(':memory:');
-    db.exec(old);
+    db.exec(LEGACY_SCHEMA);
     return db;
 }
 
