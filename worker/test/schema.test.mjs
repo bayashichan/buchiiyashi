@@ -12,6 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,18 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'tickets.
 const schemaSql = readFileSync(join(SCHEMA_DIR, 'tickets.sql'), 'utf8');
 const seedSql = readFileSync(join(SCHEMA_DIR, 'seed-6th.sql'), 'utf8');
 const workerSource = readFileSync(SRC, 'utf8');
+
+/** 列を足す前の、古いスキーマのデータベースを作る */
+function legacyDb() {
+    // 最初に本番へ流したスキーマ（note も open_time も無い）
+    const old = execFileSync('git', ['show', 'f865d52:worker/schema/tickets.sql'], {
+        cwd: join(dirname(fileURLToPath(import.meta.url)), '..', '..'),
+        encoding: 'utf8'
+    });
+    const db = new DatabaseSync(':memory:');
+    db.exec(old);
+    return db;
+}
 
 /** スキーマを流したまっさらなデータベースを作る */
 function freshDb() {
@@ -289,5 +302,83 @@ test('講演会の文面は時刻を直接書かず fixed_time_label を差し�
         assert.ok(text.includes('{{time}}'), `${label}の文面が {{time}} を使っていません`);
         assert.ok(!/\d{1,2}:\d{2}/.test(text), `${label}の文面に時刻が直接書かれています`);
     }
+    db.close();
+});
+
+// ============================================================
+// 古いデータベースに新しいコードを載せたときの挙動
+//
+// 列を足すたびに手作業でALTERを流す前提にしていたため、コードが先に出て
+// 申込ページが券種を1件も取れなくなる事故を2度起こした。
+// ensureSchema が自力で追いつくことを確かめる。
+// ============================================================
+
+/** Workerが使うのと同じ形の、最小限のD1シム */
+function d1(db) {
+    return {
+        prepare(sql) {
+            return {
+                bind: (...p) => ({
+                    all: async () => ({ results: db.prepare(sql).all(...p) }),
+                    run: async () => ({ meta: { changes: Number(db.prepare(sql).run(...p).changes) } }),
+                    first: async () => db.prepare(sql).get(...p) ?? null
+                }),
+                all: async () => ({ results: db.prepare(sql).all() }),
+                run: async () => ({ meta: { changes: Number(db.prepare(sql).run().changes) } }),
+                first: async () => db.prepare(sql).get() ?? null
+            };
+        }
+    };
+}
+
+test('古いスキーマのままだと、新しいコードの検索は落ちる（事故の再現）', () => {
+    const db = legacyDb();
+    assert.throws(
+        () => db.prepare('SELECT open_time FROM ticket_types LIMIT 0').all(),
+        /no such column/
+    );
+    db.close();
+});
+
+test('ensureSchema が足りない列を自分で追加する', async () => {
+    const { ensureSchema } = await import(`../src/tickets.js?fresh=${Math.random()}`);
+    const db = legacyDb();
+
+    await ensureSchema({ TICKETS_DB: d1(db) });
+
+    const columns = columnsOf(db, 'ticket_types');
+    for (const column of ['note', 'remind_at', 'issue_end', 'open_time', 'free_entry_time']) {
+        assert.ok(columns.includes(column), `${column} が追加されていません`);
+    }
+    for (const column of ['receipt_notified_at', 'result_notified_at', 'remind_notified_at', 'notify_error']) {
+        assert.ok(columnsOf(db, 'applications').includes(column), `applications.${column} が追加されていません`);
+    }
+    db.close();
+});
+
+test('列を追加したあと、申込ページのSELECTが通る', async () => {
+    const { ensureSchema } = await import(`../src/tickets.js?fresh=${Math.random()}`);
+    const db = legacyDb();
+    await ensureSchema({ TICKETS_DB: d1(db) });
+
+    // listPublicTypes と同じSELECT
+    assert.doesNotThrow(() => db.prepare(
+        `SELECT id, name, apply_start, apply_end, lottery_at, number_start, number_end,
+                capacity_mode, max_party_size, slot_enabled, slot_start_time,
+                slot_interval_min, slot_capacity, fixed_time_label, color, note,
+                open_time, free_entry_time, lottery_status
+         FROM ticket_types WHERE enabled = 1`
+    ).all());
+    db.close();
+});
+
+test('すでに列がそろっていれば何も変えない', async () => {
+    const { ensureSchema } = await import(`../src/tickets.js?fresh=${Math.random()}`);
+    const db = freshDb();
+    const before = columnsOf(db, 'ticket_types').join(',');
+
+    await ensureSchema({ TICKETS_DB: d1(db) });
+
+    assert.equal(columnsOf(db, 'ticket_types').join(','), before);
     db.close();
 });

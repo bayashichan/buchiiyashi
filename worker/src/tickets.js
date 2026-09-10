@@ -22,6 +22,85 @@ function json(data, corsHeaders, status = 200) {
     });
 }
 
+// ============================================================
+// スキーマの自動追従
+//
+// 列を足すたびに手作業でALTERを流す運用にしていたため、コードが先に出て
+// データベースが追いつかず、申込ページが券種を1件も取れなくなる事故を
+// 2度起こした（note / open_time）。追加だけなら自動で追いつかせる。
+//
+// ここに書けるのは「あとから足した、NULLを許す列」だけ。
+// 列の削除や型変更は自動化しない（データを壊しうるため）。
+// ============================================================
+const ADDITIVE_COLUMNS = {
+    ticket_types: {
+        note: 'TEXT',
+        remind_at: 'TEXT',
+        issue_end: 'TEXT',
+        open_time: 'TEXT',
+        free_entry_time: 'TEXT'
+    },
+    applications: {
+        receipt_notified_at: 'TEXT',
+        result_notified_at: 'TEXT',
+        remind_notified_at: 'TEXT',
+        notify_error: 'TEXT'
+    }
+};
+
+// Workerのインスタンスごとに1回だけ確認する
+let schemaEnsured = false;
+
+/**
+ * 足りない列があれば追加する。
+ *
+ * ふだんは「全部そろっているか」を確かめる1クエリで終わる。
+ * 表名と列名はこのファイルの定数だけで、外から来た値は混ざらない。
+ */
+export async function ensureSchema(env) {
+    if (schemaEnsured || !env.TICKETS_DB) return;
+    const database = env.TICKETS_DB;
+
+    try {
+        for (const [table, columns] of Object.entries(ADDITIVE_COLUMNS)) {
+            const names = Object.keys(columns);
+
+            // そろっていれば何もしない（通常はここで終わる）
+            try {
+                await database.prepare(`SELECT ${names.join(', ')} FROM ${table} LIMIT 0`).all();
+                continue;
+            } catch (error) {
+                if (!String(error?.message || '').includes('no such column')) {
+                    // テーブル自体が無い等。初期構築前なので触らない。
+                    continue;
+                }
+            }
+
+            for (const [column, type] of Object.entries(columns)) {
+                try {
+                    await database.prepare(`SELECT ${column} FROM ${table} LIMIT 0`).all();
+                    continue;
+                } catch (error) {
+                    if (!String(error?.message || '').includes('no such column')) continue;
+                }
+                try {
+                    await database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
+                    console.log(`整理券: ${table}.${column} を追加しました`);
+                } catch (error) {
+                    // 別のリクエストが先に足していた場合は重複エラーになる。実害はない。
+                    if (!String(error?.message || '').includes('duplicate column')) {
+                        console.error(`整理券: ${table}.${column} を追加できません:`, error?.message || error);
+                    }
+                }
+            }
+        }
+        schemaEnsured = true;
+    } catch (error) {
+        // ここで失敗しても本来の処理は続ける。次のリクエストでまた試す。
+        console.error('整理券: スキーマの確認に失敗:', error?.message || error);
+    }
+}
+
 function db(env) {
     if (!env.TICKETS_DB) {
         throw new Error('TICKETS_DB が未設定です。wrangler.toml のD1バインディングを確認してください');
@@ -743,6 +822,7 @@ export async function handleTicketAPI(request, env, corsHeaders, url) {
     const path = url.pathname;
 
     try {
+        await ensureSchema(env);
         if (path === '/api/tickets/types' && request.method === 'GET') {
             return await listPublicTypes(env, corsHeaders);
         }
@@ -968,6 +1048,7 @@ export async function handleTicketAdminAPI(request, env, corsHeaders, url) {
     const path = url.pathname;
 
     try {
+        await ensureSchema(env);
         if (path === '/api/admin/tickets/types' && request.method === 'GET') {
             const { results } = await db(env).prepare(
                 'SELECT * FROM ticket_types ORDER BY sort_order ASC, created_at ASC'
@@ -1296,6 +1377,7 @@ async function exportCsv(env, corsHeaders, url) {
 
 export async function runTicketSchedule(env) {
     if (!env.TICKETS_DB) return { lotteries: 0, delivered: 0 };
+    await ensureSchema(env);
 
     const database = env.TICKETS_DB;
     const summary = { lotteries: 0, delivered: 0, reminded: 0, recovered: 0 };

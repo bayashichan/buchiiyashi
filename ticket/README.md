@@ -288,9 +288,19 @@ npx wrangler d1 execute buchiiyashi-tickets --remote --command="
 
 ## データベースの変更
 
-列を足したり変えたりしたときは、`worker/schema/tickets.sql` を直すだけでは
-すでに動いているデータベースに反映されない。`worker/schema/migrations/` に
-ALTER 文を1ファイル置いて、本番にも流すこと。
+**NULLを許す列を足すだけなら、手作業は要らない。** `worker/schema/tickets.sql` に
+足したうえで、`tickets.js` の `ADDITIVE_COLUMNS` にも列名を書くこと。
+Workerが起動時に足りない列を見つけて自分で追加する。
+
+これは、列を足すたびに手でALTERを流す運用にしていて、コードが先に出た結果
+申込ページが券種を1件も取れなくなる事故を2度起こしたため
+（`note` と `open_time`）。コードとデータベースが食い違わないようにする。
+
+`ADDITIVE_COLUMNS` に書き忘れると、また同じ事故になる。
+`schema.test.mjs` が古いスキーマから自動追従できることを確かめている。
+
+**列の削除・型の変更・NOT NULL の追加は自動化していない。** データを壊しうるので、
+`worker/schema/migrations/` にファイルを置いて手動で流すこと。
 
 ```bash
 npx wrangler d1 execute buchiiyashi-tickets --remote \
