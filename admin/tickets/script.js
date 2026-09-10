@@ -10,6 +10,8 @@ const API_BASE = 'https://buchiiyashi-festa-form.wakaossan2001.workers.dev';
 let authToken = null;
 let types = [];
 let currentTypeId = null;
+// 直前に画面へ描いた券種。券種を切り替えたかどうかの判定に使う。
+let renderedTypeId = null;
 
 // 設定フォームの入力欄。IDの接頭辞 f_ を外したものがAPIのフィールド名になる。
 const TEXT_FIELDS = [
@@ -472,21 +474,33 @@ function onTypeChanged() {
     const type = types.find(t => t.id === currentTypeId);
     if (!type) return;
 
+    // 券種を切り替えたときだけ、前の券種のメッセージを消す。
+    // 抽選や保存のあとの再読み込みでも消してしまうと、実行結果が一瞬で
+    // 消えて「押しても何も起きない」ように見えてしまう。
+    const switched = currentTypeId !== renderedTypeId;
+    renderedTypeId = currentTypeId;
+
     fillForm(type);
     renderTypeBadge(type);
-    clearMessage('settingsMessage');
+
+    if (switched) {
+        clearMessage('settingsMessage');
+        clearMessage('lotteryMessage');
+        clearMessage('deliverMessage');
+    }
 
     // 抽選が終わると申込ページは「抽選終了」に変わる。設定を見ただけでは
     // 気づけないので、ここで理由と戻し方を出しておく。
+    // 状態そのものの表示なので、操作結果のメッセージ欄とは分けている。
     if (type.lottery_status === 'done') {
-        showMessage('settingsMessage', 'warn',
+        showMessage('typeStatusNotice', 'warn',
             'この券種は抽選が完了しています。申込ページには「抽選終了」と表示され、' +
             '新しいお申し込みは受け付けません。\n' +
             'テストで抽選してしまった場合など、受付を再開するには「抽選と配信」タブの' +
             '「抽選前に戻す（受付を再開）」を実行してください（発行済みの整理番号は破棄されます）。');
+    } else {
+        clearMessage('typeStatusNotice');
     }
-    clearMessage('lotteryMessage');
-    clearMessage('deliverMessage');
 
     const activeTab = document.querySelector('.tab.active')?.dataset.tab;
     if (activeTab === 'applications') loadApplications();
@@ -838,9 +852,15 @@ async function runLottery(force) {
 
         showMessage('lotteryMessage', result.extendedBeyondRange ? 'warn' : 'ok', lines.join('\n'));
 
-        // 残りがあるなら続けて送る
+        // 残りがあるなら続けて送る。配信の進捗表示で抽選結果が消えないよう、
+        // 送り終わったら抽選結果と配信結果をまとめて出し直す。
         if (result.delivery && result.delivery.remaining > 0) {
-            await deliverLoop('result', false, 'lotteryMessage');
+            const totals = await deliverLoop('result', false, 'lotteryMessage');
+            lines.push(`配信が完了しました。成功 ${totals.sent}件 / 失敗 ${totals.failed}件`);
+            if (totals.failed > 0) {
+                lines.push('失敗した方は友だち未追加またはブロック中の可能性があります。申込一覧で確認できます。');
+            }
+            showMessage('lotteryMessage', totals.failed > 0 ? 'warn' : 'ok', lines.join('\n'));
         }
 
         await loadTypes();
@@ -934,6 +954,8 @@ async function deliverLoop(kind, retryFailed, messageContainer) {
     showMessage(messageContainer, failed > 0 ? 'warn' : 'ok',
         `配信が完了しました。成功 ${sent}件 / 失敗 ${failed}件` +
         (failed > 0 ? '\n失敗した方は友だち未追加またはブロック中の可能性があります。申込一覧で確認できます。' : ''));
+
+    return { sent, failed };
 }
 
 // ============================================================
