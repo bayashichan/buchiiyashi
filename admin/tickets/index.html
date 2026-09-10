@@ -299,8 +299,14 @@
 
                     <div class="btn-row">
                         <button id="runLotteryBtn" class="btn btn-primary">抽選を実行する</button>
-                        <button id="rerunLotteryBtn" class="btn btn-danger">やり直す（番号を破棄）</button>
+                        <button id="rerunLotteryBtn" class="btn btn-danger">やり直す（番号を振り直す）</button>
+                        <button id="resetLotteryBtn" class="btn btn-danger">抽選前に戻す（受付を再開）</button>
                     </div>
+                    <p class="hint" style="margin-top:10px;">
+                        <strong>やり直す</strong>は、番号を振り直してもう一度抽選します（抽選済みのまま）。<br>
+                        <strong>抽選前に戻す</strong>は、発行した番号を捨てて申込の受付を再開します。
+                        テストで抽選してしまったあと、本番の受付を開けるときはこちらです。
+                    </p>
 
                     <h3>抽選の記録</h3>
                     <div id="runsTable" class="table-wrap"></div>

@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { runLottery, deliverMessages } from '../src/tickets.js';
+import { runLottery, deliverMessages, handleTicketAdminAPI } from '../src/tickets.js';
 
 const SCHEMA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'schema');
 const schemaSql = readFileSync(join(SCHEMA_DIR, 'tickets.sql'), 'utf8');
@@ -297,4 +297,72 @@ test('LINEに送る本文で、会場の時刻の差込タグが埋まる', asyn
     assert.match(text, /13:00 以降は不要/, `解放時刻が埋まっていません: ${text}`);
     assert.match(text, /集合 10:45/, `集合時刻が埋まっていません: ${text}`);
     assert.ok(!text.includes('{{'), `埋まっていないタグが残っています: ${text}`);
+});
+
+/** 管理APIを直接叩く（本番と同じ経路） */
+async function adminPost(env, path, body) {
+    const request = new Request(`https://example.test${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const response = await handleTicketAdminAPI(request, env, {}, new URL(request.url));
+    return { status: response.status, data: await response.json() };
+}
+
+test('抽選前に戻すと、番号が消えて受付が再開する', async () => {
+    const { env, db } = makeEnv([2, 1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'testrun' });
+
+    // テストで抽選してしまった状態
+    assert.equal(
+        db.prepare("SELECT lottery_status FROM ticket_types WHERE id='type_entry_6th'").get().lottery_status,
+        'done'
+    );
+
+    const { status, data } = await adminPost(env, '/api/admin/tickets/lottery/reset', {
+        ticketTypeId: 'type_entry_6th'
+    });
+
+    assert.equal(status, 200, `失敗: ${data.error}`);
+    assert.equal(data.discarded, 2, '破棄した整理券の件数が合いません');
+
+    const type = db.prepare("SELECT lottery_status, lottery_seed, lottery_done_at FROM ticket_types WHERE id='type_entry_6th'").get();
+    assert.equal(type.lottery_status, 'pending', '抽選前に戻っていません');
+    assert.equal(type.lottery_seed, null, 'シード値が残っています');
+    assert.equal(type.lottery_done_at, null);
+
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 0, '整理券が残っています');
+    assert.equal(
+        db.prepare("SELECT COUNT(*) c FROM applications WHERE status='applied'").get().c, 2,
+        '申込が抽選前に戻っていません'
+    );
+});
+
+test('抽選前に戻したあと、もう一度抽選できる', async () => {
+    const { env, db } = makeEnv([1, 1, 1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'first' });
+    await adminPost(env, '/api/admin/tickets/lottery/reset', { ticketTypeId: 'type_entry_6th' });
+
+    const again = await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'second' });
+    assert.equal(again.ok, true, `再抽選に失敗: ${again.error}`);
+    assert.equal(again.won, 3);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 3);
+});
+
+test('申込を消してから抽選前に戻すと、まっさらな状態になる', async () => {
+    // テストの申込を消し、抽選もなかったことにする流れ
+    const { env, db } = makeEnv([1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'x' });
+
+    const appId = db.prepare('SELECT id FROM applications').get().id;
+    await adminPost(env, '/api/admin/tickets/applications/delete', { applicationId: appId });
+    await adminPost(env, '/api/admin/tickets/lottery/reset', { ticketTypeId: 'type_entry_6th' });
+
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM applications').get().c, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) c FROM tickets').get().c, 0);
+    assert.equal(
+        db.prepare("SELECT lottery_status FROM ticket_types WHERE id='type_entry_6th'").get().lottery_status,
+        'pending'
+    );
 });

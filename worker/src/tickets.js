@@ -1073,6 +1073,9 @@ export async function handleTicketAdminAPI(request, env, corsHeaders, url) {
         if (path === '/api/admin/tickets/lottery' && request.method === 'POST') {
             return await runLotteryEndpoint(request, env, corsHeaders);
         }
+        if (path === '/api/admin/tickets/lottery/reset' && request.method === 'POST') {
+            return await resetLottery(request, env, corsHeaders);
+        }
         if (path === '/api/admin/tickets/deliver' && request.method === 'POST') {
             const body = await request.json();
             const result = await deliverMessages(env, String(body.ticketTypeId || ''), {
@@ -1285,6 +1288,45 @@ async function runLotteryEndpoint(request, env, corsHeaders) {
         delivery = await deliverMessages(env, ticketTypeId, { kind: 'result', limit: 60 });
     }
     return json({ ...result, delivery }, corsHeaders);
+}
+
+/**
+ * 抽選を実行する前の状態に戻す。
+ *
+ * 抽選が終わった券種は申込を受け付けない。テストで一度実行してしまうと
+ * そこから戻す手段がなく、本番の受付を再開できなかった。
+ *
+ * 「やり直す」は番号を振り直して抽選済みのままにする操作なので別物。
+ * こちらは発行済みの番号を捨てて、受付中の状態に戻す。
+ */
+async function resetLottery(request, env, corsHeaders) {
+    const { ticketTypeId } = await request.json();
+    if (!ticketTypeId) return json({ error: '券種IDがありません' }, corsHeaders, 400);
+
+    const database = db(env);
+    const type = await database.prepare(
+        'SELECT id, name, lottery_status FROM ticket_types WHERE id = ?'
+    ).bind(ticketTypeId).first();
+    if (!type) return json({ error: '券種が見つかりません' }, corsHeaders, 404);
+
+    const issued = await database.prepare(
+        'SELECT COUNT(*) AS c FROM tickets WHERE ticket_type_id = ?'
+    ).bind(ticketTypeId).first();
+
+    const at = nowIso();
+    await clearIssued(database, ticketTypeId, at);
+    await database.prepare(
+        `UPDATE ticket_types SET lottery_status = 'pending', lottery_seed = NULL,
+         lottery_done_at = NULL, updated_at = ? WHERE id = ?`
+    ).bind(at, ticketTypeId).run();
+
+    console.log(`整理券: ${type.name} を抽選前に戻しました（整理券${issued ? issued.c : 0}件を破棄）`);
+
+    return json({
+        ok: true,
+        name: type.name,
+        discarded: issued ? issued.c : 0
+    }, corsHeaders);
 }
 
 /**

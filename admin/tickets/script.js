@@ -243,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('reloadStatsBtn').addEventListener('click', loadStats);
     document.getElementById('runLotteryBtn').addEventListener('click', () => runLottery(false));
     document.getElementById('rerunLotteryBtn').addEventListener('click', () => runLottery(true));
+    document.getElementById('resetLotteryBtn').addEventListener('click', resetLottery);
 
     document.getElementById('deliverResultBtn').addEventListener('click', () => deliver('result', false));
     document.getElementById('deliverRemindBtn').addEventListener('click', () => deliver('remind', false));
@@ -481,8 +482,8 @@ function onTypeChanged() {
         showMessage('settingsMessage', 'warn',
             'この券種は抽選が完了しています。申込ページには「抽選終了」と表示され、' +
             '新しいお申し込みは受け付けません。\n' +
-            'もう一度受け付ける状態に戻すには、「抽選と配信」タブの' +
-            '「やり直す（番号を破棄）」を実行してください（確定した整理番号は破棄されます）。');
+            'テストで抽選してしまった場合など、受付を再開するには「抽選と配信」タブの' +
+            '「抽選前に戻す（受付を再開）」を実行してください（発行済みの整理番号は破棄されます）。');
     }
     clearMessage('lotteryMessage');
     clearMessage('deliverMessage');
@@ -842,6 +843,42 @@ async function runLottery(force) {
             await deliverLoop('result', false, 'lotteryMessage');
         }
 
+        await loadTypes();
+        await loadStats();
+    } catch (error) {
+        showMessage('lotteryMessage', 'err', error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+/**
+ * 抽選前の状態に戻す。
+ *
+ * テストで抽選を実行したあと、本番の受付を開けるための操作。
+ * 「やり直す」と違って抽選は実行せず、受付中の状態に戻すだけ。
+ */
+async function resetLottery() {
+    if (!currentTypeId) return;
+    const type = types.find(t => t.id === currentTypeId);
+
+    if (!confirm(
+        `「${type ? type.name : ''}」を抽選前の状態に戻します。\n\n` +
+        '発行済みの整理番号はすべて破棄され、申込の受付が再開します。\n' +
+        'すでに当選をお知らせした方がいる場合、その番号は無効になります。\n\n' +
+        '本当に実行しますか？'
+    )) return;
+
+    showLoading(true);
+    clearMessage('lotteryMessage');
+    try {
+        const result = await api('/api/admin/tickets/lottery/reset', {
+            method: 'POST',
+            body: JSON.stringify({ ticketTypeId: currentTypeId })
+        });
+        showMessage('lotteryMessage', 'ok',
+            `「${result.name}」を抽選前に戻しました（整理券 ${result.discarded}件を破棄）。\n` +
+            '申込ページの受付が再開しています。');
         await loadTypes();
         await loadStats();
     } catch (error) {
