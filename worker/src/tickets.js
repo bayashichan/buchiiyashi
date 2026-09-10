@@ -32,7 +32,7 @@ function json(data, corsHeaders, status = 200) {
 // ここに書けるのは「あとから足した、NULLを許す列」だけ。
 // 列の削除や型変更は自動化しない（データを壊しうるため）。
 // ============================================================
-const ADDITIVE_COLUMNS = {
+export const ADDITIVE_COLUMNS = {
     ticket_types: {
         note: 'TEXT',
         remind_at: 'TEXT',
@@ -44,9 +44,25 @@ const ADDITIVE_COLUMNS = {
         receipt_notified_at: 'TEXT',
         result_notified_at: 'TEXT',
         remind_notified_at: 'TEXT',
-        notify_error: 'TEXT'
+        notify_error: 'TEXT',
+        notify_attempts: 'INTEGER',
+        notify_permanent: 'INTEGER',
+        notify_failed_at: 'TEXT'
     }
 };
+
+// Workersの無料プランは1回の実行で外部通信を50回までしか行えない（有料プランは1000回）。
+// D1への問い合わせもLINEへの送信も1回ずつ数えられるため、まとめて送ろうとすると
+// 実行そのものが途中で落ちる。1回あたりの件数を抑えて、残りは次のcronに回す。
+//
+// 管理画面から送る場合はブラウザが何度も呼び出すので、この件数でも数分で送り終わる。
+// cronだけに任せた場合でも 18件 × 5分ごと ＝ 1時間に約200件進む。
+const DELIVER_BATCH_DEFAULT = 18;
+const DELIVER_BATCH_MAX = 40;
+
+// 一時的な失敗を自動で送り直す回数の上限。
+// これを超えたものだけが「未達」として管理画面に残る。
+const NOTIFY_MAX_ATTEMPTS = 5;
 
 // Workerのインスタンスごとに1回だけ確認する
 let schemaEnsured = false;
@@ -272,8 +288,10 @@ function slotLabel(type, slotTime) {
  * 結果が変わらないため、その旨を返して管理画面の未達リストに載せる。
  */
 async function pushLine(env, to, messages) {
+    // 設定漏れは直せる問題なので、届かないと決めつけない。
+    // permanent にしてしまうと、トークンを設定したあとも自動で送り直されなくなる。
     if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
-        return { ok: false, error: 'LINE_CHANNEL_ACCESS_TOKEN未設定', permanent: true };
+        return { ok: false, error: 'LINE_CHANNEL_ACCESS_TOKEN未設定', permanent: false };
     }
     if (!to) {
         return { ok: false, error: 'LINEユーザーIDがありません', permanent: true };
@@ -728,7 +746,7 @@ function defaultBody(kind, won, type, vars) {
  * 制限に当たらないため。残りはcronの次の実行か、管理画面の再実行で片づく。
  */
 export async function deliverMessages(env, ticketTypeId, options = {}) {
-    const { kind = 'result', limit = 60, retryFailed = false } = options;
+    const { kind = 'result', limit = DELIVER_BATCH_DEFAULT, retryFailed = false } = options;
     const database = db(env);
 
     const type = await database.prepare('SELECT * FROM ticket_types WHERE id = ?')
@@ -741,22 +759,33 @@ export async function deliverMessages(env, ticketTypeId, options = {}) {
     const column = kind === 'remind' ? 'remind_notified_at' : 'result_notified_at';
     // リマインドは当選者だけに送る（落選者に前日の案内を送っても混乱するため）
     const statusFilter = kind === 'remind' ? "a.status = 'won'" : "a.status IN ('won','lost')";
-    // 未達の再送では、一度失敗した人だけをもう一度対象にする
+
+    // まだ送れていない人のうち、自動でもう一度試す価値がある人。
+    //
+    // 失敗には二種類ある。ブロック中のように何度送っても届かないもの（permanent）と、
+    // 通信の上限に当たったような、時間を置けば届くもの。後者を除外してしまうと
+    // 主催者が手で再送するまで止まってしまうので、回数を決めて自動で送り直す。
+    const retryable =
+        `(a.notify_error IS NULL OR (COALESCE(a.notify_permanent, 0) = 0 ` +
+        `AND COALESCE(a.notify_attempts, 0) < ${NOTIFY_MAX_ATTEMPTS}))`;
+    // 「未達の再送」は主催者が明示的に押す操作なので、届かないと判定した人も含めて全部試す
     const notifiedFilter = retryFailed
         ? `(a.${column} IS NULL)`
-        : `(a.${column} IS NULL AND a.notify_error IS NULL)`;
+        : `(a.${column} IS NULL AND ${retryable})`;
 
+    // 一度も試していない人を先に送る。失敗を繰り返している人に順番を奪われないようにする。
     const { results: rows } = await database.prepare(
         `SELECT a.*, t.number_start, t.number_end, t.slot_time
          FROM applications a
          LEFT JOIN tickets t ON t.application_id = a.id
          WHERE a.ticket_type_id = ? AND ${statusFilter} AND ${notifiedFilter}
-         ORDER BY t.number_start ASC, a.created_at ASC
+         ORDER BY COALESCE(a.notify_attempts, 0) ASC, t.number_start ASC, a.created_at ASC
          LIMIT ?`
-    ).bind(ticketTypeId, limit).all();
+    ).bind(ticketTypeId, Math.max(1, Math.min(DELIVER_BATCH_MAX, limit))).all();
 
     let sent = 0;
     let failed = 0;
+    let retryLater = 0;
 
     for (const row of rows || []) {
         const won = row.status === 'won' && row.number_start !== null;
@@ -794,24 +823,41 @@ export async function deliverMessages(env, ticketTypeId, options = {}) {
 
         if (result.ok) {
             await database.prepare(
-                `UPDATE applications SET ${column} = ?, notify_error = NULL, updated_at = ? WHERE id = ?`
+                `UPDATE applications SET ${column} = ?, notify_error = NULL, notify_permanent = 0,
+                 notify_failed_at = NULL, updated_at = ? WHERE id = ?`
             ).bind(at, at, row.id).run();
             sent += 1;
         } else {
+            // 届かないと確定した失敗だけを permanent として記録する。
+            // それ以外は回数を数えるだけにして、次のcronでもう一度試す。
             await database.prepare(
-                `UPDATE applications SET notify_error = ?, updated_at = ? WHERE id = ?`
-            ).bind(result.error, at, row.id).run();
+                `UPDATE applications SET notify_error = ?, notify_permanent = ?,
+                 notify_attempts = COALESCE(notify_attempts, 0) + 1, notify_failed_at = ?,
+                 updated_at = ? WHERE id = ?`
+            ).bind(result.error, result.permanent ? 1 : 0, at, at, row.id).run();
             failed += 1;
+            if (!result.permanent) retryLater += 1;
         }
     }
 
-    // まだ残っているかを返して、管理画面が続きを流せるようにする
-    const remaining = await database.prepare(
-        `SELECT COUNT(*) AS c FROM applications a
+    // まだ残っているかを返して、管理画面が続きを流せるようにする。
+    // remaining は自動で送り直す分。stuck は主催者が手を打たないと届かない分。
+    const counts = await database.prepare(
+        `SELECT
+            SUM(CASE WHEN ${retryable} THEN 1 ELSE 0 END) AS retryable,
+            SUM(CASE WHEN ${retryable} THEN 0 ELSE 1 END) AS stuck
+         FROM applications a
          WHERE a.ticket_type_id = ? AND ${statusFilter} AND a.${column} IS NULL`
     ).bind(ticketTypeId).first();
 
-    return { ok: true, sent, failed, remaining: remaining ? remaining.c : 0 };
+    return {
+        ok: true,
+        sent,
+        failed,
+        retryLater,
+        remaining: counts ? (counts.retryable || 0) : 0,
+        stuck: counts ? (counts.stuck || 0) : 0
+    };
 }
 
 // ============================================================
@@ -1080,7 +1126,7 @@ export async function handleTicketAdminAPI(request, env, corsHeaders, url) {
             const body = await request.json();
             const result = await deliverMessages(env, String(body.ticketTypeId || ''), {
                 kind: body.kind === 'remind' ? 'remind' : 'result',
-                limit: Math.min(120, Math.max(1, Number(body.limit) || 60)),
+                limit: Math.min(DELIVER_BATCH_MAX, Math.max(1, Number(body.limit) || DELIVER_BATCH_DEFAULT)),
                 retryFailed: !!body.retryFailed
             });
             return json(result, corsHeaders, result.ok ? 200 : 400);
@@ -1252,7 +1298,18 @@ async function getStats(env, corsHeaders, url) {
             COALESCE(SUM(CASE WHEN result_notified_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS result_sent,
             COALESCE(SUM(CASE WHEN remind_notified_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS remind_sent,
             COALESCE(SUM(CASE WHEN notify_error IS NOT NULL AND result_notified_at IS NULL
-                              THEN 1 ELSE 0 END), 0) AS undelivered
+                              THEN 1 ELSE 0 END), 0) AS undelivered,
+            -- 一時的な失敗。5分ごとの自動処理がこのあと送り直す。
+            COALESCE(SUM(CASE WHEN result_notified_at IS NULL AND notify_error IS NOT NULL
+                              AND COALESCE(notify_permanent, 0) = 0
+                              AND COALESCE(notify_attempts, 0) < ${NOTIFY_MAX_ATTEMPTS}
+                              THEN 1 ELSE 0 END), 0) AS retrying,
+            -- 自動では届かない分。主催者が別の手段で連絡する必要がある。
+            COALESCE(SUM(CASE WHEN status IN ('won','lost') AND result_notified_at IS NULL
+                              AND notify_error IS NOT NULL
+                              AND (COALESCE(notify_permanent, 0) = 1
+                                   OR COALESCE(notify_attempts, 0) >= ${NOTIFY_MAX_ATTEMPTS})
+                              THEN 1 ELSE 0 END), 0) AS stuck
          FROM applications WHERE ticket_type_id = ?`
     ).bind(ticketTypeId).first();
 
@@ -1282,10 +1339,15 @@ async function runLotteryEndpoint(request, env, corsHeaders) {
     });
     if (!result.ok) return json(result, corsHeaders, 400);
 
-    // 抽選直後に配信までやる。cronで夜間に走ったときに誰も送らない、を防ぐ。
+    // 配信はこの実行では始めない。
+    //
+    // 番号の書き込みだけで外部通信をかなり使っているので、続けて送ると
+    // 無料プランの上限に当たって実行ごと落ちる。送る対象の人数だけ返して、
+    // 管理画面から続けて呼び直してもらう（1回ずつが別の実行になり、上限を分け合わない）。
+    // 管理画面を閉じてしまっても、5分ごとのcronが同じ続きを拾う。
     let delivery = null;
     if (body.deliver !== false) {
-        delivery = await deliverMessages(env, ticketTypeId, { kind: 'result', limit: 60 });
+        delivery = { sent: 0, failed: 0, stuck: 0, remaining: result.won + result.lost };
     }
     return json({ ...result, delivery }, corsHeaders);
 }
@@ -1422,7 +1484,7 @@ export async function runTicketSchedule(env) {
     await ensureSchema(env);
 
     const database = env.TICKETS_DB;
-    const summary = { lotteries: 0, delivered: 0, reminded: 0, recovered: 0 };
+    const summary = { lotteries: 0, delivered: 0, reminded: 0, recovered: 0, stuck: 0 };
 
     // 0. 途中で落ちて 'running' のまま止まっている券種を戻す。
     //    夜間に自動で走る想定なので、ここで自力で復旧できないと翌朝まで抽選が止まる。
@@ -1466,28 +1528,40 @@ export async function runTicketSchedule(env) {
         }
     }
 
+    // 抽選を実行した回は、番号の書き込みで外部通信をかなり使っている。
+    // 同じ実行で配信まで進めると上限に当たって落ちるため、配信は5分後の実行に回す。
+    if (summary.lotteries > 0) return summary;
+
     // 2. 抽選済みで、まだ結果を送れていない人への配信の続き
+    //
+    // 1回の実行で扱うのは1券種だけにする。上限に当たって実行ごと落ちると
+    // 「送った印」が付かず、同じ人に二重で届くおそれがあるため。
+    // 残りは5分後の実行が拾うので、放っておいても最後まで進む。
     const { results: doneTypes } = await database.prepare(
         `SELECT id, name, remind_at FROM ticket_types WHERE lottery_status = 'done'`
     ).all();
 
     for (const type of doneTypes || []) {
-        const pending = await database.prepare(
-            `SELECT COUNT(*) AS c FROM applications
-             WHERE ticket_type_id = ? AND status IN ('won','lost')
-               AND result_notified_at IS NULL AND notify_error IS NULL`
-        ).bind(type.id).first();
-
-        if (pending && pending.c > 0) {
-            const result = await deliverMessages(env, type.id, { kind: 'result', limit: 40 });
-            if (result.ok) summary.delivered += result.sent;
-            continue; // 結果配信が終わるまでリマインドには進まない
+        const result = await deliverMessages(env, type.id, { kind: 'result' });
+        if (result.ok && (result.sent > 0 || result.failed > 0)) {
+            summary.delivered += result.sent;
+            summary.stuck += result.stuck;
+            console.log(
+                `整理券: ${type.name} の結果配信 成功${result.sent}件/失敗${result.failed}件` +
+                `（自動で再送する分 ${result.remaining}件、届かない分 ${result.stuck}件）`
+            );
+            return summary; // 結果配信が終わるまでリマインドには進まない
         }
+        if (result.ok && result.remaining > 0) return summary;
 
         // 3. リマインド日時を過ぎていれば、当選者に前日の案内を送る
         if (type.remind_at && isBefore(type.remind_at)) {
-            const result = await deliverMessages(env, type.id, { kind: 'remind', limit: 40 });
-            if (result.ok) summary.reminded += result.sent;
+            const remind = await deliverMessages(env, type.id, { kind: 'remind' });
+            if (remind.ok && (remind.sent > 0 || remind.failed > 0)) {
+                summary.reminded += remind.sent;
+                summary.stuck += remind.stuck;
+                return summary;
+            }
         }
     }
 

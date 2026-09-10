@@ -778,7 +778,9 @@ async function loadStats() {
         ['落選', s.lost || 0, false],
         ['結果配信済', s.result_sent || 0, false],
         ['リマインド済', s.remind_sent || 0, false],
-        ['未達', s.undelivered || 0, (s.undelivered || 0) > 0],
+        // 「再送待ち」は放っておけば届く。「未達」だけが主催者の対応が要るもの。
+        ['再送待ち', s.retrying || 0, false],
+        ['未達', s.stuck || 0, (s.stuck || 0) > 0],
         ['当日受付済', s.checked_in || 0, false]
     ];
 
@@ -844,10 +846,8 @@ async function runLottery(force) {
         if (result.extendedBeyondRange) {
             lines.push('※ 全員当選の設定のため、最終番号を超えて発行しました。番号範囲の見直しをおすすめします。');
         }
-        if (result.delivery) {
-            lines.push(
-                `配信：成功 ${result.delivery.sent}件 / 失敗 ${result.delivery.failed}件 / 残り ${result.delivery.remaining}件`
-            );
+        if (result.delivery && result.delivery.remaining > 0) {
+            lines.push(`このあと ${result.delivery.remaining}件にLINEでお知らせします。`);
         }
 
         showMessage('lotteryMessage', result.extendedBeyondRange ? 'warn' : 'ok', lines.join('\n'));
@@ -856,11 +856,13 @@ async function runLottery(force) {
         // 送り終わったら抽選結果と配信結果をまとめて出し直す。
         if (result.delivery && result.delivery.remaining > 0) {
             const totals = await deliverLoop('result', false, 'lotteryMessage');
-            lines.push(`配信が完了しました。成功 ${totals.sent}件 / 失敗 ${totals.failed}件`);
-            if (totals.failed > 0) {
-                lines.push('失敗した方は友だち未追加またはブロック中の可能性があります。申込一覧で確認できます。');
+            lines.pop(); // 「このあと〜件にお知らせします」を結果で置き換える
+            lines.push(`配信が完了しました。成功 ${totals.sent}件`);
+            if (totals.stuck > 0) {
+                lines.push(
+                    `届かなかった方が ${totals.stuck}件あります。友だち未追加またはブロック中の可能性が高いです。`);
             }
-            showMessage('lotteryMessage', totals.failed > 0 ? 'warn' : 'ok', lines.join('\n'));
+            showMessage('lotteryMessage', totals.stuck > 0 ? 'warn' : 'ok', lines.join('\n'));
         }
 
         await loadTypes();
@@ -934,28 +936,40 @@ async function deliver(kind, retryFailed) {
 async function deliverLoop(kind, retryFailed, messageContainer) {
     let sent = 0;
     let failed = 0;
+    let stuck = 0;
 
-    for (let round = 1; round <= 40; round++) {
+    // 1回の呼び出しで送る件数はサーバー側で抑えてある（無料プランの通信上限のため）。
+    // ここで何度も呼び直すことで、まとめて送り切る。
+    for (let round = 1; round <= 120; round++) {
         const result = await api('/api/admin/tickets/deliver', {
             method: 'POST',
-            body: JSON.stringify({ ticketTypeId: currentTypeId, kind, retryFailed, limit: 60 })
+            body: JSON.stringify({ ticketTypeId: currentTypeId, kind, retryFailed })
         });
 
         sent += result.sent || 0;
         failed += result.failed || 0;
+        stuck = result.stuck || 0;
 
         showMessage(messageContainer, failed > 0 ? 'warn' : 'ok',
-            `配信中… 成功 ${sent}件 / 失敗 ${failed}件 / 残り ${result.remaining}件`);
+            `配信中… 成功 ${sent}件 / 残り ${result.remaining}件`);
 
-        // 1件も送れず残りだけがある場合は、同じ相手を延々と叩き続けないよう止める
-        if (result.remaining === 0 || (result.sent === 0 && result.failed === 0)) break;
+        if (result.remaining === 0) break;
+        // 1件も動かないのに残りがある場合は、同じ相手を延々と叩き続けないよう止める
+        if ((result.sent || 0) === 0 && (result.failed || 0) === 0) break;
     }
 
-    showMessage(messageContainer, failed > 0 ? 'warn' : 'ok',
-        `配信が完了しました。成功 ${sent}件 / 失敗 ${failed}件` +
-        (failed > 0 ? '\n失敗した方は友だち未追加またはブロック中の可能性があります。申込一覧で確認できます。' : ''));
+    const lines = [`配信が完了しました。成功 ${sent}件`];
+    if (stuck > 0) {
+        lines.push(
+            `届かなかった方が ${stuck}件あります。友だち未追加またはブロック中の可能性が高いです。` +
+            '申込一覧で確認し、必要なら電話やメールで直接お伝えください。');
+    }
+    if (failed > stuck) {
+        lines.push('一時的に送れなかった分は、5分ごとの自動処理でこのあと送り直されます。');
+    }
+    showMessage(messageContainer, stuck > 0 ? 'warn' : 'ok', lines.join('\n'));
 
-    return { sent, failed };
+    return { sent, failed, stuck };
 }
 
 // ============================================================

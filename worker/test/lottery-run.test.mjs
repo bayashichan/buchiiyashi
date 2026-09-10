@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { runLottery, deliverMessages, handleTicketAdminAPI } from '../src/tickets.js';
+import { runLottery, deliverMessages, runTicketSchedule, handleTicketAdminAPI } from '../src/tickets.js';
 
 const SCHEMA_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'schema');
 const schemaSql = readFileSync(join(SCHEMA_DIR, 'tickets.sql'), 'utf8');
@@ -365,4 +365,242 @@ test('申込を消してから抽選前に戻すと、まっさらな状態に�
         db.prepare("SELECT lottery_status FROM ticket_types WHERE id='type_entry_6th'").get().lottery_status,
         'pending'
     );
+});
+
+// ============================================================
+// 配信の自動再送
+//
+// Workersの無料プランは1回の実行で外部通信が50回までしかできない。
+// まとめて送ろうとすると途中で落ちるため、少しずつ送って残りを次に回す。
+// そのとき「一度失敗したら二度と送らない」動きだと、主催者が手で押し直すまで
+// 止まってしまう。ここではその自動再送が本当に効くかを確かめる。
+// ============================================================
+
+/** fetch を差し替えて、呼び出しごとの応答を決められるようにする */
+function stubLine(responder) {
+    const sent = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = async (url, options) => {
+        const body = JSON.parse(options.body);
+        sent.push(body);
+        const result = responder(body, sent.length);
+        return {
+            ok: result.status < 300,
+            status: result.status,
+            text: async () => result.text || ''
+        };
+    };
+    return { sent, restore: () => { globalThis.fetch = original; } };
+}
+
+test('一時的に送れなかった人は、次の実行で自動的に送り直される', async () => {
+    const { env, db } = makeEnv([1, 1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'retry-ok' });
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    // 1回目：LINE側が混んでいて全員失敗する
+    let line = stubLine(() => ({ status: 429, text: 'rate limited' }));
+    let first;
+    try {
+        first = await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+    } finally { line.restore(); }
+
+    assert.equal(first.sent, 0);
+    assert.equal(first.failed, 2);
+    assert.equal(first.retryLater, 2, '再送の対象として数えられていません');
+    assert.equal(first.remaining, 2, '自動で送り直す分に入っていません');
+    assert.equal(first.stuck, 0, '一時的な失敗を「未達」にしてはいけません');
+
+    // 2回目：復旧した。主催者が何もしなくても対象に戻っている
+    line = stubLine(() => ({ status: 200 }));
+    let second;
+    try {
+        second = await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+    } finally { line.restore(); }
+
+    assert.equal(second.sent, 2, '自動で送り直されていません');
+    assert.equal(second.remaining, 0);
+    assert.equal(second.stuck, 0);
+
+    const rows = db.prepare('SELECT result_notified_at, notify_error FROM applications').all();
+    assert.ok(rows.every(r => r.result_notified_at), '配信済みの印が付いていません');
+    assert.ok(rows.every(r => !r.notify_error), '成功したのに失敗の記録が残っています');
+});
+
+test('ブロック中の人は自動で送り直さず、未達として残す', async () => {
+    const { env, db } = makeEnv([1, 1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'blocked' });
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    // 1人目はブロック中（403）、2人目は届く
+    let line = stubLine(body => (body.to === 'U0' ? { status: 403, text: 'blocked' } : { status: 200 }));
+    let first;
+    try {
+        first = await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+    } finally { line.restore(); }
+
+    assert.equal(first.sent, 1);
+    assert.equal(first.failed, 1);
+    assert.equal(first.retryLater, 0, 'ブロック中を再送の対象にしてはいけません');
+    assert.equal(first.stuck, 1, '未達として数えられていません');
+    assert.equal(first.remaining, 0, '自動で送り直す分に入れてはいけません');
+
+    // 次の実行では誰も対象にならない（同じ相手を叩き続けない）
+    line = stubLine(() => ({ status: 200 }));
+    let second;
+    try {
+        second = await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+    } finally { line.restore(); }
+    assert.equal(second.sent, 0, 'ブロック中の人に送り直しています');
+    assert.equal(line.sent.length, 0, 'LINEを呼んでしまっています');
+
+    // 主催者が明示的に押したときだけ、もう一度試す
+    line = stubLine(() => ({ status: 200 }));
+    let manual;
+    try {
+        manual = await deliverMessages(withToken, 'type_entry_6th',
+            { kind: 'result', retryFailed: true });
+    } finally { line.restore(); }
+    assert.equal(manual.sent, 1, '「未達の人に再送」で送れていません');
+
+    const row = db.prepare("SELECT result_notified_at FROM applications WHERE id='app_0'").get();
+    assert.ok(row.result_notified_at, '再送後に配信済みになっていません');
+});
+
+test('何度やっても届かない人は、いつか自動再送をやめる', async () => {
+    const { env, db } = makeEnv([1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'giveup' });
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    let last = null;
+    for (let i = 0; i < 10; i++) {
+        const line = stubLine(() => ({ status: 500, text: 'server error' }));
+        try {
+            last = await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+        } finally { line.restore(); }
+        if (last.remaining === 0) break;
+    }
+
+    assert.equal(last.remaining, 0, '延々と再送し続けています');
+    assert.equal(last.stuck, 1, '諦めた分が未達として残っていません');
+
+    const row = db.prepare("SELECT notify_attempts FROM applications WHERE id='app_0'").get();
+    assert.ok(row.notify_attempts >= 5, `再送回数が数えられていません: ${row.notify_attempts}`);
+    assert.ok(row.notify_attempts <= 6, `上限を超えて再送しています: ${row.notify_attempts}`);
+});
+
+test('1回の配信でLINEを呼ぶ回数には上限があり、残りは次に回る', async () => {
+    // 無料プランの通信上限に当たらないことが目的。件数を指定しても超えない。
+    const { env } = makeEnv(Array(60).fill(1));
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'cap' });
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    // 既定のまま呼んだとき
+    let line = stubLine(() => ({ status: 200 }));
+    let result;
+    try {
+        result = await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+    } finally { line.restore(); }
+
+    assert.ok(line.sent.length <= 20, `1回で ${line.sent.length}件も送っています`);
+    assert.ok(result.remaining > 0, '残りが次に回されていません');
+    assert.equal(result.sent + result.remaining, 60, '合計が申込件数と合いません');
+
+    // 大きな件数を指定されても、上限までしか送らない
+    line = stubLine(() => ({ status: 200 }));
+    try {
+        await deliverMessages(withToken, 'type_entry_6th', { kind: 'result', limit: 500 });
+    } finally { line.restore(); }
+
+    assert.ok(line.sent.length <= 40, `指定に従って ${line.sent.length}件も送っています`);
+});
+
+test('一度も試していない人を、失敗が続いている人より先に送る', async () => {
+    const { env, db } = makeEnv([1, 1, 1]);
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'order' });
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    // 1番の人だけ、すでに何度か失敗している状態にする
+    db.prepare(
+        `UPDATE applications SET notify_error = '一時的な失敗', notify_permanent = 0,
+         notify_attempts = 3 WHERE id = 'app_0'`
+    ).run();
+
+    const line = stubLine(() => ({ status: 200 }));
+    try {
+        await deliverMessages(withToken, 'type_entry_6th', { kind: 'result' });
+    } finally { line.restore(); }
+
+    const order = line.sent.map(b => b.to);
+    assert.equal(order.length, 3);
+    assert.equal(order[order.length - 1], 'U0', `失敗続きの人が先に来ています: ${order.join(',')}`);
+});
+
+// ============================================================
+// 5分ごとの自動処理
+//
+// 主催者が管理画面を開いていなくても、放っておけば全員に届くこと。
+// これが成り立たないと、無料プランの通信上限に当たった時点で配信が止まる。
+// ============================================================
+
+test('自動処理は、抽選した回には配信まで進めず、次の回で送り始める', async () => {
+    const { env, db } = makeEnv(Array(5).fill(1));
+    db.prepare(
+        "UPDATE ticket_types SET lottery_at = '2020-01-01T00:00:00+09:00' WHERE id = 'type_entry_6th'"
+    ).run();
+    // もう片方の券種は対象外にしておく
+    db.prepare("UPDATE ticket_types SET enabled = 0 WHERE id <> 'type_entry_6th'").run();
+
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    // 1回目：抽選だけ。同じ実行で配信まで進むと通信の上限に当たる。
+    let line = stubLine(() => ({ status: 200 }));
+    let first;
+    try {
+        first = await runTicketSchedule(withToken);
+    } finally { line.restore(); }
+
+    assert.equal(first.lotteries, 1, '抽選が実行されていません');
+    assert.equal(line.sent.length, 0, '抽選と同じ回で配信まで進んでいます');
+
+    // 2回目：配信が始まる
+    line = stubLine(() => ({ status: 200 }));
+    let second;
+    try {
+        second = await runTicketSchedule(withToken);
+    } finally { line.restore(); }
+
+    assert.equal(second.delivered, 5, `配信されていません（${line.sent.length}件送信）`);
+
+    const done = db.prepare(
+        "SELECT COUNT(*) c FROM applications WHERE result_notified_at IS NOT NULL"
+    ).get();
+    assert.equal(done.c, 5, '配信済みの印が付いていません');
+});
+
+test('自動処理をくり返せば、上限を超える人数でも最後まで届く', async () => {
+    const { env, db } = makeEnv(Array(45).fill(1));
+    db.prepare("UPDATE ticket_types SET enabled = 0 WHERE id <> 'type_entry_6th'").run();
+    await runLottery(env, 'type_entry_6th', { trigger: 'manual', seed: 'cron-all' });
+
+    const withToken = { ...env, LINE_CHANNEL_ACCESS_TOKEN: 'dummy' };
+
+    // 3回目までは混雑して失敗する。主催者は何もしない。
+    let calls = 0;
+    let total = 0;
+    for (let round = 1; round <= 12; round++) {
+        const line = stubLine(() => (round <= 3 ? { status: 429, text: 'busy' } : { status: 200 }));
+        try {
+            const summary = await runTicketSchedule(withToken);
+            total += summary.delivered;
+            calls += line.sent.length;
+        } finally { line.restore(); }
+    }
+
+    const remaining = db.prepare(
+        "SELECT COUNT(*) c FROM applications WHERE result_notified_at IS NULL"
+    ).get();
+    assert.equal(remaining.c, 0, `${remaining.c}件が届かないまま残っています`);
+    assert.equal(total, 45, `配信件数が合いません: ${total}`);
+    assert.ok(calls > 45, '失敗した分が送り直されていません');
 });

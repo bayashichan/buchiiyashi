@@ -422,3 +422,21 @@ test('すでに列がそろっていれば何も変えない', async () => {
     assert.equal(columnsOf(db, 'ticket_types').join(','), before);
     db.close();
 });
+
+test('自動追加の対象になっている列が、スキーマ本体にも書かれている', async () => {
+    const { ADDITIVE_COLUMNS } = await import('../src/tickets.js');
+    // 過去に2回、コードだけ先に列を使い始めて本番が落ちている。
+    // ALTER で後から足せるようにはしたが、新しく作るデータベースに
+    // その列が無いままだと、作り直したときに同じ事故が再発する。
+    const db = freshDb();
+    const missing = [];
+    for (const [table, columns] of Object.entries(ADDITIVE_COLUMNS)) {
+        const actual = new Set(columnsOf(db, table));
+        for (const name of Object.keys(columns)) {
+            if (!actual.has(name)) missing.push(`${table}.${name}`);
+        }
+    }
+    db.close();
+
+    assert.deepEqual(missing, [], `スキーマに書かれていない列: ${missing.join(', ')}`);
+});

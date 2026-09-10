@@ -103,6 +103,11 @@ CREATE TABLE IF NOT EXISTS applications (
     result_notified_at  TEXT,
     remind_notified_at  TEXT,
     notify_error        TEXT,
+    -- 一時的な失敗（通信の上限など）は自動で送り直す。何度試したかを数えておく。
+    notify_attempts     INTEGER NOT NULL DEFAULT 0,
+    -- 1 なら再送しても届かないと判定した失敗（ブロック中・友だち未追加など）
+    notify_permanent    INTEGER NOT NULL DEFAULT 0,
+    notify_failed_at    TEXT,
 
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
