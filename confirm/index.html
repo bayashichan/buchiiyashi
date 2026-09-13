@@ -22,6 +22,11 @@
         </header>
 
         <main class="container">
+            <!-- 取得元が一時的に不調で、控えてあった内容を出しているときだけ表示する -->
+            <div id="stale-notice" class="stale-notice hidden">
+                <p id="stale-notice-text"></p>
+            </div>
+
             <section class="selection-card">
                 <label for="exhibitor-select">出展名を選択してください</label>
                 <div class="select-wrapper">

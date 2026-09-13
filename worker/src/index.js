@@ -493,24 +493,17 @@ function generateConfigJs(config) {
     return lines.join('\n');
 }
 
-// GASデプロイ
+// ========================================
+// GAS連携（応答の読み取り）
+// ========================================
 /**
- * GASのWebアプリへPOSTしてJSONを受け取る。
+ * GASからの応答をJSONとして読む。
  *
  * GASが例外を投げたり承認が必要な状態だと、JSONではなくHTMLのエラーページが返る。
  * それをそのままJSONとして読むと「Unexpected token '<'」としか分からず、
  * Googleが何を言っているのか追えない。中身を添えて投げ直す。
  */
-async function postToGas(env, payload) {
-    const response = await fetch(env.GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        redirect: 'follow'
-    });
-
-    const text = await response.text();
-
+export function parseGasResponseText(text, status) {
     try {
         return JSON.parse(text);
     } catch (e) {
@@ -522,10 +515,45 @@ async function postToGas(env, payload) {
             .trim()
             .slice(0, 400);
         throw new Error(
-            `GASがJSONではない応答を返しました (HTTP ${response.status})。\n`
+            `GASがJSONではない応答を返しました (HTTP ${status})。\n`
             + `Googleからの表示: ${snippet || '(本文なし)'}`
         );
     }
+}
+
+// GASのWebアプリへPOSTしてJSONを受け取る
+async function postToGas(env, payload) {
+    const response = await fetch(env.GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+    });
+
+    return parseGasResponseText(await response.text(), response.status);
+}
+
+/**
+ * GASのWebアプリをGETで叩いてJSONを受け取る。
+ *
+ * paramsはクエリパラメータ。値がnull/undefinedのものは付けない。
+ * POST側と同じく、HTMLが返ったらGoogleの文言を添えて投げ直す。
+ */
+async function getGasJson(env, params) {
+    const gasUrl = new URL(env.GAS_URL);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            gasUrl.searchParams.append(key, value);
+        }
+    });
+
+    const response = await fetch(gasUrl.toString(), {
+        method: 'GET',
+        headers: { 'User-Agent': 'Cloudflare-Worker' },
+        redirect: 'follow'
+    });
+
+    return parseGasResponseText(await response.text(), response.status);
 }
 
 /**
@@ -674,20 +702,10 @@ async function createSpreadsheet(env, body, corsHeaders) {
 // 出展者一覧取得
 async function getExhibitors(env, spreadsheetId, corsHeaders) {
     try {
-        const gasUrl = new URL(env.GAS_URL);
-        gasUrl.searchParams.append('action', 'get_exhibitors');
-        if (spreadsheetId) {
-            gasUrl.searchParams.append('spreadsheetId', spreadsheetId);
-        }
+        // GASがHTMLを返したときは、そのまま素通しせずGoogleの文言をエラーにして返す
+        const data = await getGasJson(env, { action: 'get_exhibitors', spreadsheetId });
 
-        const response = await fetch(gasUrl.toString(), {
-            method: 'GET',
-            headers: { 'User-Agent': 'Cloudflare-Worker' },
-            redirect: 'follow'
-        });
-
-        const data = await response.text();
-        return new Response(data, {
+        return new Response(JSON.stringify(data), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     } catch (error) {
@@ -1313,135 +1331,52 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
 }
 
 /**
+ * 内容確認ページのデータの持ち方。
+ *
+ * GASは一時的にJSONではなくHTMLのエラーページを返すことがある（同時実行の集中や
+ * Google側の不調）。その一瞬のために出展者へ白紙とパースエラーを見せないよう、
+ * 最後に取れたデータを二段構えで抱えておく。
+ *   - エッジキャッシュ: 1時間持たせ、5分を過ぎたら裏で取り直しつつ古い方を返す。
+ *     待たせないだけでなく、期限切れの瞬間にGASへアクセスが集中するのも防ぐ。
+ *   - R2のバックアップ: エッジに無く、かつGASも落ちているときの最後の砦。
+ *     こちらから返すときは stale を立て、古い可能性をページに出させる。
+ */
+const PUBLIC_DATA_SOFT_TTL_MS = 5 * 60 * 1000;
+const PUBLIC_DATA_EDGE_TTL_SEC = 60 * 60;
+const PUBLIC_DATA_BROWSER_TTL_SEC = 60;
+const PUBLIC_DATA_BACKUP_PREFIX = 'cache/exhibitor-data/';
+
+/**
  * 公開用確認データ取得（個人情報を除外）
  */
-async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
-    // 中身が変わることは稀なので、エッジキャッシュを挟んで毎回GASを叩かないようにする。
-    // 修正直後に確認したい場合は ?nocache=1 を付ければ素通しできる。
+export async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
+    // 修正直後に確認したい場合は ?nocache=1 を付ければ素通しできる
     const bypassCache = url.searchParams.get('nocache') === '1';
-    const cache = caches.default;
-    const cacheKey = publicExhibitorCacheKey(url);
 
     if (!bypassCache) {
-        const hit = await cache.match(cacheKey);
-        if (hit) return hit;
+        const hit = await caches.default.match(publicExhibitorCacheKey(url));
+        if (hit) {
+            // 5分を過ぎていても待たせない。古い方を返して、取り直しは裏でやる。
+            // ここでGASが詰まっても、詰まったことは画面に出ない。
+            if (ctx && cachedAgeMs(hit) > PUBLIC_DATA_SOFT_TTL_MS) {
+                ctx.waitUntil(
+                    refreshPublicExhibitorData(env, url, corsHeaders, null)
+                        .catch(err => console.error('Public data refresh failed:', err))
+                );
+            }
+            return hit;
+        }
     }
 
     try {
-        const spreadsheetId = url.searchParams.get('sid');
-        const folderIdParam = url.searchParams.get('folderId');
-
-        // 1. 設定を取得 (GitHubから)
-        const configPromise = fetchConfigObject(env);
-
-        // 2/3. 出展者一覧と画像フォルダのスキャンは互いに独立しているので並列で叩く。
-        //      直列にすると往復の遅いGASを2回続けて待つことになる。
-        const exhibitorsPromise = (async () => {
-            const config = await configPromise;
-            const gasUrl = new URL(env.GAS_URL);
-            gasUrl.searchParams.append('action', 'get_exhibitors');
-            const sid = spreadsheetId || config.currentSpreadsheetId;
-            if (sid) {
-                gasUrl.searchParams.append('spreadsheetId', sid);
-            }
-
-            const res = await fetch(gasUrl.toString(), { redirect: 'follow' });
-            return res.json();
-        })();
-
-        // 画像索引が取れなくても登録内容は見せたいので、ここだけは失敗を握って空で返す
-        const imagesPromise = (async () => {
-            try {
-                const folderId = folderIdParam || (await configPromise).introImagesFolderId;
-                if (!folderId) return { success: true, images: {} };
-
-                const imagesGasUrl = new URL(env.GAS_URL);
-                imagesGasUrl.searchParams.append('action', 'get_folder_images');
-                imagesGasUrl.searchParams.append('folderId', folderId);
-                // GAS側のキャッシュも一緒に素通しする
-                if (bypassCache) imagesGasUrl.searchParams.append('nocache', '1');
-
-                const res = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
-                return await res.json();
-            } catch (e) {
-                console.error('Folder images fetch failed:', e);
-                return { success: false, images: {} };
-            }
-        })();
-
-        const [config, exhibitorsData, imagesData] = await Promise.all([
-            configPromise, exhibitorsPromise, imagesPromise
-        ]);
-
-        if (!exhibitorsData.success) {
-            throw new Error(exhibitorsData.error || 'Failed to fetch exhibitors');
-        }
-
-        // 4. 個人情報の除外と画像IDの紐付け
-        const imageMap = imagesData.images || {};
-
-        // 画像ファイル名が「番号_出展名.jpg」形式でも照合できるようにする別名索引。
-        // GAS側でも同様の別名キーを生成しているが、GASが旧版のままでも動くよう
-        // ここでも正規化キーの先頭に付いた連番を取り除いたキーを用意する。
-        // （正規化済みキーは「_」等の区切り記号が除去済みのため、数字のみを剥がす）
-        const strippedImageMap = {};
-        Object.keys(imageMap).forEach(key => {
-            const stripped = key.replace(/^[0-9０-９]+/, '');
-            if (stripped && stripped !== key && !imageMap[stripped] && !strippedImageMap[stripped]) {
-                strippedImageMap[stripped] = imageMap[key];
-            }
-        });
-
-        const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
-            // 出展名から正規化キーを作成 (GAS側のnormalizeNameと必ず一致させること)
-            // ファイル名に使えない記号（/ \ : * ? " < > |）は画像保存時に除去または
-            // 「_」へ置換されるため、照合キーからも除去して一致させる
-            const normalizedName = ex.exhibitorName
-                .normalize('NFC')
-                .replace(/[ 　\-_.\(\)（）!！?？｜|\/／\\＼:：*＊"＂”<＜>＞]/g, "")
-                .toLowerCase();
-            
-            return {
-                id: ex.id,
-                exhibitorName: ex.exhibitorName,
-                menuName: ex.menuName,
-                shortPR: ex.shortPR,
-                selfIntro: ex.selfIntro,
-                snsLinks: ex.snsLinks,
-                photoUrl: ex.photoUrl,
-                // フォルダ内の画像ID（「番号_出展名.jpg」形式のファイル名にも対応）
-                introImageId: imageMap[normalizedName] || strippedImageMap[normalizedName] || null,
-                seatNumber: ex.seatNumber,
-                advanceReservation: ex.advanceReservation, // 事前予約の有無（AK列）
-                specialtyGenres: ex.specialtyGenres // 取扱いジャンル（AJ列＝得意ジャンル）
-            };
-        });
-
-        const response = new Response(JSON.stringify({
-            success: true,
-            exhibitors: safeExhibitors,
-            captionTemplates: config.captionTemplates,
-            eventName: config.eventName
-        }), {
-            headers: {
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-                // ブラウザは1分、エッジは5分。誤字修正が反映されるまでの遅れを
-                // この範囲に収めつつ、連続アクセスではGASまで到達させない
-                'Cache-Control': 'public, max-age=60, s-maxage=300'
-            }
-        });
-
-        // レスポンスは一度しか読めないので、複製をキャッシュへ回す。
-        // nocache=1 で来た場合も、せっかく取り直した最新値で古いキャッシュを上書きする。
-        if (ctx) {
-            ctx.waitUntil(cache.put(cacheKey, response.clone()));
-        }
-
-        return response;
-
+        return await refreshPublicExhibitorData(env, url, corsHeaders, ctx);
     } catch (error) {
         console.error('Public data error:', error);
+
+        // GASが落ちていても、最後に取れた内容が残っていればそれを見せる
+        const backup = await loadPublicExhibitorBackup(env, url, corsHeaders);
+        if (backup) return backup;
+
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: {
@@ -1452,6 +1387,189 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
             }
         });
     }
+}
+
+// キャッシュに入っている応答が、取得からどれだけ経ったか
+function cachedAgeMs(response) {
+    const generatedAt = Date.parse(response.headers.get('X-Generated-At') || '');
+    if (Number.isNaN(generatedAt)) return Infinity;
+    return Date.now() - generatedAt;
+}
+
+/**
+ * GASから取り直して、エッジキャッシュとR2のバックアップを更新する。
+ *
+ * ctxを渡すと保存を裏に回して応答を待たせない。裏で呼ぶとき（既に古い方を
+ * 返した後）はnullを渡し、保存し終わるまでこの関数の中で待つ。
+ */
+async function refreshPublicExhibitorData(env, url, corsHeaders, ctx) {
+    const payload = await buildPublicExhibitorPayload(env, url);
+    const body = JSON.stringify(payload);
+
+    const response = new Response(body, {
+        headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'X-Generated-At': payload.generatedAt,
+            // ブラウザは1分、エッジは1時間。エッジの分は5分で取り直すので
+            // 誤字修正の反映は従来どおり数分で届く。長く持たせているのは
+            // GASが落ちている間の予備として使うため
+            'Cache-Control': `public, max-age=${PUBLIC_DATA_BROWSER_TTL_SEC}, s-maxage=${PUBLIC_DATA_EDGE_TTL_SEC}`
+        }
+    });
+
+    // レスポンスは一度しか読めないので、複製をキャッシュへ回す
+    const save = Promise.all([
+        caches.default.put(publicExhibitorCacheKey(url), response.clone()),
+        savePublicExhibitorBackup(env, url, body)
+    ]).catch(err => console.error('Public data cache put failed:', err));
+
+    if (ctx) {
+        ctx.waitUntil(save);
+    } else {
+        await save;
+    }
+
+    return response;
+}
+
+// 出展者データの組み立て（GASと設定から作る、個人情報を除いた公開用の中身）
+async function buildPublicExhibitorPayload(env, url) {
+    const spreadsheetId = url.searchParams.get('sid');
+    const folderIdParam = url.searchParams.get('folderId');
+    const bypassCache = url.searchParams.get('nocache') === '1';
+
+    // 1. 設定を取得 (GitHubから)
+    const configPromise = fetchConfigObject(env);
+
+    // 2/3. 出展者一覧と画像フォルダのスキャンは互いに独立しているので並列で叩く。
+    //      直列にすると往復の遅いGASを2回続けて待つことになる。
+    const exhibitorsPromise = (async () => {
+        const config = await configPromise;
+        return getGasJson(env, {
+            action: 'get_exhibitors',
+            spreadsheetId: spreadsheetId || config.currentSpreadsheetId
+        });
+    })();
+
+    // 画像索引が取れなくても登録内容は見せたいので、ここだけは失敗を握って空で返す
+    const imagesPromise = (async () => {
+        try {
+            const folderId = folderIdParam || (await configPromise).introImagesFolderId;
+            if (!folderId) return { success: true, images: {} };
+
+            return await getGasJson(env, {
+                action: 'get_folder_images',
+                folderId,
+                // GAS側のキャッシュも一緒に素通しする
+                nocache: bypassCache ? '1' : null
+            });
+        } catch (e) {
+            console.error('Folder images fetch failed:', e);
+            return { success: false, images: {} };
+        }
+    })();
+
+    const [config, exhibitorsData, imagesData] = await Promise.all([
+        configPromise, exhibitorsPromise, imagesPromise
+    ]);
+
+    if (!exhibitorsData.success) {
+        throw new Error(exhibitorsData.error || 'Failed to fetch exhibitors');
+    }
+
+    // 4. 個人情報の除外と画像IDの紐付け
+    const imageMap = imagesData.images || {};
+
+    // 画像ファイル名が「番号_出展名.jpg」形式でも照合できるようにする別名索引。
+    // GAS側でも同様の別名キーを生成しているが、GASが旧版のままでも動くよう
+    // ここでも正規化キーの先頭に付いた連番を取り除いたキーを用意する。
+    // （正規化済みキーは「_」等の区切り記号が除去済みのため、数字のみを剥がす）
+    const strippedImageMap = {};
+    Object.keys(imageMap).forEach(key => {
+        const stripped = key.replace(/^[0-9０-９]+/, '');
+        if (stripped && stripped !== key && !imageMap[stripped] && !strippedImageMap[stripped]) {
+            strippedImageMap[stripped] = imageMap[key];
+        }
+    });
+
+    const safeExhibitors = exhibitorsData.exhibitors.map(ex => {
+        // 出展名から正規化キーを作成 (GAS側のnormalizeNameと必ず一致させること)
+        // ファイル名に使えない記号（/ \ : * ? " < > |）は画像保存時に除去または
+        // 「_」へ置換されるため、照合キーからも除去して一致させる
+        const normalizedName = ex.exhibitorName
+            .normalize('NFC')
+            .replace(/[ 　\-_.\(\)（）!！?？｜|\/／\\＼:：*＊"＂”<＜>＞]/g, "")
+            .toLowerCase();
+
+        return {
+            id: ex.id,
+            exhibitorName: ex.exhibitorName,
+            menuName: ex.menuName,
+            shortPR: ex.shortPR,
+            selfIntro: ex.selfIntro,
+            snsLinks: ex.snsLinks,
+            photoUrl: ex.photoUrl,
+            // フォルダ内の画像ID（「番号_出展名.jpg」形式のファイル名にも対応）
+            introImageId: imageMap[normalizedName] || strippedImageMap[normalizedName] || null,
+            seatNumber: ex.seatNumber,
+            advanceReservation: ex.advanceReservation, // 事前予約の有無（AK列）
+            specialtyGenres: ex.specialtyGenres // 取扱いジャンル（AJ列＝得意ジャンル）
+        };
+    });
+
+    return {
+        success: true,
+        exhibitors: safeExhibitors,
+        captionTemplates: config.captionTemplates,
+        eventName: config.eventName,
+        // いつ時点の内容かの目印。鮮度の判定と、古い内容を出すときの表示に使う
+        generatedAt: new Date().toISOString()
+    };
+}
+
+// 最後に取れた内容をR2へ控える。エッジキャッシュは各拠点ごとで消えることもあるが、
+// こちらはどの拠点からでも読めるので、GASが落ちている間の最後の砦になる
+async function savePublicExhibitorBackup(env, url, body) {
+    if (!env.R2_BUCKET) return;
+
+    await env.R2_BUCKET.put(publicExhibitorBackupKey(url), body, {
+        httpMetadata: { contentType: 'application/json' }
+    });
+}
+
+// 控えてあった内容を返す。古い可能性があるので stale を立てる
+async function loadPublicExhibitorBackup(env, url, corsHeaders) {
+    if (!env.R2_BUCKET) return null;
+
+    try {
+        const object = await env.R2_BUCKET.get(publicExhibitorBackupKey(url));
+        if (!object) return null;
+
+        const payload = JSON.parse(await object.text());
+        payload.stale = true;
+
+        return new Response(JSON.stringify(payload), {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'X-Data-Source': 'backup',
+                // GASが復旧したらすぐ拾いたいので、この応答は溜めない
+                'Cache-Control': 'no-store'
+            }
+        });
+    } catch (e) {
+        console.error('Public data backup read failed:', e);
+        return null;
+    }
+}
+
+// R2に控えるときのキー。参照先ごとに分ける
+function publicExhibitorBackupKey(url) {
+    const safe = (value) => (value || 'default').replace(/[^A-Za-z0-9_-]/g, '');
+    const sid = safe(url.searchParams.get('sid'));
+    const folderId = safe(url.searchParams.get('folderId'));
+    return `${PUBLIC_DATA_BACKUP_PREFIX}${sid}__${folderId}.json`;
 }
 
 // エッジキャッシュのキー。参照先が変われば別物として扱いたいのでsid/folderIdだけを残し、
