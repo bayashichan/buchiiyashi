@@ -67,6 +67,13 @@ binding = "TICKETS_DB"
 database_name = "buchiiyashi-tickets"
 database_id = "be26d64e-8d89-456a-a88d-2ce0e3f3589a"
 
+# Workerのログを保存する。
+# 内容確認ページが落ちた原因（GASが何を返したか）を後から追えるようにするため。
+# 有効にしていないと、リアルタイムで tail していた分しか見られず、
+# 利用者からの報告を受けてから調べても手遅れになる。
+[observability]
+enabled = true
+
 # 予約投稿の実行トリガー（5分ごとに予約時刻を過ぎた投稿を処理する）
 [triggers]
 crons = ["*/5 * * * *"]

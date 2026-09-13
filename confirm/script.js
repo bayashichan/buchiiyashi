@@ -21,6 +21,8 @@ const introImageEl = document.getElementById('intro-image');
 const noImageEl = document.getElementById('no-image');
 const captionTextEl = document.getElementById('caption-text');
 const eventNameEl = document.getElementById('event-name');
+const staleNoticeEl = document.getElementById('stale-notice');
+const staleNoticeTextEl = document.getElementById('stale-notice-text');
 
 // 初期化
 document.addEventListener('DOMContentLoaded', async () => {
@@ -71,7 +73,11 @@ async function loadData() {
             exhibitors = result.exhibitors;
             templates = result.captionTemplates;
             if (result.eventName) eventNameEl.textContent = result.eventName;
-            
+
+            // 取得元が不調のときは控えてあった内容が返る。座席番号などが
+            // 反映前の可能性があるので、いつ時点のものかを断っておく
+            showStaleNotice(result.stale ? result.generatedAt : null);
+
             renderSelect();
             showLoading(false);
         } else {
@@ -310,6 +316,27 @@ function showLoading(show) {
         errorEl.classList.add('hidden');
         contentArea.classList.add('hidden');
     }
+}
+
+// 控えてあった内容を出しているときの断り書き
+function showStaleNotice(generatedAt) {
+    if (!staleNoticeEl) return;
+
+    if (!generatedAt) {
+        staleNoticeEl.classList.add('hidden');
+        return;
+    }
+
+    const at = new Date(generatedAt);
+    const when = Number.isNaN(at.getTime())
+        ? ''
+        : `${at.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}時点の`;
+
+    staleNoticeTextEl.textContent =
+        `⚠️ ただいまデータの取得元が一時的に不調のため、${when}内容を表示しています。`
+        + '座席番号など、直近の変更が反映されていない場合があります。'
+        + 'しばらく待ってから再読み込みしてください。';
+    staleNoticeEl.classList.remove('hidden');
 }
 
 function showError(msg) {

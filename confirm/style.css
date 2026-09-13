@@ -291,6 +291,22 @@ textarea:focus {
     font-size: 0.9rem;
 }
 
+/* 古い内容を出しているときの注意書き */
+.stale-notice {
+    background: #fff8e1;
+    border: 1px solid #f0d68a;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+}
+
+.stale-notice p {
+    color: #8a6d1f;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0;
+}
+
 /* ローディング・エラー */
 .loading-state, .error-state {
     text-align: center;
