@@ -493,24 +493,17 @@ function generateConfigJs(config) {
     return lines.join('\n');
 }
 
-// GASデプロイ
+// ========================================
+// GAS連携（応答の読み取り）
+// ========================================
 /**
- * GASのWebアプリへPOSTしてJSONを受け取る。
+ * GASからの応答をJSONとして読む。
  *
  * GASが例外を投げたり承認が必要な状態だと、JSONではなくHTMLのエラーページが返る。
  * それをそのままJSONとして読むと「Unexpected token '<'」としか分からず、
  * Googleが何を言っているのか追えない。中身を添えて投げ直す。
  */
-async function postToGas(env, payload) {
-    const response = await fetch(env.GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        redirect: 'follow'
-    });
-
-    const text = await response.text();
-
+export function parseGasResponseText(text, status) {
     try {
         return JSON.parse(text);
     } catch (e) {
@@ -522,10 +515,45 @@ async function postToGas(env, payload) {
             .trim()
             .slice(0, 400);
         throw new Error(
-            `GASがJSONではない応答を返しました (HTTP ${response.status})。\n`
+            `GASがJSONではない応答を返しました (HTTP ${status})。\n`
             + `Googleからの表示: ${snippet || '(本文なし)'}`
         );
     }
+}
+
+// GASのWebアプリへPOSTしてJSONを受け取る
+async function postToGas(env, payload) {
+    const response = await fetch(env.GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        redirect: 'follow'
+    });
+
+    return parseGasResponseText(await response.text(), response.status);
+}
+
+/**
+ * GASのWebアプリをGETで叩いてJSONを受け取る。
+ *
+ * paramsはクエリパラメータ。値がnull/undefinedのものは付けない。
+ * POST側と同じく、HTMLが返ったらGoogleの文言を添えて投げ直す。
+ */
+async function getGasJson(env, params) {
+    const gasUrl = new URL(env.GAS_URL);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            gasUrl.searchParams.append(key, value);
+        }
+    });
+
+    const response = await fetch(gasUrl.toString(), {
+        method: 'GET',
+        headers: { 'User-Agent': 'Cloudflare-Worker' },
+        redirect: 'follow'
+    });
+
+    return parseGasResponseText(await response.text(), response.status);
 }
 
 /**
@@ -674,20 +702,10 @@ async function createSpreadsheet(env, body, corsHeaders) {
 // 出展者一覧取得
 async function getExhibitors(env, spreadsheetId, corsHeaders) {
     try {
-        const gasUrl = new URL(env.GAS_URL);
-        gasUrl.searchParams.append('action', 'get_exhibitors');
-        if (spreadsheetId) {
-            gasUrl.searchParams.append('spreadsheetId', spreadsheetId);
-        }
+        // GASがHTMLを返したときは、そのまま素通しせずGoogleの文言をエラーにして返す
+        const data = await getGasJson(env, { action: 'get_exhibitors', spreadsheetId });
 
-        const response = await fetch(gasUrl.toString(), {
-            method: 'GET',
-            headers: { 'User-Agent': 'Cloudflare-Worker' },
-            redirect: 'follow'
-        });
-
-        const data = await response.text();
-        return new Response(data, {
+        return new Response(JSON.stringify(data), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     } catch (error) {
@@ -1338,15 +1356,10 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
         //      直列にすると往復の遅いGASを2回続けて待つことになる。
         const exhibitorsPromise = (async () => {
             const config = await configPromise;
-            const gasUrl = new URL(env.GAS_URL);
-            gasUrl.searchParams.append('action', 'get_exhibitors');
-            const sid = spreadsheetId || config.currentSpreadsheetId;
-            if (sid) {
-                gasUrl.searchParams.append('spreadsheetId', sid);
-            }
-
-            const res = await fetch(gasUrl.toString(), { redirect: 'follow' });
-            return res.json();
+            return getGasJson(env, {
+                action: 'get_exhibitors',
+                spreadsheetId: spreadsheetId || config.currentSpreadsheetId
+            });
         })();
 
         // 画像索引が取れなくても登録内容は見せたいので、ここだけは失敗を握って空で返す
@@ -1355,14 +1368,12 @@ async function handlePublicExhibitorData(request, env, corsHeaders, url, ctx) {
                 const folderId = folderIdParam || (await configPromise).introImagesFolderId;
                 if (!folderId) return { success: true, images: {} };
 
-                const imagesGasUrl = new URL(env.GAS_URL);
-                imagesGasUrl.searchParams.append('action', 'get_folder_images');
-                imagesGasUrl.searchParams.append('folderId', folderId);
-                // GAS側のキャッシュも一緒に素通しする
-                if (bypassCache) imagesGasUrl.searchParams.append('nocache', '1');
-
-                const res = await fetch(imagesGasUrl.toString(), { redirect: 'follow' });
-                return await res.json();
+                return await getGasJson(env, {
+                    action: 'get_folder_images',
+                    folderId,
+                    // GAS側のキャッシュも一緒に素通しする
+                    nocache: bypassCache ? '1' : null
+                });
             } catch (e) {
                 console.error('Folder images fetch failed:', e);
                 return { success: false, images: {} };
