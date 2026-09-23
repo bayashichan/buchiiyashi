@@ -2118,6 +2118,34 @@ function replaceTextInSlide(slide, placeholders) {
  * プロフィール画像をスライドに挿入
  * {{プロフィール画像}}という代替テキストを持つ画像、またはテキストを持つ図形を実際の写真に置換
  */
+/**
+ * 画像の縦横比（幅÷高さ）を返す。一度スライドに置いて元の大きさを測り、すぐ消す。
+ */
+function getImageAspectRatio(slide, imageBlob) {
+  const probe = slide.insertImage(imageBlob);
+  const ratio = probe.getWidth() / probe.getHeight();
+  probe.remove();
+  return ratio > 0 && isFinite(ratio) ? ratio : 1;
+}
+
+/**
+ * 枠(box)の中に、縦横比 ratio（幅÷高さ）を保って収まる最大の矩形を、枠の中央に置いて返す。
+ */
+function fitRectKeepingRatio(box, ratio) {
+  let width = box.width;
+  let height = width / ratio;
+  if (height > box.height) {
+    height = box.height;
+    width = height * ratio;
+  }
+  return {
+    left: box.left + (box.width - width) / 2,
+    top: box.top + (box.height - height) / 2,
+    width: width,
+    height: height
+  };
+}
+
 function insertProfileImageInSlide(slide, photoUrl) {
   try {
     // 置換用の画像Blobを取得
@@ -2164,22 +2192,28 @@ function insertProfileImageInSlide(slide, photoUrl) {
       }
     }
 
-    // ターゲットが見つかれば置換する
+    // ターゲットが見つかれば置換する。
+    // 写真は切り取らず、縦横比を保ったまま枠に収める（はみ出す側を枠に合わせ、中央に置く）。
+    // 申込フォームのプレビュー（apply/script.js の fitSlidePhoto）と同じ見え方にするため。
     if (targetElement) {
-      // Image要素の場合は replace() を使って角丸などの書式を保持したまま中身だけ差し替える
-      if (targetElement.getPageElementType && 
+      const box = {
+        left: targetElement.getLeft(),
+        top: targetElement.getTop(),
+        width: targetElement.getWidth(),
+        height: targetElement.getHeight()
+      };
+      const fitted = fitRectKeepingRatio(box, getImageAspectRatio(slide, imageBlob));
+
+      if (targetElement.getPageElementType &&
           targetElement.getPageElementType() === SlidesApp.PageElementType.IMAGE) {
-        // ★ replace(blob, true) で角丸等の書式を保持しつつ、縦横比を維持してトリミング
-        targetElement.replace(imageBlob, true);
+        // Image要素は中身だけ差し替え、角丸などの書式を残したまま大きさを写真の縦横比に合わせる
+        targetElement.replace(imageBlob, false);
+        targetElement.setLeft(fitted.left).setTop(fitted.top)
+          .setWidth(fitted.width).setHeight(fitted.height);
       } else {
-        // テキストボックス(図形)の場合は従来どおりremove+insert
-        const left = targetElement.getLeft();
-        const top = targetElement.getTop();
-        const width = targetElement.getWidth();
-        const height = targetElement.getHeight();
-        
+        // テキストボックス(図形)の場合はremove+insert
         targetElement.remove();
-        const newImage = slide.insertImage(imageBlob, left, top, width, height);
+        const newImage = slide.insertImage(imageBlob, fitted.left, fitted.top, fitted.width, fitted.height);
         newImage.setTitle('{{プロフィール画像}}');
       }
     }
