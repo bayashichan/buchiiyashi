@@ -587,3 +587,415 @@ textarea.input-field {
   border-radius: 9999px;
   margin-left: auto;
 }
+/* ========================================
+   申込内容の最終確認
+   ======================================== */
+body.modal-open {
+  overflow: hidden;
+}
+
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.confirm-modal.hidden {
+  display: none;
+}
+
+.confirm-dialog {
+  background: white;
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 42rem;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.confirm-header {
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid #fed7aa;
+  background: var(--bg-warm);
+}
+
+.confirm-body {
+  padding: 1rem 1.25rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  background: white;
+}
+
+.confirm-actions .submit-btn {
+  flex: 2;
+  padding: 0.85rem 1rem;
+}
+
+.confirm-back-btn {
+  flex: 1;
+  background: #f3f4f6;
+  color: #374151;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 0.85rem 1rem;
+  border: 1px solid #d1d5db;
+}
+
+.confirm-group {
+  margin-bottom: 1.25rem;
+}
+
+.confirm-group h3 {
+  font-weight: 700;
+  color: var(--primary-dark);
+  border-bottom: 2px solid #fed7aa;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.confirm-row {
+  display: grid;
+  grid-template-columns: 8.5em 1fr;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px dashed #e5e7eb;
+  font-size: 0.85rem;
+}
+
+.confirm-row dt {
+  color: var(--text-muted);
+}
+
+.confirm-value {
+  color: var(--text-dark);
+  word-break: break-all;
+}
+
+.confirm-pre {
+  white-space: pre-wrap;
+}
+
+.confirm-photo {
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 0.25rem;
+}
+
+.confirm-sns li {
+  margin-bottom: 0.25rem;
+}
+
+.confirm-sns-type {
+  display: inline-block;
+  font-size: 0.7rem;
+  background: #eef2ff;
+  color: #4338ca;
+  border-radius: 9999px;
+  padding: 0 0.5rem;
+  margin-right: 0.4rem;
+}
+
+.confirm-warning {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.confirm-warning.hidden {
+  display: none;
+}
+
+.confirm-fee {
+  background: var(--bg-cream);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.confirm-fee-line,
+.confirm-fee-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0;
+}
+
+.confirm-fee-total {
+  border-top: 1px solid #fcd34d;
+  margin-top: 0.4rem;
+  padding-top: 0.5rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--primary-dark);
+}
+
+.confirm-final-note {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  font-weight: 700;
+  font-size: 0.8rem;
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .confirm-modal {
+    padding: 0;
+  }
+
+  .confirm-dialog {
+    border-radius: 0;
+    height: 100%;
+    max-height: none;
+  }
+
+  .confirm-row {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+
+  .confirm-actions {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ========================================
+   紹介スライドのプレビュー
+   寸法はpt値をそのままpxとして描き、枠の幅に合わせて縮小する（script.js の SLIDE_LAYOUT）
+   ======================================== */
+.slide-preview-toggle {
+  width: 100%;
+  background: white;
+  border: 2px dashed var(--primary-light);
+  color: var(--primary-dark);
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-radius: 0.75rem;
+  padding: 0.6rem 1rem;
+}
+
+.slide-frame {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  contain: paint;
+}
+
+.slide-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 810px;
+  height: 1012.5px;
+  transform-origin: 0 0;
+  background: #ffe073 url('slide-preview-bg.jpg') center / cover no-repeat;
+  overflow: hidden;
+  color: #595959;
+}
+
+.slide-canvas > div {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.sl-title {
+  left: 89.73px;
+  top: 8.09px;
+  width: 630.54px;
+  height: 49.46px;
+  text-align: center;
+  font-family: 'Dela Gothic One', sans-serif;
+  font-size: 44px;
+  line-height: 49px;
+  color: #f7931e;
+  -webkit-text-stroke: 3px white;
+  paint-order: stroke fill;
+  white-space: nowrap;
+}
+
+.sl-seat {
+  left: 32.98px;
+  top: 95.64px;
+  width: 99.21px;
+  height: 99.21px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid #595959;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Dela Gothic One', sans-serif;
+  font-size: 30px;
+  color: #9ca3af;
+}
+
+.sl-photo {
+  left: 223.88px;
+  top: 67.77px;
+  width: 373.72px;
+  height: 347.81px;
+  border-radius: 30px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #9ca3af;
+}
+
+.sl-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sl-band {
+  left: -22.93px;
+  top: 435.86px;
+  width: 855.85px;
+  height: 116.88px;
+  background: #eeeeee;
+  border-top: 1px dashed #595959;
+  border-bottom: 1px dashed #595959;
+}
+
+.sl-name {
+  text-align: center;
+  font-family: 'Dela Gothic One', sans-serif;
+  color: #434343;
+  text-shadow: 0 3px 8px #ffe073;
+}
+
+.sl-menu-box {
+  left: 18.31px;
+  top: 573.86px;
+  width: 773.39px;
+  height: 372.19px;
+  background: #ffe073;
+  border: 3px solid #595959;
+  border-radius: 45px;
+}
+
+.sl-menu-label {
+  left: 61.58px;
+  top: 573.86px;
+  width: 155.01px;
+  height: 49.46px;
+  background: white;
+  border: 2px solid #595959;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 24px;
+  color: #000;
+}
+
+.sl-menu {
+  text-align: left;
+  font-family: 'M PLUS 1p', sans-serif;
+  font-weight: 700;
+  color: #595959;
+}
+
+.sl-name,
+.sl-menu {
+  overflow: visible;
+}
+
+.sl-text {
+  position: static;
+  line-break: strict;
+  overflow-wrap: anywhere;
+}
+
+.sl-para {
+  white-space: pre-wrap;
+}
+
+.sl-placeholder {
+  color: #b0b0b0;
+}
+
+.sl-footer {
+  left: 198.17px;
+  top: 953.57px;
+  width: 611.83px;
+  overflow: hidden;
+  padding: 7.2px;
+  font-weight: 700;
+  font-size: 21.5px;
+  color: #595959;
+  white-space: nowrap;
+}
+
+.slide-check {
+  max-width: 420px;
+  margin: 0.5rem auto 0;
+}
+
+.slide-check-row {
+  font-size: 0.8rem;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.slide-check-ok {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.slide-check-ng {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  font-weight: 700;
+}
+
+.slide-check-empty {
+  background: #f9fafb;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+}
+
+.slide-check-tip {
+  color: #92400e;
+}
+
+.slide-check-note {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}

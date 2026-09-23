@@ -79,6 +79,7 @@ window.addEventListener('configLoaded', () => {
     updateOptionsUI();
     calculatePrice();
     initSpecialtyGenres();
+    initSlidePreview();
 
     // LIFF初期化（取得中の表示を先に出してから開始する）
     renderLiffStatus();
@@ -157,6 +158,7 @@ async function initLiff() {
                 error: '',
             });
             console.log('LIFF initialized. User:', profile.displayName);
+            checkLineRepeater();
             return;
         } catch (err) {
             console.error(`LIFF initialization failed (attempt ${attempt})`, err);
@@ -996,6 +998,10 @@ function validateForm() {
 // ========================================
 // フォーム送信
 // ========================================
+/**
+ * 「確認して申し込む」ボタン。入力チェックを通ったら、送信前に最終確認画面を出す。
+ * 送信そのものは確認画面の「この内容で申し込む」（confirmAndSubmit）から行う。
+ */
 async function submitForm() {
     const errors = validateForm();
 
@@ -1004,30 +1010,21 @@ async function submitForm() {
         return;
     }
 
-    // セッション禁止警告が表示されている場合
-    const warning = document.getElementById('sessionWarning');
-    if (warning.classList.contains('visible')) {
-        const confirmed = confirm(
-            '⚠️ ご注意\n\n' +
-            '選択されたブースでは「占い・スピリチュアル」「ボディケア・美容」のセッションを行うことができません。\n' +
-            '物販・飲食のみの出展となりますがよろしいですか？'
-        );
-        if (!confirmed) return;
-    }
+    await openConfirmModal();
+}
 
-    // LINE連携が取れていない場合の確認。
-    // 申込自体はブロックしない（連携失敗で申込機会を失う方が損失が大きい）が、
-    // 無言で通していた従来と違い、申込者に必ず自覚してもらう。
-    if (liffState.status !== 'linked') {
-        const proceed = confirm(
-            '⚠️ LINE情報を取得できていません\n\n' +
-            'このまま申し込むと、当日のご案内をLINEでお送りできません。\n' +
-            '公式LINEのリッチメニューから開き直すことをおすすめします。\n\n' +
-            'このまま送信しますか？'
-        );
-        if (!proceed) return;
+async function confirmAndSubmit() {
+    const confirmBtn = document.getElementById('confirmSubmitBtn');
+    if (confirmBtn) confirmBtn.disabled = true;
+    closeConfirmModal();
+    try {
+        await sendApplication();
+    } finally {
+        if (confirmBtn) confirmBtn.disabled = false;
     }
+}
 
+async function sendApplication() {
     // ローディング表示
     document.getElementById('loadingOverlay').classList.add('visible');
     document.getElementById('submitBtn').disabled = true;
@@ -1462,6 +1459,7 @@ function showPhotoReady(result, originalBytes) {
     }
 
     notice.classList.remove('hidden');
+    refreshLiveSlidePreview();
 }
 
 function hidePhotoReady() {
@@ -1961,4 +1959,511 @@ function convertFileToBase64(file) {
         };
         reader.onerror = () => reject(new Error('画像ファイルの読み取りに失敗しました。'));
     });
+}
+
+// ========================================
+// LINE連携による前回内容の呼び出し
+// ========================================
+/**
+ * LINE連携できた人について、LINEユーザーIDに紐づく過去の申込を探す。
+ *
+ * 本人確認はサーバー側でLIFFのアクセストークンを検証して行う（userIdは送らない）。
+ * 見つからない・確認できない場合は、従来のメール認証での呼び出しへ案内する。
+ * LINEユーザーIDを記録し始める前の申込は、こちらでは見つからない。
+ */
+async function checkLineRepeater() {
+    const area = document.getElementById('lineRepeaterArea');
+    const message = document.getElementById('lineRepeaterMessage');
+    const button = document.getElementById('lineRepeaterBtn');
+    if (!area || !message || !button) return;
+
+    let accessToken = '';
+    try {
+        accessToken = liff.getAccessToken() || '';
+    } catch (e) {
+        console.warn('LIFF access token unavailable:', e);
+    }
+    if (!accessToken) return;
+
+    area.classList.remove('hidden');
+    button.classList.add('hidden');
+    message.textContent = '🔍 LINEの登録情報から、前回のお申し込みを確認しています...';
+
+    const showFallback = (lead) => {
+        button.classList.add('hidden');
+        message.innerHTML = `${escapeHtml(lead)}<br>
+            以前お申し込みされた方は、下の「前回内容を呼び出す」からメール認証で呼び出せます。`;
+    };
+
+    try {
+        const response = await fetch(`${CONFIG.workerUrl}/api/repeater/line`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken })
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+            showFallback('LINEでの確認ができませんでした。');
+            return;
+        }
+        if (!result.found || !Array.isArray(result.list) || result.list.length === 0) {
+            showFallback('LINEに紐づく前回のお申し込みは見つかりませんでした。');
+            return;
+        }
+
+        const count = result.list.length;
+        message.innerHTML = `✅ LINEに紐づく前回のお申し込みが見つかりました${count > 1 ? `（${count}件）` : ''}。<br>
+            ボタンを押すと、前回の内容を自動入力できます（メール認証は不要です）。`;
+        button.classList.remove('hidden');
+        button.onclick = () => {
+            showRepeaterSelectionModal(result.list, document.getElementById('repeaterSearchStatus'), null);
+        };
+    } catch (error) {
+        console.error('LINE repeater search error:', error);
+        showFallback('LINEでの確認ができませんでした。');
+    }
+}
+
+// ========================================
+// 申込内容の最終確認
+// ========================================
+async function openConfirmModal() {
+    // 写真の圧縮が終わる前に確認画面を出すと、写真の欄が空に見えるため待つ
+    if (photoProcessing) {
+        try { await photoProcessing; } catch (e) { /* 失敗時の表示は setPhotoFallback 側で出る */ }
+    }
+
+    const body = document.getElementById('confirmBody');
+    body.innerHTML = buildConfirmHtml();
+
+    const modal = document.getElementById('confirmModal');
+    modal.classList.remove('hidden');
+    document.body.classList.add('modal-open');
+    body.scrollTop = 0;
+
+    // スライドは画面に出してから描画する（幅が決まらないと縮尺を計算できない）
+    const slideResult = await renderSlidePreview(document.getElementById('confirmSlidePreview'));
+    const slideWarning = document.getElementById('confirmSlideWarning');
+    if (slideWarning && slideResult && slideResult.overflow) {
+        slideWarning.classList.remove('hidden');
+    }
+}
+
+function closeConfirmModal() {
+    document.getElementById('confirmModal').classList.add('hidden');
+    document.body.classList.remove('modal-open');
+}
+
+/**
+ * 確認画面の中身を組み立てる。値はすべて escapeHtml を通す。
+ */
+function buildConfirmHtml() {
+    const form = document.getElementById('applicationForm');
+    const val = (name) => (form.querySelector(`[name="${name}"]`)?.value || '').trim();
+    const radio = (name) => form.querySelector(`input[name="${name}"]:checked`)?.value || '';
+
+    const row = (label, value, opts = {}) => {
+        const text = value === '' || value === null || value === undefined ? '（未入力）' : String(value);
+        const cls = opts.pre ? 'confirm-value confirm-pre' : 'confirm-value';
+        return `<div class="confirm-row"><dt>${escapeHtml(label)}</dt><dd class="${cls}">${opts.html ? value : escapeHtml(text)}</dd></div>`;
+    };
+    const group = (title, rows) => `
+        <section class="confirm-group">
+            <h3>${escapeHtml(title)}</h3>
+            <dl>${rows.join('')}</dl>
+        </section>`;
+
+    // --- 注意事項（送信は止めないが、必ず目に入る位置に出す） ---
+    const warnings = [];
+    if (document.getElementById('sessionWarning')?.classList.contains('visible')) {
+        warnings.push('選択されたブースでは「占い・スピリチュアル」「ボディケア・美容」のセッションを行うことができません。物販・飲食のみの出展となります。');
+    }
+    if (liffState.status !== 'linked') {
+        warnings.push('LINE情報を取得できていません。このまま申し込むと、当日のご案内をLINEでお送りできません。公式LINEのリッチメニューから開き直すことをおすすめします。');
+    }
+    const usePrevious = document.getElementById('usePreviousPhoto')?.checked;
+    if (!usePrevious && !compressedPhoto && photoFallbackReason) {
+        warnings.push('プロフィール写真が登録されていません。お申し込み後、公式LINEへ出展名を添えてお送りください。');
+    }
+    const warningHtml = warnings.map(w => `<div class="confirm-warning">⚠️ ${escapeHtml(w)}</div>`).join('');
+
+    // --- 写真 ---
+    let photoHtml;
+    if (usePrevious) {
+        const src = document.getElementById('prevPhotoImg')?.src || '';
+        photoHtml = `${src ? `<img src="${escapeHtml(src)}" alt="" class="confirm-photo">` : ''}<span>前回の写真を使用</span>`;
+    } else if (compressedPhoto) {
+        photoHtml = `<img src="data:${compressedPhoto.mimeType};base64,${compressedPhoto.base64}" alt="" class="confirm-photo">`;
+    } else if (form.querySelector('[name="profileImage"]').files?.length) {
+        photoHtml = escapeHtml(form.querySelector('[name="profileImage"]').files[0].name);
+    } else {
+        photoHtml = '<span class="text-red-600 font-bold">未登録（後から公式LINEへお送りください）</span>';
+    }
+
+    // --- SNS ---
+    const snsItems = [];
+    document.querySelectorAll('.sns-input').forEach(input => {
+        if (!input.value) return;
+        const badge = document.querySelector(`.sns-badge[data-index="${input.dataset.index}"]`);
+        snsItems.push(`<li><span class="confirm-sns-type">${escapeHtml(badge?.textContent || 'HP')}</span>${escapeHtml(input.value)}</li>`);
+    });
+
+    // --- オプション（選んだブースで選べるものだけ） ---
+    const optionRows = [];
+    const limits = selectedBooth?.limits || {};
+    if (limits.allowPower) optionRows.push(row('コンセント使用', optionValues.power ? 'あり' : 'なし'));
+    if (limits.maxChairs > 0) optionRows.push(row('椅子の追加', optionValues.chairs > 0 ? `${optionValues.chairs}脚` : 'なし'));
+    if (limits.maxStaff > 0) optionRows.push(row('参加人数の追加', optionValues.staff > 0 ? `${optionValues.staff}名` : 'なし'));
+    if (optionRows.length === 0) optionRows.push(row('オプション', '選択されたブースでは追加オプションはありません'));
+
+    const partyAttend = radio('partyAttend') || '欠席';
+    const secondaryAttend = radio('secondaryPartyAttend') || '欠席';
+    const prize = radio('stampRallyPrize') || 'ない';
+
+    const fee = calculateConfirmFee();
+    const feeRows = fee.lines.map(line => `
+        <div class="confirm-fee-line"><span>${escapeHtml(line.label)}</span><span>${escapeHtml(formatYenDisplay(line.amount))}</span></div>`).join('');
+
+    return `
+        ${warningHtml}
+
+        <section class="confirm-group">
+            <h3>紹介スライドのプレビュー</h3>
+            <p class="text-xs text-gray-600 mb-2">出展名とメニューは、このようにスライドへ転記されます。改行の位置や、枠に収まっているかをご確認ください。</p>
+            <div id="confirmSlideWarning" class="confirm-warning hidden">⚠️ 出展名またはメニューがスライドの枠に収まっていません。「修正する」から文字数や改行位置を調整してください。</div>
+            <div id="confirmSlidePreview"></div>
+        </section>
+
+        ${group('1. 基本情報', [
+            row('お名前', val('name')),
+            row('ふりがな', val('furigana')),
+            row('電話番号', val('phoneNumber')),
+            row('郵便番号', val('postalCode')),
+            row('ご住所', val('address')),
+            row('メールアドレス', val('email')),
+        ])}
+
+        ${group('2. 出展内容', [
+            row('出展名', val('exhibitorName')),
+            row('出展カテゴリ', selectedCategory || ''),
+            row('取扱いジャンル', val('specialtyGenres') || 'なし'),
+            row('出展ブース', selectedBooth?.name || ''),
+            ...(selectedBooth?.id?.startsWith('body_') ? [row('持ち込み物品', val('equipment'), { pre: true })] : []),
+            row('出展メニュー', val('menuName'), { pre: true }),
+            row('事前予約', radio('advanceReservation') === '可' ? '事前予約可' : '事前予約不可（当日受付のみ）'),
+            row('自己紹介', val('selfIntro'), { pre: true }),
+            row('一言PR', val('shortPR')),
+            row('プロフィール画像', photoHtml, { html: true }),
+            row('写真のSNS掲載', radio('photoPermission')),
+        ])}
+
+        ${group('3. SNSリンク', [
+            row('SNS', snsItems.length ? `<ul class="confirm-sns">${snsItems.join('')}</ul>` : '（なし）', { html: true }),
+        ])}
+
+        ${group('4. オプション・備品', optionRows)}
+
+        ${group('5. 企画・協会確認', [
+            row('スタンプラリー景品', prize === 'ある' ? `ある（${val('prizeContent') || '内容未記入'}）` : 'ない'),
+            row('協会会員', radio('isMember') === '1' ? 'はい' : 'いいえ'),
+        ])}
+
+        ${group('6. 懇親会・二次会', [
+            row('懇親会', partyAttend === '出席' ? `出席（${optionValues.partyCount}名）` : '欠席'),
+            row('二次会', secondaryAttend === '出席' ? `出席（${optionValues.secondaryPartyCount}名）※費用は現場徴収` : '欠席'),
+        ])}
+
+        ${group('7. その他', [
+            row('質問・備考', val('notes') || 'なし', { pre: true }),
+            row('LINE連携', liffState.status === 'linked' ? `連携済み（${liffState.displayName}）` : '未連携'),
+        ])}
+
+        <section class="confirm-group">
+            <h3>お支払い金額</h3>
+            <div class="confirm-fee">
+                ${feeRows}
+                <div class="confirm-fee-total"><span>合計</span><span>${escapeHtml(formatYenDisplay(fee.total))}</span></div>
+            </div>
+            ${fee.memberNote ? `<p class="text-xs text-gray-600 mt-2">${escapeHtml(fee.memberNote)}</p>` : ''}
+            <p class="text-xs text-gray-600 mt-1">お振込先は、お申し込み後の確認メールでご案内します。</p>
+        </section>
+
+        <div class="confirm-final-note">
+            お申し込み後の内容変更（プロフィール画像・出展メニュー・自己紹介文等）は原則できません。
+        </div>
+    `;
+}
+
+/**
+ * 確認画面に出す金額。サーバー（GASの calculateTotal）と同じ規則で計算する。
+ * 会員は早割の対象外（通常価格）で、代わりに会員割引が入る。
+ * ここがずれると、確認画面と確認メールで金額が食い違ってしまう。
+ */
+function calculateConfirmFee() {
+    const lines = [];
+    let total = 0;
+    const isMember = document.querySelector('input[name="isMember"]:checked')?.value === '1';
+
+    if (selectedBooth) {
+        const useEarly = isEarlyBird() && !isMember;
+        const boothPrice = useEarly ? selectedBooth.prices.earlyBird : selectedBooth.prices.regular;
+        lines.push({ label: `${selectedBooth.name}${useEarly ? '（早割）' : ''}`, amount: boothPrice });
+        total += boothPrice;
+
+        if (optionValues.staff > 0) {
+            const cost = optionValues.staff * CONFIG.unitPrices.staff;
+            lines.push({ label: `参加人数の追加 ×${optionValues.staff}`, amount: cost });
+            total += cost;
+        }
+        if (optionValues.chairs > 0) {
+            const cost = optionValues.chairs * CONFIG.unitPrices.chair;
+            lines.push({ label: `椅子の追加 ×${optionValues.chairs}`, amount: cost });
+            total += cost;
+        }
+        if (optionValues.power) {
+            lines.push({ label: 'コンセント使用', amount: CONFIG.unitPrices.power });
+            total += CONFIG.unitPrices.power;
+        }
+    }
+
+    if (optionValues.partyCount > 0) {
+        const cost = optionValues.partyCount * CONFIG.unitPrices.party;
+        lines.push({ label: `懇親会 ×${optionValues.partyCount}`, amount: cost });
+        total += cost;
+    }
+
+    let memberNote = '';
+    if (isMember && CONFIG.memberDiscount) {
+        lines.push({ label: '会員様特別割引', amount: -CONFIG.memberDiscount });
+        total -= CONFIG.memberDiscount;
+        memberNote = isEarlyBird()
+            ? '※ 協会会員の方は早割の対象外となり、通常価格から会員割引を適用しています。'
+            : '';
+    }
+
+    return { lines, total, memberNote };
+}
+
+function formatYenDisplay(amount) {
+    const sign = amount < 0 ? '−' : '';
+    return `${sign}¥${Math.abs(amount).toLocaleString()}`;
+}
+
+// ========================================
+// 紹介スライドのプレビュー
+// ========================================
+/**
+ * 紹介スライド（Googleスライドのテンプレート）の寸法。単位はpt（スライド全体 810×1012.5）。
+ * テンプレートの図形の位置・大きさ・フォントをそのまま写している。
+ * テンプレートのレイアウトを変えたときは、ここも合わせて直すこと。
+ *
+ * 行数の上限は、テンプレートの枠に収まる行数（出展名は灰色の帯に2行、
+ * メニューは黄色い枠に7行）。1行の文字数は全角での目安。
+ */
+const SLIDE_LAYOUT = {
+    width: 810,
+    height: 1012.5,
+    name: { left: 23.09, top: 431.67, width: 763.82, inset: 11.4, fontSize: 45, lineHeight: 1.2, maxLines: 2, charsPerLine: 16 },
+    menu: { left: 18.31, top: 617.65, width: 773.39, inset: 11.4, fontSize: 35, lineHeight: 1.18, maxLines: 7, charsPerLine: 21 },
+};
+
+let liveSlidePreviewTimer = null;
+
+function initSlidePreview() {
+    const toggleBtn = document.getElementById('toggleSlidePreviewBtn');
+    const live = document.getElementById('liveSlidePreview');
+    if (!toggleBtn || !live) return;
+
+    toggleBtn.addEventListener('click', () => {
+        const opening = live.classList.contains('hidden');
+        live.classList.toggle('hidden', !opening);
+        toggleBtn.textContent = opening ? '🖼️ プレビューを閉じる' : '🖼️ スライドでの見え方をプレビュー';
+        if (opening) renderSlidePreview(live);
+    });
+
+    // 入力のたびに描き直す（打鍵ごとだと重いので少し間を置く）
+    ['exhibitorName', 'menuName'].forEach(name => {
+        document.querySelector(`[name="${name}"]`)?.addEventListener('input', refreshLiveSlidePreview);
+    });
+
+    // 画面幅が変わったら縮尺を合わせ直す（スマホの縦横回転など）
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            document.querySelectorAll('.slide-frame').forEach(fitSlideFrame);
+        }, 150);
+    });
+}
+
+function refreshLiveSlidePreview() {
+    const live = document.getElementById('liveSlidePreview');
+    if (!live || live.classList.contains('hidden')) return;
+    clearTimeout(liveSlidePreviewTimer);
+    liveSlidePreviewTimer = setTimeout(() => renderSlidePreview(live), 300);
+}
+
+/**
+ * スライドのプレビューを container に描画し、行数の判定結果を返す。
+ * @return {Promise<{overflow: boolean}>}
+ */
+async function renderSlidePreview(container) {
+    if (!container) return { overflow: false };
+
+    const exhibitorName = (document.querySelector('input[name="exhibitorName"]')?.value || '').trim();
+    const menuName = (document.querySelector('textarea[name="menuName"]')?.value || '').replace(/\s+$/, '');
+
+    container.innerHTML = `
+        <div class="slide-frame">
+            ${buildSlideCanvasHtml(exhibitorName, menuName)}
+        </div>
+        <div class="slide-check"></div>
+    `;
+    const frame = container.querySelector('.slide-frame');
+    fitSlideFrame(frame);
+
+    // テンプレートと同じフォントで測らないと、行数の判定が狂う
+    const fontsReady = await loadSlideFonts(exhibitorName + menuName);
+    fitSlideFrame(frame);
+
+    const nameCheck = measureSlideText(frame.querySelector('[data-role="name"]'), SLIDE_LAYOUT.name);
+    const menuCheck = measureSlideText(frame.querySelector('[data-role="menu"]'), SLIDE_LAYOUT.menu);
+
+    container.querySelector('.slide-check').innerHTML = [
+        slideCheckHtml('出展名', exhibitorName, nameCheck, SLIDE_LAYOUT.name),
+        slideCheckHtml('メニュー', menuName, menuCheck, SLIDE_LAYOUT.menu),
+        `<p class="slide-check-note">※ 実際のスライドと、改行位置が1〜2文字ずれることがあります。${fontsReady ? '' : '（フォントを読み込めなかったため、目安の表示です）'}</p>`,
+    ].join('');
+
+    return { overflow: nameCheck.overflow || menuCheck.overflow };
+}
+
+function buildSlideCanvasHtml(exhibitorName, menuName) {
+    const eventNumber = (CONFIG.eventName || '').match(/第.+回/)?.[0] || CONFIG.eventName || '';
+    const title = `${eventNumber}ぶち癒しフェスタin東京`;
+    const footer = `${CONFIG.eventDate || ''}${CONFIG.eventLocation || ''}`;
+
+    // 写真: 送信される写真 → 前回の写真 → 未選択の表示
+    let photoSrc = '';
+    if (compressedPhoto) {
+        photoSrc = `data:${compressedPhoto.mimeType};base64,${compressedPhoto.base64}`;
+    } else if (document.getElementById('usePreviousPhoto')?.checked) {
+        photoSrc = document.getElementById('prevPhotoImg')?.src || '';
+    }
+
+    const paragraphs = (text, placeholder) => {
+        if (!text) return `<div class="sl-para sl-placeholder">${escapeHtml(placeholder)}</div>`;
+        // スライドでは改行ごとに段落が分かれる。空行も1行分の高さを取る
+        return text.split('\n').map(line => `<div class="sl-para">${escapeHtml(line) || '&#8203;'}</div>`).join('');
+    };
+
+    const box = (layout) => `left:${layout.left}px;top:${layout.top}px;width:${layout.width}px;padding:${layout.inset}px;`
+        + `font-size:${layout.fontSize}px;line-height:${layout.lineHeight};`;
+
+    return `
+        <div class="slide-canvas">
+            <div class="sl-title">${escapeHtml(title)}</div>
+            <div class="sl-seat">No.</div>
+            <div class="sl-photo">${photoSrc ? `<img src="${escapeHtml(photoSrc)}" alt="">` : '<span>プロフィール画像</span>'}</div>
+            <div class="sl-band"></div>
+            <div class="sl-name" style="${box(SLIDE_LAYOUT.name)}">
+                <div class="sl-text" data-role="name">${paragraphs(exhibitorName, '（出展名）')}</div>
+            </div>
+            <div class="sl-menu-box"></div>
+            <div class="sl-menu-label">メニュー</div>
+            <div class="sl-menu" style="${box(SLIDE_LAYOUT.menu)}">
+                <div class="sl-text" data-role="menu">${paragraphs(menuName, '（出展メニュー）')}</div>
+            </div>
+            <div class="sl-footer">${escapeHtml(footer)}</div>
+        </div>
+    `;
+}
+
+// 枠の幅に合わせてスライド全体を縮小する（スライドの寸法は固定のまま描いて縮める）
+function fitSlideFrame(frame) {
+    if (!frame) return;
+    const canvas = frame.querySelector('.slide-canvas');
+    const scale = frame.clientWidth / SLIDE_LAYOUT.width;
+    if (!canvas || !scale) return;
+    canvas.style.transform = `scale(${scale})`;
+    frame.style.height = `${SLIDE_LAYOUT.height * scale}px`;
+}
+
+async function loadSlideFonts(text) {
+    if (!document.fonts || !document.fonts.load) return false;
+    const sample = text || 'あ';
+    const load = Promise.all([
+        document.fonts.load(`45px "Dela Gothic One"`, sample),
+        document.fonts.load(`700 35px "M PLUS 1p"`, sample),
+    ]).then(results => results.every(faces => faces.length > 0));
+    // 回線が遅いときに確認画面ごと待たせないよう、上限を切る
+    const timeout = new Promise(resolve => setTimeout(() => resolve(false), 4000));
+    try {
+        return await Promise.race([load, timeout]);
+    } catch (e) {
+        console.warn('Slide font load failed:', e);
+        return false;
+    }
+}
+
+/**
+ * スライド上で何行になるかを測る。
+ * 行の高さは固定（fontSize × lineHeight）なので、段落の高さから行数が決まる。
+ * あわせて、最後の行に1〜2文字だけ送られている段落（「税\n別）」のような泣き別れ）を拾う。
+ */
+function measureSlideText(textEl, layout) {
+    const result = { lines: 0, overflow: false, orphans: [] };
+    if (!textEl || textEl.querySelector('.sl-placeholder')) return result;
+
+    const lineHeightPx = layout.fontSize * layout.lineHeight;
+    textEl.querySelectorAll('.sl-para').forEach(para => {
+        const paraLines = Math.max(1, Math.round(para.offsetHeight / lineHeightPx));
+        result.lines += paraLines;
+
+        if (paraLines > 1) {
+            const lastLine = lastVisualLineText(para);
+            if (lastLine && [...lastLine].length <= 2) result.orphans.push(lastLine);
+        }
+    });
+    result.overflow = result.lines > layout.maxLines;
+    return result;
+}
+
+// 段落の最後の見た目上の行の文字列を返す
+function lastVisualLineText(para) {
+    const node = para.firstChild;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return '';
+    const text = node.textContent;
+    const range = document.createRange();
+    let lastTop = null;
+    let lastStart = 0;
+    let offset = 0;
+    for (const ch of text) {
+        range.setStart(node, offset);
+        range.setEnd(node, offset + ch.length);
+        const rect = range.getClientRects()[0];
+        if (rect && rect.width > 0) {
+            if (lastTop === null || rect.top > lastTop + rect.height / 2) {
+                lastTop = rect.top;
+                lastStart = offset;
+            }
+        }
+        offset += ch.length;
+    }
+    return text.slice(lastStart).trim();
+}
+
+function slideCheckHtml(label, text, check, layout) {
+    if (!text) {
+        return `<p class="slide-check-row slide-check-empty">${escapeHtml(label)}: 未入力です</p>`;
+    }
+    if (check.overflow) {
+        return `<p class="slide-check-row slide-check-ng">⚠️ ${escapeHtml(label)}: ${check.lines}行（枠に収まるのは${layout.maxLines}行まで）。`
+            + `枠からはみ出します。文字数を減らすか、改行位置を調整してください。</p>`;
+    }
+    const orphanTip = check.orphans.length
+        ? `<br><span class="slide-check-tip">💡「${escapeHtml(check.orphans[0])}」だけが次の行に送られています。改行位置を調整すると読みやすくなります。</span>`
+        : '';
+    return `<p class="slide-check-row slide-check-ok">✓ ${escapeHtml(label)}: ${check.lines}行 / 最大${layout.maxLines}行（1行 全角${layout.charsPerLine}文字程度）${orphanTip}</p>`;
 }

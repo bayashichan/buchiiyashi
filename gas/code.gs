@@ -21,6 +21,11 @@ const CONFIG = {
 
   // 公式LINE（画像が登録できなかった場合の受け取り窓口）
   OFFICIAL_LINE_URL: 'https://lin.ee/uqhsDx3',
+
+  // 申込フォームのLIFFが属するLINEログインチャネルのID（LIFF IDの「-」より前の部分）。
+  // LINE連携での前回内容呼び出しで、届いたアクセストークンが自分たちのチャネルで
+  // 発行されたものかを確かめるのに使う。
+  LINE_LOGIN_CHANNEL_ID: '2008192225',
   
   // 会員割引
   MEMBER_DISCOUNT: 2000,
@@ -125,6 +130,16 @@ function doGet(e) {
       }
     }
     
+    // LINE連携による前回内容の呼び出し。
+    // userIdをそのまま受け取ると、他人のuserIdを知っているだけで個人情報を引けてしまう。
+    // LIFFのアクセストークンを受け取り、LINE側で本人確認できたuserIdだけで検索する。
+    if (action === 'search_by_line') {
+      const result = searchRepeaterByLineToken(e.parameter.accessToken);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 出展者一覧取得（管理画面用）
     if (action === 'get_exhibitors') {
       const spreadsheetId = e.parameter.spreadsheetId || CONFIG.SPREADSHEET_ID;
@@ -179,8 +194,77 @@ function doGet(e) {
   }
 }
 
-// 過去データ検索
+// 過去データ検索（氏名＋メールアドレス。メール認証後に呼ばれる）
 function searchRepeater(name, email) {
+  // 照合用正規化関数
+  const normalize = (str) => String(str || '').replace(/[\s\u3000]/g, '').toLowerCase();
+  const targetEmail = normalize(email);
+  const targetName = normalize(name);
+
+  // 氏名とメールアドレスの両方が一致する場合のみ
+  return searchRepeaterRows((row, getCell, idx) => {
+    if (idx.email < 0) return false;
+    return normalize(getCell(row, idx.email)) === targetEmail
+      && normalize(getCell(row, idx.name)) === targetName;
+  });
+}
+
+/**
+ * LIFFのアクセストークンで本人確認し、そのLINEユーザーIDで過去の申込を探す。
+ *
+ * LINEユーザーIDがマスターDBに記録され始める前の申込は見つからないため、
+ * found:false のときはフォーム側で従来のメール認証へ案内する。
+ */
+function searchRepeaterByLineToken(accessToken) {
+  if (!accessToken) {
+    return { success: false, error: 'LINEの認証情報がありません' };
+  }
+
+  const userId = verifyLineAccessToken(accessToken);
+  if (!userId) {
+    return { success: false, error: 'LINEの本人確認に失敗しました' };
+  }
+
+  const result = searchRepeaterRows((row, getCell, idx) => {
+    if (idx.lineUserId < 0) return false;
+    return String(getCell(row, idx.lineUserId)).trim() === userId;
+  });
+  return { success: true, ...result };
+}
+
+/**
+ * LIFFのアクセストークンを検証し、本人のLINEユーザーIDを返す。検証できなければ空文字。
+ * 他チャネルで発行されたトークンを受け付けないよう、発行元チャネルも照合する。
+ */
+function verifyLineAccessToken(accessToken) {
+  try {
+    const verifyRes = UrlFetchApp.fetch(
+      'https://api.line.me/oauth2/v2.1/verify?access_token=' + encodeURIComponent(accessToken),
+      { muteHttpExceptions: true }
+    );
+    if (verifyRes.getResponseCode() !== 200) return '';
+    const verified = JSON.parse(verifyRes.getContentText());
+    if (String(verified.client_id) !== CONFIG.LINE_LOGIN_CHANNEL_ID) return '';
+    if (!(verified.expires_in > 0)) return '';
+
+    const profileRes = UrlFetchApp.fetch('https://api.line.me/v2/profile', {
+      headers: { Authorization: 'Bearer ' + accessToken },
+      muteHttpExceptions: true
+    });
+    if (profileRes.getResponseCode() !== 200) return '';
+    const profile = JSON.parse(profileRes.getContentText());
+    return profile.userId || '';
+  } catch (e) {
+    console.error('verifyLineAccessToken error:', e);
+    return '';
+  }
+}
+
+/**
+ * マスターDBから条件に合う申込行を新しい順に集める。
+ * @param {function(Array, function, Object): boolean} matchRow 行ごとの一致判定
+ */
+function searchRepeaterRows(matchRow) {
   const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
   let sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
   
@@ -222,19 +306,9 @@ function searchRepeater(name, email) {
     photoUrl: getColIndex(['プロフィール写真']),
     equipment: getColIndex(['ボディーブース持ち込み物品']),
     boothName: getColIndex(['出展ブース']),
-    sns: getColIndex(['SNS'])
+    sns: getColIndex(['SNS']),
+    lineUserId: getColIndex(['LINEユーザーID'])
   };
-  
-  // メールアドレス列がないなら検索不可
-  if (idx.email < 0) {
-    console.error('Email column not found in headers:', headers);
-    return { found: false };
-  }
-  
-  // 照合用正規化関数
-  const normalize = (str) => String(str || '').replace(/[\s\u3000]/g, '').toLowerCase();
-  const targetEmail = normalize(email);
-  const targetName = normalize(name);
   
   // 安全に日付をフォーマット
   const formatDate = (val) => {
@@ -259,11 +333,7 @@ function searchRepeater(name, email) {
   // 新しい順に検索（後ろから、ヘッダー行はスキップ）
   for (let i = data.length - 1; i > 0; i--) {
     const row = data[i];
-    const rowEmail = normalize(getCell(row, idx.email));
-    const rowName = normalize(getCell(row, idx.name));
-    
-    // 氏名とメールアドレスの両方が一致する場合のみ
-    if (rowEmail === targetEmail && rowName === targetName) {
+    if (matchRow(row, getCell, idx)) {
       matches.push({
         eventName: getCell(row, idx.eventName) || '',
         submittedAt: formatDate(getCell(row, idx.submittedAt)),
@@ -297,7 +367,7 @@ function searchRepeater(name, email) {
   } else {
     return { found: false };
   }
-} // searchRepeater end
+} // searchRepeaterRows end
 
 // ========================================
 // 出展者一覧取得（管理画面用）

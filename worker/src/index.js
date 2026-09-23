@@ -29,6 +29,10 @@ export default {
             return handleRepeaterSearch(request, env, corsHeaders);
         }
 
+        if (url.pathname === '/api/repeater/line' && request.method === 'POST') {
+            return handleRepeaterLineSearch(request, env, corsHeaders);
+        }
+
         // Googleからのリダイレクト。ブラウザが直接開くため管理画面の認証ヘッダーが付かない。
         // 代わりにstateで照合する（handleGoogleOAuthCallback内）
         if (url.pathname === '/oauth/google/callback') {
@@ -1327,6 +1331,40 @@ async function handleRepeaterSearch(request, env, corsHeaders) {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
+    }
+}
+
+/**
+ * LINE連携で前回の申込内容を探す。
+ *
+ * アクセストークンはURLに載せるとログに残るため、ブラウザからはPOSTの本文で受け取る。
+ * 本人確認（トークンの検証とuserIdの取得）はGAS側で行う。GASのURLは公開されているため、
+ * userIdだけを渡す作りにすると誰でも他人の申込内容を引けてしまう。
+ */
+async function handleRepeaterLineSearch(request, env, corsHeaders) {
+    const json = (body, status = 200) => new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+    try {
+        let body = {};
+        try {
+            body = await request.json();
+        } catch (e) {
+            return json({ success: false, error: 'リクエストの形式が正しくありません' }, 400);
+        }
+
+        const accessToken = typeof body.accessToken === 'string' ? body.accessToken.trim() : '';
+        if (!accessToken) {
+            return json({ success: false, error: 'LINEの認証情報がありません' }, 400);
+        }
+
+        const result = await getGasJson(env, { action: 'search_by_line', accessToken });
+        return json(result);
+    } catch (error) {
+        console.error('Repeater LINE search error:', error.message);
+        return json({ success: false, error: 'LINEでの呼び出しに失敗しました' }, 502);
     }
 }
 

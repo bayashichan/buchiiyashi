@@ -14,7 +14,7 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Dela+Gothic+One&family=M+PLUS+1p:wght@700&display=swap" rel="stylesheet">
 
   <!-- LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -74,7 +74,17 @@
       <!-- リピーター検索（過去出展者） -->
       <section class="form-section p-6 mb-6 bg-orange-50 border-2 border-orange-200">
         <h2 class="section-title text-orange-600">🔄 過去にお申し込みされたことがある方</h2>
-        <p class="text-sm text-gray-700 mb-4">以前と同じ<strong>氏名（本名）</strong>・メールアドレスを入力して検索すると、前回の申込内容を自動入力できます。<br><span
+
+        <!-- LINE連携での呼び出し（script.js の checkLineRepeater が表示を切り替える） -->
+        <div id="lineRepeaterArea" class="hidden mb-4 p-4 bg-white border-2 border-green-300 rounded-lg">
+          <p id="lineRepeaterMessage" class="text-sm text-gray-700 mb-3"></p>
+          <button type="button" id="lineRepeaterBtn"
+            class="w-full text-white bg-[#06C755] hover:bg-green-600 font-bold rounded-lg text-sm px-5 py-3 text-center">
+            LINEの情報で前回内容を呼び出す
+          </button>
+        </div>
+
+        <p id="emailRepeaterLead" class="text-sm text-gray-700 mb-4">以前と同じ<strong>氏名（本名）</strong>・メールアドレスを入力して検索すると、前回の申込内容を自動入力できます。<br><span
             class="text-orange-600">※出展名ではなく、本名で検索してください</span></p>
 
         <div class="flex gap-4 items-end flex-wrap">
@@ -214,6 +224,7 @@
           <div>
             <label class="input-label">出展名（セラピスト名／屋号）<span class="required">*</span></label>
             <input type="text" name="exhibitorName" class="input-field" placeholder="ヒーリングサロン〇〇" required>
+            <p class="text-xs text-gray-500 mt-1">※ 紹介スライドに大きく掲載されます（1行 全角16文字程度・最大2行）</p>
           </div>
 
           <!-- 出展カテゴリ -->
@@ -347,6 +358,18 @@
             <textarea name="menuName" class="input-field" rows="3" maxlength="100" placeholder="〇〇ヒーリング　20分　2000円"
               required></textarea>
             <div class="char-counter"><span id="menuNameCount">0</span>/100</div>
+            <p class="text-xs text-gray-500 mt-1">
+              ※ 出展名とメニューは、そのまま紹介スライド（SNS・当日掲示）に転記されます。<br>
+              ※ スライドでは1行 全角21文字程度・最大7行です。改行した位置はスライドでもそのまま改行されます。
+            </p>
+
+            <!-- 紹介スライドのプレビュー（script.js の renderSlidePreview が描画する） -->
+            <div class="slide-preview-panel mt-3">
+              <button type="button" id="toggleSlidePreviewBtn" class="slide-preview-toggle">
+                🖼️ スライドでの見え方をプレビュー
+              </button>
+              <div id="liveSlidePreview" class="hidden mt-3"></div>
+            </div>
           </div>
 
           <div>
@@ -674,10 +697,25 @@
         <div class="total-price">合計: <span id="totalPrice">¥0</span></div>
       </div>
       <button type="button" id="submitBtn" class="submit-btn" onclick="submitForm()">
-        申し込む
+        確認して申し込む
       </button>
     </div>
   </footer>
+
+  <!-- 申込内容の最終確認（script.js の openConfirmModal が中身を描画する） -->
+  <div id="confirmModal" class="confirm-modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="confirm-dialog">
+      <div class="confirm-header">
+        <h2 id="confirmTitle" class="text-lg md:text-xl font-bold text-orange-500">申込内容の最終確認</h2>
+        <p class="text-xs md:text-sm text-gray-600 mt-1">まだ申込は完了していません。内容をご確認のうえ、一番下の「この内容で申し込む」を押してください。</p>
+      </div>
+      <div id="confirmBody" class="confirm-body"></div>
+      <div class="confirm-actions">
+        <button type="button" id="confirmBackBtn" class="confirm-back-btn" onclick="closeConfirmModal()">修正する</button>
+        <button type="button" id="confirmSubmitBtn" class="submit-btn" onclick="confirmAndSubmit()">この内容で申し込む</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 完了モーダル -->
   <div id="completeModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
