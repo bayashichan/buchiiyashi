@@ -1023,10 +1023,13 @@ async function handleFormSubmission(request, env, corsHeaders) {
         // 申込内容をLINEでも本人へ通知する（メールと二本立て。失敗しても申込は成功扱い）
         await sendLineConfirmation(data, gasResult, env);
 
+        // LINE用の本文はWorkerで送るためのもの。ブラウザへは返さない
+        const { lineMessage, ...clientResult } = gasResult || {};
+
         return new Response(JSON.stringify({
             success: true,
             message: 'Application submitted successfully',
-            ...gasResult
+            ...clientResult
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -1116,7 +1119,7 @@ async function sendLineConfirmation(data, gasResult, env) {
 
     const body = JSON.stringify({
         to: data.lineUserId,
-        messages: [{ type: 'text', text: buildLineConfirmationMessage(data, gasResult) }]
+        messages: [{ type: 'text', text: selectLineConfirmationText(data, gasResult) }]
     });
 
     // 同じリトライキーで送る限り、LINE側が重複配信を防いでくれる
@@ -1167,11 +1170,28 @@ async function sendLineConfirmation(data, gasResult, env) {
     console.error('LINE通知: リトライしても送信できませんでした');
 }
 
+// LINEのテキストメッセージの上限は5000文字
+const LINE_TEXT_MAX = 5000;
+
 /**
- * LINEで送る申込完了メッセージを組み立てる。
+ * LINEで送る申込完了メッセージの本文を選ぶ。
+ *
+ * 確認メールと同じ内容（申込内容・料金内訳・振込先・各種ご案内）の本文はGASが組み立てて
+ * lineMessage として返す。メールと同じ計算結果から作るので、金額や振込先が食い違わない。
+ * GASが古いデプロイのままで lineMessage が無いときだけ、ここで要約版を作る。
+ */
+export function selectLineConfirmationText(data, gasResult) {
+    const full = gasResult && typeof gasResult.lineMessage === 'string' ? gasResult.lineMessage.trim() : '';
+    if (full) {
+        return full.length > LINE_TEXT_MAX ? `${full.slice(0, LINE_TEXT_MAX - 1)}…` : full;
+    }
+    return buildLineConfirmationMessage(data, gasResult);
+}
+
+/**
+ * LINEで送る申込完了メッセージの要約版（GASから全文が届かなかったときの予備）。
  *
  * 金額の内訳や振込先の詳細は確認メールが正なので、ここは受付内容の要約に絞る。
- * 同じ内容を二箇所で管理すると、片方だけ更新されて食い違うため。
  */
 function buildLineConfirmationMessage(data, gasResult) {
     const eventName = data.eventName || 'ぶち癒やしフェスタin東京';

@@ -27,6 +27,16 @@ const CONFIG = {
   // 発行されたものかを確かめるのに使う。
   LINE_LOGIN_CHANNEL_ID: '2008192225',
   
+  // お振込先（申込完了のLINEメッセージで使う）。
+  // 確認メールの振込先は mail_template.html に直接書いてあるため、変更するときは両方を直すこと。
+  BANK_ACCOUNT: [
+    ['銀行名', 'GMOあおぞらネット銀行'],
+    ['支店名', 'にじ支店（３０２）'],
+    ['口座種別', '普通'],
+    ['口座番号', '3249690'],
+    ['口座名義', 'スズキ　カズコ']
+  ],
+
   // 会員割引
   MEMBER_DISCOUNT: 2000,
   
@@ -679,6 +689,15 @@ function doPost(e) {
     
     // 管理者へメール通知
     sendAdminEmail(data, calculationResult);
+
+    // 確認メールと同じ内容のLINEメッセージ（送信はWorkerが行う）。
+    // 組み立てに失敗しても申込は成功扱い（Workerは要約版のメッセージに切り替える）。
+    let lineMessage = '';
+    try {
+      lineMessage = buildLineConfirmationText(data, calculationResult);
+    } catch (lineError) {
+      console.error('Failed to build LINE confirmation text:', lineError);
+    }
     
     // imageStatus は申込フォーム側で「公式LINEへ画像を送ってください」の案内を出すために使う
     return ContentService
@@ -686,7 +705,8 @@ function doPost(e) {
         success: true,
         totalFee: calculationResult.totalFee,
         imageStatus: data.imageUploadOk ? 'ok' : 'missing',
-        imageStatusText: formatImageUploadStatus(data)
+        imageStatusText: formatImageUploadStatus(data),
+        lineMessage: lineMessage
       }))
       .setMimeType(ContentService.MimeType.JSON);
 
@@ -1138,14 +1158,7 @@ ${data.notes || 'なし'}
   template.imageStatusText = formatImageUploadStatus(data);
   
   // 料金内訳の表示用リスト作成
-  const breakdownList = [
-    { item: '出展ブース料', price: calculationResult.breakdown.booth },
-    { item: '追加スタッフ (×' + (data.extraStaff || 0) + ')', price: calculationResult.breakdown.staff },
-    { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
-    { item: '電源使用料', price: calculationResult.breakdown.power },
-    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party },
-    { item: '会員様特別割引', price: calculationResult.breakdown.memberDiscount || 0 }
-  ].filter(item => item.price !== 0);
+  const breakdownList = buildFeeBreakdownList(data, calculationResult);
 
   template.breakdownList = breakdownList;
   template.isMember = data.isMember === '1';
@@ -1203,14 +1216,7 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
 
   
   // 料金内訳の表示用リスト作成
-  const breakdownList = [
-    { item: '出展ブース料', price: calculationResult.breakdown.booth },
-    { item: '追加スタッフ (×' + (data.extraStaff || 0) + ')', price: calculationResult.breakdown.staff },
-    { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
-    { item: '電源使用料', price: calculationResult.breakdown.power },
-    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party },
-    { item: '会員様特別割引', price: calculationResult.breakdown.memberDiscount || 0 }
-  ].filter(item => item.price !== 0);
+  const breakdownList = buildFeeBreakdownList(data, calculationResult);
 
   // HTMLテンプレートを読み込み
   const template = HtmlService.createTemplateFromFile('mail_template');
@@ -1286,6 +1292,187 @@ Email: ${CONFIG.REPLY_TO_EMAIL}
     replyTo: CONFIG.REPLY_TO_EMAIL,
     htmlBody: htmlBody
   });
+}
+
+/**
+ * 確認メール・管理者メール・LINEメッセージ共通の料金内訳（0円の項目は出さない）。
+ */
+function buildFeeBreakdownList(data, calculationResult) {
+  return [
+    { item: '出展ブース料', price: calculationResult.breakdown.booth },
+    { item: '追加スタッフ (×' + (data.extraStaff || 0) + ')', price: calculationResult.breakdown.staff },
+    { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
+    { item: '電源使用料', price: calculationResult.breakdown.power },
+    { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party },
+    { item: '会員様特別割引', price: calculationResult.breakdown.memberDiscount || 0 }
+  ].filter(item => item.price !== 0);
+}
+
+// LINEのテキストメッセージは5000文字まで。絵文字などで数え方がずれても収まるよう余裕を持たせる
+const LINE_TEXT_LIMIT = 4800;
+const LINE_DIVIDER = '━━━━━━━━━━';
+
+/**
+ * 確認メールと同じ内容を、LINEのテキストメッセージ1通で読める形に組み立てる。
+ * 送信はWorker（Messaging APIのpush）が行う。ここは本文を作るだけ。
+ *
+ * 金額・内訳はメールと同じ calculationResult / buildFeeBreakdownList から作り、食い違わないようにする。
+ * スマホの吹き出しは横幅が狭いため、表は使わず「見出し＋1項目1行」で並べ、
+ * 改行を含む項目（メニュー・自己紹介など）は見出しの次の行から書く。
+ * 公式LINE自身から届くメッセージなので、メールの「公式LINEまで」は「このトークへ」と言い換える。
+ * プロフィール写真は画像ではなくURLで載せる（タップで開ける）。
+ */
+function buildLineConfirmationText(data, calculationResult) {
+  const notes = String(data.notes || '').trim();
+  let text = composeLineConfirmationText(data, calculationResult, notes);
+
+  // 1通に収まらないときは、長くなり得る自由記述（備考）を削って収める
+  if (text.length > LINE_TEXT_LIMIT && notes) {
+    const suffix = '…（続きはメールでご確認ください）';
+    const room = Math.max(0, notes.length - (text.length - LINE_TEXT_LIMIT) - suffix.length);
+    text = composeLineConfirmationText(data, calculationResult, notes.slice(0, room) + suffix);
+  }
+  return text.length > LINE_TEXT_LIMIT ? text.slice(0, LINE_TEXT_LIMIT - 1) + '…' : text;
+}
+
+function composeLineConfirmationText(data, calculationResult, notes) {
+  const isMember = data.isMember === '1';
+  const value = (v) => String(v === undefined || v === null ? '' : v).trim();
+  const yen = (n) => `${Number(n).toLocaleString()}円`;
+  const out = [];
+  const section = (title) => out.push('', LINE_DIVIDER, title, LINE_DIVIDER);
+  const item = (label, v) => out.push(`${label}：${value(v) || '未入力'}`);
+  // 改行を含む項目は、見出しの次の行から書く
+  const block = (label, v) => out.push('', `▼${label}`, value(v) || '未入力');
+
+  out.push(`${value(data.name)} 様`);
+  out.push('');
+  out.push('この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。');
+  out.push('以下の内容でお申し込みを受け付けました。');
+
+  if (!data.profileImageUrl) {
+    section('⚠️ お写真のご送付のお願い');
+    out.push('システムの不具合により、プロフィールのお写真のみ登録できておりません。');
+    out.push('お申し込み自体は正常に受け付けておりますのでご安心ください。');
+    out.push('');
+    out.push('お手数ですが、お写真はこのトークへ直接お送りください。');
+    out.push(`その際、必ず出展名「${value(data.exhibitorName)}」をお書き添えください。`);
+  }
+
+  // --- お申し込み内容 ---
+  section('■ お申し込み内容');
+  item('お名前', data.name);
+  item('ふりがな', data.furigana);
+  item('電話番号', data.phoneNumber);
+  item('郵便番号', data.postalCode);
+  item('ご住所', data.address);
+  item('メールアドレス', data.email);
+  item('協会会員', isMember ? 'はい' : 'いいえ');
+
+  out.push('');
+  item('出展名', data.exhibitorName);
+  item('出展カテゴリ', data.category);
+  if (value(data.specialtyGenres)) item('得意ジャンル', data.specialtyGenres);
+  item('出展ブース', data.boothName);
+  if (value(data.equipment)) item('持ち込み物品', data.equipment);
+  item('事前予約', data.advanceReservation || '不可');
+
+  block('出展メニュー名', data.menuName);
+  block('自己紹介', data.selfIntro);
+  block('一言PR', data.shortPR);
+
+  out.push('');
+  item('写真掲載許可', data.photoPermission);
+  if (data.profileImageUrl) block('プロフィール写真', data.profileImageUrl);
+
+  block('SNSリンク', formatSnsLinks(data.snsLinks));
+
+  const extraStaff = parseInt(data.extraStaff, 10) || 0;
+  const extraChairs = parseInt(data.extraChairs, 10) || 0;
+  out.push('', '▼オプション');
+  item('参加人数追加', extraStaff ? `${extraStaff}名` : 'なし');
+  item('椅子追加', extraChairs ? `${extraChairs}脚` : 'なし');
+  item('コンセント', data.usePower === '1' ? 'あり' : 'なし');
+
+  out.push('');
+  const prize = data.stampRallyPrize || 'ない';
+  item('スタンプラリー景品', value(data.prizeContent) ? `${prize}（${value(data.prizeContent)}）` : prize);
+  const partyAttend = data.partyAttend || '欠席';
+  const secondaryAttend = data.secondaryPartyAttend || '欠席';
+  item('懇親会', partyAttend === '出席' ? `出席（${data.partyCount || 0}名）` : partyAttend);
+  item('二次会', secondaryAttend === '出席' ? `出席（${data.secondaryPartyCount || 0}名）` : secondaryAttend);
+
+  if (notes) block('備考', notes);
+
+  // --- 料金 ---
+  section('■ 料金内訳');
+  buildFeeBreakdownList(data, calculationResult).forEach(row => {
+    out.push(`${row.item}：${yen(row.price)}`);
+  });
+  out.push('――――――');
+  out.push(`お振込金額合計：${yen(calculationResult.totalFee)}`);
+  if (isMember) {
+    out.push('');
+    out.push(`※アーキエンジェルハピネス協会会員様は早割価格の適用外となりますが、代わりに会員様特別割引（-${Number(CONFIG.MEMBER_DISCOUNT).toLocaleString()}円）を適用いたしました。`);
+  }
+  if (secondaryAttend === '出席') {
+    out.push('');
+    out.push(`※二次会（${data.secondaryPartyCount || 0}名）の費用は、当日現場にて直接徴収させていただきます。`);
+  }
+
+  // --- お振込 ---
+  section('■ 出展料のお振り込み');
+  out.push('上記「お振込金額合計」の金額を、お申し込み後【1週間以内】に下記口座へお振り込みください。');
+  out.push('イベント開催日の一ヶ月前を切ってからのお申し込みの場合は、【3日以内】のお振り込みをお願いいたします。');
+  out.push('', '▼お振込先');
+  CONFIG.BANK_ACCOUNT.forEach(([label, v]) => out.push(`${label}：${v}`));
+  out.push('');
+  out.push('・ご入金確認をもって、正式な出展確定とさせていただきます。');
+  out.push('・お振込み名義がお申込者名と異なる場合は、事前にこのトークでご連絡ください。');
+  out.push('・入金状況は随時確認しておりますので、お振込み後のご連絡は不要です。入金確認の個別連絡は行っておりません。確認が取れない場合のみ、こちらからご連絡いたします。');
+
+  // --- キャンセル ---
+  section('■ キャンセルポリシー');
+  out.push('・開催日の1ヶ月前から：出展料の50％');
+  out.push('・開催日の2週間前から：出展料の100％');
+  out.push('・上記以前：振込手数料を差し引いた全額を返金いたします。');
+  out.push('※キャンセルの場合は、必ずこのトークでご連絡ください。');
+
+  // --- 当日・準備のご案内 ---
+  section('■ 当日・準備のご案内');
+  out.push('☆スタンプラリーの景品');
+  out.push('ご提供いただける方は、当日朝、受付横でお渡しください。');
+  out.push('・割引券や無料券はNGとさせていただきます。');
+  out.push('・できましたら3つほど物品のご提供にご協力ください。');
+  out.push('・テーブルNo.や出展名（セラピスト名）の入った名刺やチラシなどを入れていただけると助かります。');
+  out.push('・お客様が選びやすいよう、中身が見える形でのご提供をお願いいたします。');
+  out.push('');
+  out.push('☆チラシ置き場');
+  out.push('会場に出展者様用のチラシ置き場をご用意します。テーブルNo.を記載の上ご利用ください。');
+  out.push('余ったチラシは、イベント終了後に忘れずにお持ち帰りください（残っているものは破棄となります）。');
+  out.push('');
+  out.push('☆テーブル配置');
+  out.push('イベント10日前を目安に決定し、決まりましたらこの公式LINEでご案内いたします。');
+  if (partyAttend === '出席') {
+    out.push('');
+    out.push('☆懇親会');
+    out.push('お席・お料理の予約の都合上、4日前からキャンセル料100％が発生いたします。あらかじめご了承くださいませ。');
+  }
+
+  // --- 変更 ---
+  section('■ 申込内容の変更について');
+  out.push('お申し込みいただいた内容（ブース・メニュー・写真・オプション等）は、原則としてお申し込み後の変更を承っておりません。');
+  out.push('なお、主催者側の不備やシステム障害等による場合は、この限りではございません。その際はこのトークでお知らせください。');
+
+  out.push('');
+  out.push('ご不明な点は、このトークへお気軽にお問い合わせください（お名前と出展名をお書き添えください）。');
+  out.push('');
+  out.push(`同じ内容を、ご登録のメールアドレス${value(data.email) ? `（${value(data.email)}）` : ''}にもお送りしています。`);
+  out.push('');
+  out.push('ぶち癒やしフェスタin東京 事務局');
+  out.push('https://sites.google.com/view/buchiiyashi');
+
+  return out.join('\n');
 }
 
 // ========================================
