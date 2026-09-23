@@ -867,9 +867,6 @@ body.modal-open {
   top: 67.77px;
   width: 373.72px;
   height: 347.81px;
-  border-radius: 30px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -877,10 +874,23 @@ body.modal-open {
   color: #9ca3af;
 }
 
-.sl-photo img {
+/* 写真が無いときの枠の表示 */
+.sl-photo > span {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 大きさは script.js の fitSlidePhoto が縦横比を保って枠に収める */
+.sl-photo img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 30px;
 }
 
 .sl-band {

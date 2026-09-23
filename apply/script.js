@@ -2298,12 +2298,20 @@ const SLIDE_FIELDS = ['exhibitorName', 'menuName'];
 function initSlidePreview() {
     const toggleBtn = document.getElementById('toggleSlidePreviewBtn');
     const live = document.getElementById('liveSlidePreview');
+    const setLiveOpen = (open) => {
+        live.classList.toggle('hidden', !open);
+        toggleBtn.textContent = open ? '🖼️ 全体プレビューを閉じる' : '🖼️ スライド全体をプレビュー（写真・背景つき）';
+        if (open) renderSlidePreview(live);
+    };
     if (toggleBtn && live) {
-        toggleBtn.addEventListener('click', () => {
-            const opening = live.classList.contains('hidden');
-            live.classList.toggle('hidden', !opening);
-            toggleBtn.textContent = opening ? '🖼️ 全体プレビューを閉じる' : '🖼️ スライド全体をプレビュー（写真・背景つき）';
-            if (opening) renderSlidePreview(live);
+        toggleBtn.addEventListener('click', () => setLiveOpen(live.classList.contains('hidden')));
+
+        // 出展名・メニューの欄を選んだら、ボタンを押さなくても全体プレビューを開く。
+        // 入力を終えた後も見返せるよう、欄を離れても開いたままにする
+        SLIDE_FIELDS.forEach(name => {
+            document.querySelector(`[name="${name}"]`)?.addEventListener('focus', () => {
+                if (live.classList.contains('hidden')) setLiveOpen(true);
+            });
         });
     }
 
@@ -2460,7 +2468,7 @@ function buildSlideCanvasHtml({ withPhoto }) {
         <div class="slide-canvas">
             <div class="sl-title">${escapeHtml(title)}</div>
             <div class="sl-seat">No.</div>
-            <div class="sl-photo">${photoSrc ? `<img src="${escapeHtml(photoSrc)}" alt="">` : '<span>プロフィール画像</span>'}</div>
+            <div class="sl-photo">${photoSrc ? `<img src="${escapeHtml(photoSrc)}" alt="" onload="fitSlidePhoto(this)">` : '<span>プロフィール画像</span>'}</div>
             <div class="sl-band"></div>
             <div class="sl-name" style="${nameStyle}"><div class="sl-text" data-role="name"></div></div>
             <div class="sl-menu-box"></div>
@@ -2469,6 +2477,22 @@ function buildSlideCanvasHtml({ withPhoto }) {
             <div class="sl-footer">${escapeHtml(footer)}</div>
         </div>
     `;
+}
+
+/**
+ * 写真を、縦横比を保ったままテンプレートの写真枠に収める（はみ出す側を枠に合わせる）。
+ * 枠と縦横比が違う写真は、切り取らずに上下または左右に余白を空けて全体を見せる。
+ * 角丸は写真そのものに付ける（余白側に角丸が浮かないように）。
+ */
+function fitSlidePhoto(img) {
+    const box = img.parentElement;
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+    if (!box || !naturalWidth || !naturalHeight) return;
+
+    const scale = Math.min(box.clientWidth / naturalWidth, box.clientHeight / naturalHeight);
+    img.style.width = `${naturalWidth * scale}px`;
+    img.style.height = `${naturalHeight * scale}px`;
 }
 
 /**
