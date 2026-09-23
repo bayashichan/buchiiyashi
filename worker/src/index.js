@@ -43,6 +43,11 @@ export default {
             return handleAdminAPI(request, env, corsHeaders, url, ctx);
         }
 
+        // 申込フォームのスライドプレビュー用の背景画像
+        if (url.pathname === '/api/public/slide-background' && request.method === 'GET') {
+            return handleSlideBackground(request, env, corsHeaders, url, ctx);
+        }
+
         // 公開用確認データ取得API
         if (url.pathname === '/api/public/exhibitor-data' && request.method === 'GET') {
             return handlePublicExhibitorData(request, env, corsHeaders, url, ctx);
@@ -1385,6 +1390,57 @@ async function handleRepeaterLineSearch(request, env, corsHeaders) {
     } catch (error) {
         console.error('Repeater LINE search error:', error.message);
         return json({ success: false, error: 'LINEでの呼び出しに失敗しました' }, 502);
+    }
+}
+
+// 背景画像のキャッシュ時間。テンプレートの背景を差し替えてから、長くてもこの時間で反映される
+const SLIDE_BACKGROUND_TTL_SEC = 30 * 60;
+
+/**
+ * 申込フォームのスライドプレビュー用に、テンプレートの背景画像を返す。
+ *
+ * 背景は開催ごとに差し替えるため、画像をサイトに置かずテンプレートから取り出す（GAS経由）。
+ * 取り出せるのは管理画面で設定済みのテンプレート（config.json の slideTemplates）だけに限る。
+ * 任意のIDを受け付けると、公開の口から他のスライドの画像まで取り出せてしまうため。
+ */
+export async function handleSlideBackground(request, env, corsHeaders, url, ctx) {
+    const notFound = (status = 404) => new Response(null, {
+        status,
+        headers: { ...corsHeaders, 'Cache-Control': 'no-store' }
+    });
+
+    const templateId = url.searchParams.get('t') || '';
+    if (!/^[\w-]{20,100}$/.test(templateId)) return notFound(400);
+
+    const cacheKey = new Request(`${url.origin}${url.pathname}?t=${encodeURIComponent(templateId)}`, { method: 'GET' });
+    const hit = await caches.default.match(cacheKey);
+    if (hit) return hit;
+
+    try {
+        const config = await fetchConfigObject(env);
+        const allowed = Object.values(config.slideTemplates || {}).filter(Boolean);
+        if (!allowed.includes(templateId)) return notFound();
+
+        const result = await getGasJson(env, { action: 'get_slide_background', presentationId: templateId });
+        if (!result.success || !result.base64) {
+            console.warn(`Slide background unavailable: ${result.error || 'no image'}`);
+            return notFound();
+        }
+
+        const bytes = Uint8Array.from(atob(result.base64), c => c.charCodeAt(0));
+        const response = new Response(bytes, {
+            headers: {
+                ...corsHeaders,
+                'Content-Type': result.mimeType || 'image/jpeg',
+                'Cache-Control': `public, max-age=${SLIDE_BACKGROUND_TTL_SEC}`
+            }
+        });
+        const put = caches.default.put(cacheKey, response.clone());
+        if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put;
+        return response;
+    } catch (error) {
+        console.error('Slide background error:', error.message);
+        return notFound(502);
     }
 }
 

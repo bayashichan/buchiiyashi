@@ -150,6 +150,18 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 申込フォームのスライドプレビュー用に、テンプレートの背景画像を返す。
+    // 背景は開催ごとに差し替えるため、プレビューはテンプレートから都度取り出す。
+    if (action === 'get_slide_background') {
+      const presentationId = e.parameter.presentationId;
+      if (!presentationId) throw new Error('presentationId is required');
+      const result = getSlideBackgroundImage(presentationId);
+
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 出展者一覧取得（管理画面用）
     if (action === 'get_exhibitors') {
       const spreadsheetId = e.parameter.spreadsheetId || CONFIG.SPREADSHEET_ID;
@@ -317,7 +329,8 @@ function searchRepeaterRows(matchRow) {
     equipment: getColIndex(['ボディーブース持ち込み物品']),
     boothName: getColIndex(['出展ブース']),
     sns: getColIndex(['SNS']),
-    lineUserId: getColIndex(['LINEユーザーID'])
+    lineUserId: getColIndex(['LINEユーザーID']),
+    exhibitorNameSlide: getColIndex(['スライド用出展名'])
   };
   
   // 安全に日付をフォーマット
@@ -356,6 +369,7 @@ function searchRepeaterRows(matchRow) {
         category: getCell(row, idx.category),
         specialtyGenres: getCell(row, idx.specialtyGenres),
         exhibitorName: getCell(row, idx.exhibitorName),
+        exhibitorNameSlide: getCell(row, idx.exhibitorNameSlide),
         boothName: getCell(row, idx.boothName),
         menuName: getCell(row, idx.menuName),
         advanceReservation: getCell(row, idx.advanceReservation),
@@ -417,7 +431,8 @@ function getExhibitorList(spreadsheetId) {
       boothName: getColIndex(['出展ブース']),
       photoUrl: getColIndex(['プロフィール写真']),
       sns: getColIndex(['SNS']),
-      specialtyGenres: getColIndex(['得意ジャンル'])
+      specialtyGenres: getColIndex(['得意ジャンル']),
+      exhibitorNameSlide: getColIndex(['スライド用出展名'])
     };
     
     const getCell = (row, colIdx) => {
@@ -449,7 +464,8 @@ function getExhibitorList(spreadsheetId) {
         boothName: getCell(row, idx.boothName),
         photoUrl: getCell(row, idx.photoUrl),
         snsLinks: parseSnsLinks(getCell(row, idx.sns)),
-        specialtyGenres: getCell(row, idx.specialtyGenres)
+        specialtyGenres: getCell(row, idx.specialtyGenres),
+        exhibitorNameSlide: getCell(row, idx.exhibitorNameSlide)
       });
     }
     
@@ -877,6 +893,7 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
        addEventHeaderRow(sheet);
     }
     ensureImageStatusHeader(sheet);
+    ensureSlideNameHeader(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -921,7 +938,8 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
       data.specialtyGenres || '',                  // 得意ジャンル
       data.advanceReservation || '不可',           // 事前予約
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
-      formatImageUploadStatus(data)                // 画像アップロード状態（未登録なら公式LINEで回収）
+      formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
+      String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n') // スライド用出展名（改行位置の指定があるときだけ）
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -945,6 +963,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
        addHeaderRow(sheet);
     }
     ensureImageStatusHeader(sheet);
+    ensureSlideNameHeader(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -989,7 +1008,8 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.specialtyGenres || '',                  // 得意ジャンル
       data.advanceReservation || '不可',           // 事前予約
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
-      formatImageUploadStatus(data)                // 画像アップロード状態（未登録なら公式LINEで回収）
+      formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
+      String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n') // スライド用出展名（改行位置の指定があるときだけ）
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -1019,6 +1039,28 @@ function ensureImageStatusHeader(sheet) {
   }
 }
 
+/**
+ * 既存シートに「スライド用出展名」列の見出しを補う（定位置は「画像アップロード状態」の隣）。
+ *
+ * 出展名に改行位置の指定があるときだけ、改行入りの表記をこの列に入れる。
+ * 出展名の列は1行のまま（SNS投稿文・メール件名などで使うため）。
+ */
+function ensureSlideNameHeader(sheet) {
+  try {
+    if (sheet.getLastRow() === 0) return;
+
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    if (headers.indexOf('スライド用出展名') > -1) return;
+
+    const imageIdx = headers.indexOf('画像アップロード状態');
+    const col = imageIdx > -1 ? imageIdx + 2 : lastCol + 1;
+    sheet.getRange(1, col).setValue('スライド用出展名');
+  } catch (e) {
+    console.warn('Failed to add slide name header: ' + e.message);
+  }
+}
+
 // マスターDB用ヘッダー行（開催回列あり）
 function addHeaderRow(sheet) {
   sheet.appendRow([
@@ -1028,7 +1070,7 @@ function addHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名'
   ]);
 }
 
@@ -1042,7 +1084,7 @@ function addEventHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名'
   ]);
 }
 
@@ -1912,6 +1954,56 @@ function createSlideTemplatePresentation(templateType) {
   }
 }
 
+/**
+ * テンプレートの1枚目のスライドの背景画像を取り出す（申込フォームのプレビュー用）。
+ *
+ * 背景は「背景を変更」で設定した画像（スライド→レイアウト→マスターの順に探す）を優先し、
+ * 無ければスライド全体を覆う画像を背景とみなす。どちらも無ければ success:false。
+ */
+function getSlideBackgroundImage(presentationId) {
+  try {
+    const presentation = SlidesApp.openById(presentationId);
+    const slide = presentation.getSlides()[0];
+    if (!slide) return { success: false, error: 'スライドがありません' };
+
+    let blob = null;
+    const layout = slide.getLayout();
+    const pages = [slide, layout, layout ? layout.getMaster() : null];
+    for (const page of pages) {
+      if (!page) continue;
+      const background = page.getBackground();
+      if (background && background.getType() === SlidesApp.PageBackgroundType.PICTURE) {
+        blob = background.getPictureFill().getBlob();
+        break;
+      }
+    }
+
+    if (!blob) {
+      const pageWidth = presentation.getPageWidth();
+      const pageHeight = presentation.getPageHeight();
+      const cover = slide.getImages().find(img =>
+        img.getWidth() >= pageWidth * 0.9 && img.getHeight() >= pageHeight * 0.9);
+      if (cover) blob = cover.getBlob();
+    }
+
+    if (!blob) return { success: false, error: '背景画像が見つかりません' };
+
+    // 大きすぎる画像はJPEGにして軽くする（申込フォームを開くたびに読み込まれるため）
+    if (blob.getBytes().length > 1.5 * 1024 * 1024 && blob.getContentType() !== 'image/jpeg') {
+      blob = blob.getAs('image/jpeg');
+    }
+
+    return {
+      success: true,
+      mimeType: blob.getContentType() || 'image/jpeg',
+      base64: Utilities.base64Encode(blob.getBytes())
+    };
+  } catch (error) {
+    console.error('getSlideBackgroundImage error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ========================================
 // Google Slides 画像生成機能
 // ========================================
@@ -1944,7 +2036,8 @@ function generateExhibitorImage(templateId, exhibitorData, imageType, options = 
     
     // 3. テキストプレースホルダーを置換
     const placeholders = {
-      '{{出展名}}': exhibitorData.exhibitorName || '',
+      // 申込者が改行位置を指定していれば、その表記でスライドに入れる
+      '{{出展名}}': exhibitorData.exhibitorNameSlide || exhibitorData.exhibitorName || '',
       '{{メニュー}}': exhibitorData.menuName || '',
       '{{一言PR}}': exhibitorData.shortPR || '',
       '{{座席番号}}': exhibitorData.seatNumber || '',

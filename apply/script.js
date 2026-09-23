@@ -969,6 +969,11 @@ function validateForm() {
         emailConfirmInput.classList.remove('border-red-500');
     }
 
+    // 出展名はスライドの帯に2行まで。改行は1か所だけにしてもらう
+    if (normalizeSlideName(form.querySelector('[name="exhibitorName"]').value).split('\n').length > 2) {
+        errors.push('出展名の改行は1か所まで（2行まで）にしてください');
+    }
+
     // 文字数制限
     if (form.querySelector('[name="menuName"]').value.length > 100) {
         errors.push('出展メニュー名は100文字以内で入力してください');
@@ -1032,6 +1037,12 @@ async function sendApplication() {
     try {
         const form = document.getElementById('applicationForm');
         const formData = new FormData(form);
+
+        // 出展名: スライド以外（メール・SNS投稿文・確認サイトなど）では1行で使うため、
+        // 改行位置の指定はスライド用として別に送る
+        const slideName = normalizeSlideName(formData.get('exhibitorName'));
+        formData.set('exhibitorName', joinSlideNameLines(slideName));
+        formData.set('exhibitorNameSlide', slideName.includes('\n') ? slideName : '');
 
         // 追加データ
         formData.append('boothId', selectedBooth.id);
@@ -1200,7 +1211,7 @@ function showCompleteModal(result, clientImageError) {
 
     if (warning) {
         if (imageMissing) {
-            const exhibitorName = document.querySelector('input[name="exhibitorName"]')?.value || '';
+            const exhibitorName = joinSlideNameLines(normalizeSlideName(document.querySelector('[name="exhibitorName"]')?.value));
             const nameEl = document.getElementById('imageMissingExhibitorName');
             if (nameEl) nameEl.textContent = exhibitorName || '（ご記入の出展名）';
 
@@ -1674,7 +1685,7 @@ function showRepeaterSelectionModal(list, statusEl, searchArea) {
             <div>
                 <p class="font-bold text-gray-800">${data.eventName || '開催回不明'}</p>
                 <p class="text-sm text-gray-500">${data.submittedAt || '日時不明'} 申込</p>
-                <p class="text-sm text-gray-600 mt-1">出展名: ${data.exhibitorName}</p>
+                <p class="text-sm text-gray-600 mt-1">出展名: ${escapeHtml(data.exhibitorName || '')}</p>
             </div>
             <button type="button" class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600">
                 選択
@@ -1736,7 +1747,10 @@ function fillFormWithData(data) {
     if (data.postalCode) document.getElementById('postalCode').value = data.postalCode;
 
     // 出展内容
-    if (data.exhibitorName) document.querySelector('input[name="exhibitorName"]').value = data.exhibitorName;
+    // 前回、改行位置を指定していればその表記で戻す
+    if (data.exhibitorNameSlide || data.exhibitorName) {
+        document.querySelector('[name="exhibitorName"]').value = data.exhibitorNameSlide || data.exhibitorName;
+    }
 
     // 出展カテゴリの復元
     if (data.category) {
@@ -2145,7 +2159,7 @@ function buildConfirmHtml() {
         ])}
 
         ${group('2. 出展内容', [
-            row('出展名', val('exhibitorName')),
+            row('出展名', normalizeSlideName(val('exhibitorName')), { pre: true }),
             row('出展カテゴリ', selectedCategory || ''),
             row('取扱いジャンル', val('specialtyGenres') || 'なし'),
             row('出展ブース', selectedBooth?.name || ''),
@@ -2256,7 +2270,12 @@ function formatYenDisplay(amount) {
 /**
  * 紹介スライド（Googleスライドのテンプレート）の寸法。単位はpt（スライド全体 810×1012.5）。
  * テンプレートの図形の位置・大きさ・フォントをそのまま写している。
- * テンプレートのレイアウトを変えたときは、ここも合わせて直すこと。
+ * 枠の配置は開催をまたいで変えない前提。背景だけは開催ごとに変わるため、
+ * テンプレートから取り出して使う（loadSlideBackground）。
+ *
+ * 出展名は灰色の帯（上端435.86・高さ116.88）の中で上下中央に置く。
+ * テンプレートの出展名テキストボックスも、帯と同じ位置・高さで「垂直方向の配置：中央」にしておくこと
+ * （上揃えのままだと、1行のときだけ文字が帯の上に寄る）。
  *
  * 行数の上限は、テンプレートの枠に収まる行数（出展名は灰色の帯に2行、
  * メニューは黄色い枠に7行）。1行の文字数は全角での目安。
@@ -2264,27 +2283,45 @@ function formatYenDisplay(amount) {
 const SLIDE_LAYOUT = {
     width: 810,
     height: 1012.5,
-    name: { left: 23.09, top: 431.67, width: 763.82, inset: 11.4, fontSize: 45, lineHeight: 1.2, maxLines: 2, charsPerLine: 16 },
+    name: { left: 23.09, top: 435.86, width: 763.82, height: 116.88, inset: 11.4, fontSize: 45, lineHeight: 1.2, maxLines: 2, charsPerLine: 16 },
     menu: { left: 18.31, top: 617.65, width: 773.39, inset: 11.4, fontSize: 35, lineHeight: 1.18, maxLines: 7, charsPerLine: 21 },
+    // 入力中に画面上部へ出すプレビューの切り抜き範囲（編集中の欄のまわりだけを見せる）
+    crops: {
+        exhibitorName: { top: 425, height: 138 },
+        menuName: { top: 566, height: 386 },
+    },
 };
 
-let liveSlidePreviewTimer = null;
+// 入力中プレビューを出す欄
+const SLIDE_FIELDS = ['exhibitorName', 'menuName'];
 
 function initSlidePreview() {
     const toggleBtn = document.getElementById('toggleSlidePreviewBtn');
     const live = document.getElementById('liveSlidePreview');
-    if (!toggleBtn || !live) return;
+    if (toggleBtn && live) {
+        toggleBtn.addEventListener('click', () => {
+            const opening = live.classList.contains('hidden');
+            live.classList.toggle('hidden', !opening);
+            toggleBtn.textContent = opening ? '🖼️ 全体プレビューを閉じる' : '🖼️ スライド全体をプレビュー（写真・背景つき）';
+            if (opening) renderSlidePreview(live);
+        });
+    }
 
-    toggleBtn.addEventListener('click', () => {
-        const opening = live.classList.contains('hidden');
-        live.classList.toggle('hidden', !opening);
-        toggleBtn.textContent = opening ? '🖼️ プレビューを閉じる' : '🖼️ スライドでの見え方をプレビュー';
-        if (opening) renderSlidePreview(live);
-    });
+    initSlideDock();
+    loadSlideBackground();
 
-    // 入力のたびに描き直す（打鍵ごとだと重いので少し間を置く）
-    ['exhibitorName', 'menuName'].forEach(name => {
-        document.querySelector(`[name="${name}"]`)?.addEventListener('input', refreshLiveSlidePreview);
+    // 1文字ごとに描き直す（文字だけを差し替えるので軽い）
+    let frameRequested = false;
+    SLIDE_FIELDS.forEach(name => {
+        document.querySelector(`[name="${name}"]`)?.addEventListener('input', () => {
+            if (frameRequested) return;
+            frameRequested = true;
+            requestAnimationFrame(() => {
+                frameRequested = false;
+                updateSlideDock();
+                if (live && !live.classList.contains('hidden')) updateSlidePreview(live);
+            });
+        });
     });
 
     // 画面幅が変わったら縮尺を合わせ直す（スマホの縦横回転など）
@@ -2297,69 +2334,127 @@ function initSlidePreview() {
     });
 }
 
+// 写真を選び直したときなど、プレビュー全体を作り直す
 function refreshLiveSlidePreview() {
     const live = document.getElementById('liveSlidePreview');
     if (!live || live.classList.contains('hidden')) return;
-    clearTimeout(liveSlidePreviewTimer);
-    liveSlidePreviewTimer = setTimeout(() => renderSlidePreview(live), 300);
+    renderSlidePreview(live);
 }
 
 /**
- * スライドのプレビューを container に描画し、行数の判定結果を返す。
+ * スライドに入る文字を取り出す。
+ * 出展名は改行位置の指定を残す（空行・前後の空白は落とす）。
+ */
+function getSlideTexts() {
+    const nameRaw = document.querySelector('[name="exhibitorName"]')?.value || '';
+    const menuRaw = document.querySelector('[name="menuName"]')?.value || '';
+    return {
+        exhibitorName: normalizeSlideName(nameRaw),
+        menuName: menuRaw.replace(/\r\n?/g, '\n').replace(/\s+$/, ''),
+    };
+}
+
+function normalizeSlideName(raw) {
+    return String(raw || '')
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n');
+}
+
+/**
+ * 改行入りの出展名を1行にする（メール・SNS投稿文・確認サイトなど、スライド以外で使う表記）。
+ * 英数字どうしは半角スペース、それ以外は全角スペースでつなぐ。
+ */
+function joinSlideNameLines(slideName) {
+    return String(slideName || '').split('\n').reduce((joined, line) => {
+        if (!joined) return line;
+        const bothAscii = /[\x21-\x7e]$/.test(joined) && /^[\x21-\x7e]/.test(line);
+        return joined + (bothAscii ? ' ' : '　') + line;
+    }, '');
+}
+
+/**
+ * スライドのプレビューを container に描画し、行数の判定結果を返す（写真・背景つきの全体表示）。
  * @return {Promise<{overflow: boolean}>}
  */
 async function renderSlidePreview(container) {
     if (!container) return { overflow: false };
 
-    const exhibitorName = (document.querySelector('input[name="exhibitorName"]')?.value || '').trim();
-    const menuName = (document.querySelector('textarea[name="menuName"]')?.value || '').replace(/\s+$/, '');
-
     container.innerHTML = `
-        <div class="slide-frame">
-            ${buildSlideCanvasHtml(exhibitorName, menuName)}
-        </div>
+        <div class="slide-frame">${buildSlideCanvasHtml({ withPhoto: true })}</div>
         <div class="slide-check"></div>
     `;
-    const frame = container.querySelector('.slide-frame');
-    fitSlideFrame(frame);
-
-    // テンプレートと同じフォントで測らないと、行数の判定が狂う
-    const fontsReady = await loadSlideFonts(exhibitorName + menuName);
-    fitSlideFrame(frame);
-
-    const nameCheck = measureSlideText(frame.querySelector('[data-role="name"]'), SLIDE_LAYOUT.name);
-    const menuCheck = measureSlideText(frame.querySelector('[data-role="menu"]'), SLIDE_LAYOUT.menu);
-
-    container.querySelector('.slide-check').innerHTML = [
-        slideCheckHtml('出展名', exhibitorName, nameCheck, SLIDE_LAYOUT.name),
-        slideCheckHtml('メニュー', menuName, menuCheck, SLIDE_LAYOUT.menu),
-        `<p class="slide-check-note">※ 実際のスライドと、改行位置が1〜2文字ずれることがあります。${fontsReady ? '' : '（フォントを読み込めなかったため、目安の表示です）'}</p>`,
-    ].join('');
-
-    return { overflow: nameCheck.overflow || menuCheck.overflow };
+    applySlideBackground(container);
+    return updateSlidePreview(container);
 }
 
-function buildSlideCanvasHtml(exhibitorName, menuName) {
+// 文字だけを差し替えて測り直す（入力のたびに呼ばれる）
+async function updateSlidePreview(container) {
+    const frame = container?.querySelector('.slide-frame');
+    if (!frame) return { overflow: false };
+
+    const texts = getSlideTexts();
+    const checks = fillSlideTexts(frame, texts);
+    renderSlideCheck(container.querySelector('.slide-check'), texts, checks, true);
+
+    // テンプレートと同じフォントで測らないと、行数の判定が狂う。
+    // 新しく打った文字の分のフォントが届いたら測り直す
+    const fontsReady = await loadSlideFonts(texts.exhibitorName + texts.menuName);
+    const latest = getSlideTexts();
+    if (latest.exhibitorName !== texts.exhibitorName || latest.menuName !== texts.menuName) {
+        return { overflow: checks.name.overflow || checks.menu.overflow };
+    }
+    const settled = fillSlideTexts(frame, texts);
+    renderSlideCheck(container.querySelector('.slide-check'), texts, settled, fontsReady);
+    return { overflow: settled.name.overflow || settled.menu.overflow };
+}
+
+function fillSlideTexts(frame, texts) {
+    frame.querySelector('[data-role="name"]').innerHTML = slideParagraphsHtml(texts.exhibitorName, '（出展名）');
+    frame.querySelector('[data-role="menu"]').innerHTML = slideParagraphsHtml(texts.menuName, '（出展メニュー）');
+    fitSlideFrame(frame);
+    return {
+        name: measureSlideText(frame.querySelector('[data-role="name"]'), SLIDE_LAYOUT.name),
+        menu: measureSlideText(frame.querySelector('[data-role="menu"]'), SLIDE_LAYOUT.menu),
+    };
+}
+
+function slideParagraphsHtml(text, placeholder) {
+    if (!text) return `<div class="sl-para sl-placeholder">${escapeHtml(placeholder)}</div>`;
+    // スライドでは改行ごとに段落が分かれる。空行も1行分の高さを取る
+    return text.split('\n').map(line => `<div class="sl-para">${escapeHtml(line) || '&#8203;'}</div>`).join('');
+}
+
+function renderSlideCheck(el, texts, checks, fontsReady) {
+    if (!el) return;
+    el.innerHTML = [
+        slideCheckHtml('出展名', texts.exhibitorName, checks.name, SLIDE_LAYOUT.name),
+        slideCheckHtml('メニュー', texts.menuName, checks.menu, SLIDE_LAYOUT.menu),
+        `<p class="slide-check-note">※ 実際のスライドと、改行位置が1〜2文字ずれることがあります。${fontsReady ? '' : '（フォントを読み込めなかったため、目安の表示です）'}</p>`,
+    ].join('');
+}
+
+function buildSlideCanvasHtml({ withPhoto }) {
     const eventNumber = (CONFIG.eventName || '').match(/第.+回/)?.[0] || CONFIG.eventName || '';
     const title = `${eventNumber}ぶち癒しフェスタin東京`;
     const footer = `${CONFIG.eventDate || ''}${CONFIG.eventLocation || ''}`;
 
     // 写真: 送信される写真 → 前回の写真 → 未選択の表示
     let photoSrc = '';
-    if (compressedPhoto) {
+    if (withPhoto && compressedPhoto) {
         photoSrc = `data:${compressedPhoto.mimeType};base64,${compressedPhoto.base64}`;
-    } else if (document.getElementById('usePreviousPhoto')?.checked) {
+    } else if (withPhoto && document.getElementById('usePreviousPhoto')?.checked) {
         photoSrc = document.getElementById('prevPhotoImg')?.src || '';
     }
 
-    const paragraphs = (text, placeholder) => {
-        if (!text) return `<div class="sl-para sl-placeholder">${escapeHtml(placeholder)}</div>`;
-        // スライドでは改行ごとに段落が分かれる。空行も1行分の高さを取る
-        return text.split('\n').map(line => `<div class="sl-para">${escapeHtml(line) || '&#8203;'}</div>`).join('');
-    };
-
-    const box = (layout) => `left:${layout.left}px;top:${layout.top}px;width:${layout.width}px;padding:${layout.inset}px;`
-        + `font-size:${layout.fontSize}px;line-height:${layout.lineHeight};`;
+    const name = SLIDE_LAYOUT.name;
+    const menu = SLIDE_LAYOUT.menu;
+    const nameStyle = `left:${name.left}px;top:${name.top}px;width:${name.width}px;height:${name.height}px;`
+        + `padding:0 ${name.inset}px;font-size:${name.fontSize}px;line-height:${name.lineHeight};`;
+    const menuStyle = `left:${menu.left}px;top:${menu.top}px;width:${menu.width}px;padding:${menu.inset}px;`
+        + `font-size:${menu.fontSize}px;line-height:${menu.lineHeight};`;
 
     return `
         <div class="slide-canvas">
@@ -2367,29 +2462,262 @@ function buildSlideCanvasHtml(exhibitorName, menuName) {
             <div class="sl-seat">No.</div>
             <div class="sl-photo">${photoSrc ? `<img src="${escapeHtml(photoSrc)}" alt="">` : '<span>プロフィール画像</span>'}</div>
             <div class="sl-band"></div>
-            <div class="sl-name" style="${box(SLIDE_LAYOUT.name)}">
-                <div class="sl-text" data-role="name">${paragraphs(exhibitorName, '（出展名）')}</div>
-            </div>
+            <div class="sl-name" style="${nameStyle}"><div class="sl-text" data-role="name"></div></div>
             <div class="sl-menu-box"></div>
             <div class="sl-menu-label">メニュー</div>
-            <div class="sl-menu" style="${box(SLIDE_LAYOUT.menu)}">
-                <div class="sl-text" data-role="menu">${paragraphs(menuName, '（出展メニュー）')}</div>
-            </div>
+            <div class="sl-menu" style="${menuStyle}"><div class="sl-text" data-role="menu"></div></div>
             <div class="sl-footer">${escapeHtml(footer)}</div>
         </div>
     `;
 }
 
-// 枠の幅に合わせてスライド全体を縮小する（スライドの寸法は固定のまま描いて縮める）
+/**
+ * 枠の幅に合わせてスライドを縮小する（スライドの寸法は固定のまま描いて縮める）。
+ * 切り抜き表示（data-crop）のときは、その範囲だけを見せ、高さの上限（data-max-height）にも収める。
+ */
 function fitSlideFrame(frame) {
     if (!frame) return;
     const canvas = frame.querySelector('.slide-canvas');
-    const scale = frame.clientWidth / SLIDE_LAYOUT.width;
-    if (!canvas || !scale) return;
-    canvas.style.transform = `scale(${scale})`;
-    frame.style.height = `${SLIDE_LAYOUT.height * scale}px`;
+    const frameWidth = frame.clientWidth;
+    if (!canvas || !frameWidth) return;
+
+    const crop = SLIDE_LAYOUT.crops[frame.dataset.crop];
+    if (!crop) {
+        const scale = frameWidth / SLIDE_LAYOUT.width;
+        canvas.style.transform = `scale(${scale})`;
+        frame.style.height = `${SLIDE_LAYOUT.height * scale}px`;
+        return;
+    }
+
+    const maxHeight = Number(frame.dataset.maxHeight) || Infinity;
+    const scale = Math.min(frameWidth / SLIDE_LAYOUT.width, maxHeight / crop.height);
+    const offsetX = (frameWidth - SLIDE_LAYOUT.width * scale) / 2;
+    canvas.style.transform = `translate(${offsetX}px, 0) scale(${scale}) translate(0, ${-crop.top}px)`;
+    frame.style.height = `${crop.height * scale}px`;
 }
 
+// ----------------------------------------
+// 背景（開催ごとに変わるため、テンプレートから取り出す）
+// ----------------------------------------
+let slideBackgroundUrl = null; // null: 取得前 / '': 取得できず
+let slideBackgroundPromise = null;
+
+/**
+ * 管理画面で設定したスライドテンプレートの背景画像を読み込む。
+ * 取れなければ無地で表示する（文字の収まりの確認には影響しない）。
+ */
+function loadSlideBackground() {
+    if (slideBackgroundPromise) return slideBackgroundPromise;
+
+    const templates = CONFIG.slideTemplates || {};
+    const templateId = templates.earlySns || templates.lateSns || templates.venue || '';
+    slideBackgroundPromise = new Promise(resolve => {
+        if (!templateId || !CONFIG.workerUrl) {
+            resolve('');
+            return;
+        }
+        const src = `${CONFIG.workerUrl}/api/public/slide-background?t=${encodeURIComponent(templateId)}`;
+        const img = new Image();
+        img.onload = () => resolve(src);
+        img.onerror = () => resolve('');
+        img.src = src;
+    }).then(src => {
+        slideBackgroundUrl = src;
+        applySlideBackground(document);
+        return src;
+    });
+    return slideBackgroundPromise;
+}
+
+function applySlideBackground(root) {
+    if (!slideBackgroundUrl) return;
+    root.querySelectorAll('.slide-canvas').forEach(canvas => {
+        canvas.style.backgroundImage = `url("${slideBackgroundUrl}")`;
+    });
+}
+
+// ----------------------------------------
+// 入力中プレビュー（画面上部に出す）
+// ----------------------------------------
+/**
+ * 出展名・メニューを入力している間、編集中の欄のスライド上の見え方を画面上部に出す。
+ *
+ * スマホではキーボードで画面の半分が隠れ、欄の下に置いたプレビューは見えなくなる。
+ * そこで見えている範囲（visualViewport）の上端に貼り付け、入力欄はその下に来るようにずらす。
+ * 高さは見えている範囲の4割までに抑え、入力欄の場所を残す。
+ */
+let slideDockField = null;     // 表示中の欄の name（非表示なら null）
+let slideDockDismissed = false; // 「閉じる」を押したら、その欄を離れるまで出さない
+
+function initSlideDock() {
+    const dock = document.createElement('div');
+    dock.id = 'slideDock';
+    dock.className = 'slide-dock hidden';
+    dock.innerHTML = `
+        <div class="slide-dock-inner">
+            <div class="slide-dock-head">
+                <span id="slideDockTitle">スライドでの見え方</span>
+                <button type="button" id="slideDockClose" class="slide-dock-close">閉じる ✕</button>
+            </div>
+            <div id="slideDockView"></div>
+            <div id="slideDockCheck" class="slide-dock-check"></div>
+        </div>
+    `;
+    document.body.appendChild(dock);
+
+    // ボタンを押してもフォーカスが入力欄から外れないようにする（外れるとキーボードが閉じる）
+    const closeBtn = dock.querySelector('#slideDockClose');
+    closeBtn.addEventListener('mousedown', e => e.preventDefault());
+    closeBtn.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+    closeBtn.addEventListener('touchend', e => { e.preventDefault(); dismissSlideDock(); });
+    closeBtn.addEventListener('click', dismissSlideDock);
+
+    SLIDE_FIELDS.forEach(name => {
+        const field = document.querySelector(`[name="${name}"]`);
+        if (!field) return;
+        field.addEventListener('focus', () => showSlideDock(name));
+        field.addEventListener('blur', () => {
+            // 出展名→メニューのように隣の欄へ移るときは閉じない
+            setTimeout(() => {
+                const active = document.activeElement?.getAttribute('name');
+                if (!SLIDE_FIELDS.includes(active)) hideSlideDock();
+            }, 150);
+        });
+    });
+
+    const reposition = () => {
+        if (!slideDockField) return;
+        positionSlideDock();
+    };
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            if (!slideDockField) return;
+            positionSlideDock();
+            // キーボードが開いて見える範囲が狭くなったら、入力欄をプレビューの下に出し直す
+            keepFieldBelowDock();
+        });
+        window.visualViewport.addEventListener('scroll', reposition);
+    }
+    window.addEventListener('scroll', reposition, { passive: true });
+}
+
+function showSlideDock(fieldName) {
+    const dock = document.getElementById('slideDock');
+    if (!dock) return;
+    if (slideDockField !== fieldName) slideDockDismissed = false;
+    slideDockField = fieldName;
+    if (slideDockDismissed) return;
+
+    const view = document.getElementById('slideDockView');
+    view.innerHTML = `<div class="slide-frame slide-frame-crop" data-crop="${fieldName}">${buildSlideCanvasHtml({ withPhoto: false })}</div>`;
+    applySlideBackground(view);
+    document.getElementById('slideDockTitle').textContent =
+        fieldName === 'exhibitorName' ? 'スライドでの見え方（出展名）' : 'スライドでの見え方（メニュー）';
+
+    dock.classList.remove('hidden');
+    positionSlideDock();
+    updateSlideDock();
+    // キーボードが開き終わるのを待ってから位置を合わせる（開く速さは端末によって違う）
+    setTimeout(keepFieldBelowDock, 350);
+}
+
+function hideSlideDock() {
+    slideDockField = null;
+    slideDockDismissed = false;
+    document.getElementById('slideDock')?.classList.add('hidden');
+}
+
+function dismissSlideDock() {
+    slideDockDismissed = true;
+    document.getElementById('slideDock')?.classList.add('hidden');
+}
+
+function positionSlideDock() {
+    const dock = document.getElementById('slideDock');
+    if (!dock || dock.classList.contains('hidden')) return;
+
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const left = vv ? vv.offsetLeft : 0;
+    const width = vv ? vv.width : window.innerWidth;
+    const height = vv ? vv.height : window.innerHeight;
+
+    dock.style.transform = `translate(${left}px, ${top}px)`;
+    dock.style.width = `${width}px`;
+
+    // 見えている範囲の4割まで（見出し・判定の行の分を引く）
+    const frame = dock.querySelector('.slide-frame');
+    if (frame) {
+        frame.dataset.maxHeight = String(Math.max(60, height * 0.4 - 56));
+        fitSlideFrame(frame);
+    }
+}
+
+async function updateSlideDock() {
+    const dock = document.getElementById('slideDock');
+    if (!slideDockField || !dock || dock.classList.contains('hidden')) return;
+    const frame = dock.querySelector('.slide-frame');
+    if (!frame) return;
+
+    const render = (fontsReady) => {
+        const texts = getSlideTexts();
+        const checks = fillSlideTexts(frame, texts);
+        const isName = slideDockField === 'exhibitorName';
+        document.getElementById('slideDockCheck').innerHTML = slideDockCheckHtml(
+            isName ? texts.exhibitorName : texts.menuName,
+            isName ? checks.name : checks.menu,
+            isName ? SLIDE_LAYOUT.name : SLIDE_LAYOUT.menu,
+            fontsReady
+        );
+        return texts;
+    };
+
+    const texts = render(true);
+    const fontsReady = await loadSlideFonts(texts.exhibitorName + texts.menuName);
+    const latest = getSlideTexts();
+    if (latest.exhibitorName === texts.exhibitorName && latest.menuName === texts.menuName) {
+        render(fontsReady);
+    }
+}
+
+function slideDockCheckHtml(text, check, layout, fontsReady) {
+    const note = fontsReady ? '' : '（目安）';
+    if (!text) return `<span class="slide-dock-muted">入力するとここに表示されます</span>`;
+    if (check.overflow) {
+        return `<span class="slide-dock-ng">⚠️ ${check.lines}行：枠からはみ出します（最大${layout.maxLines}行）${note}</span>`;
+    }
+    const tip = check.orphans.length
+        ? `<span class="slide-dock-tip">💡「${escapeHtml(check.orphans[0])}」だけ次の行に送られています</span>`
+        : '';
+    return `<span class="slide-dock-ok">✓ ${check.lines}行 / 最大${layout.maxLines}行${note}</span>${tip}`;
+}
+
+/**
+ * 入力欄がプレビューの裏に隠れないよう、プレビューのすぐ下に来るまでページをずらす。
+ */
+function keepFieldBelowDock() {
+    if (!slideDockField || slideDockDismissed) return;
+    const field = document.querySelector(`[name="${slideDockField}"]`);
+    const dock = document.getElementById('slideDock');
+    if (!field || !dock || dock.classList.contains('hidden')) return;
+
+    const vv = window.visualViewport;
+    const viewTop = vv ? vv.offsetTop : 0;
+    const viewHeight = vv ? vv.height : window.innerHeight;
+    const dockBottom = viewTop + dock.getBoundingClientRect().height;
+    const rect = field.getBoundingClientRect();
+    const margin = 8;
+
+    if (rect.top < dockBottom + margin) {
+        window.scrollBy(0, rect.top - dockBottom - margin);
+    } else if (rect.top + Math.min(rect.height, 96) > viewTop + viewHeight) {
+        window.scrollBy(0, rect.top - dockBottom - margin);
+    }
+}
+
+// ----------------------------------------
+// フォントと行数の判定
+// ----------------------------------------
 async function loadSlideFonts(text) {
     if (!document.fonts || !document.fonts.load) return false;
     const sample = text || 'あ';

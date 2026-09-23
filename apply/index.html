@@ -223,8 +223,11 @@
         <div class="space-y-4">
           <div>
             <label class="input-label">出展名（セラピスト名／屋号）<span class="required">*</span></label>
-            <input type="text" name="exhibitorName" class="input-field" placeholder="ヒーリングサロン〇〇" required>
-            <p class="text-xs text-gray-500 mt-1">※ 紹介スライドに大きく掲載されます（1行 全角16文字程度・最大2行）</p>
+            <textarea name="exhibitorName" class="input-field slide-name-input" rows="2" placeholder="ヒーリングサロン〇〇" required></textarea>
+            <p class="text-xs text-gray-500 mt-1">
+              ※ 紹介スライドに大きく掲載されます（1行 全角16文字程度・最大2行）。<br>
+              ※ 2行にしたい場合は、区切りたい位置で改行してください。入力中は画面上部にスライドでの見え方が表示されます。
+            </p>
           </div>
 
           <!-- 出展カテゴリ -->
@@ -360,13 +363,14 @@
             <div class="char-counter"><span id="menuNameCount">0</span>/100</div>
             <p class="text-xs text-gray-500 mt-1">
               ※ 出展名とメニューは、そのまま紹介スライド（SNS・当日掲示）に転記されます。<br>
-              ※ スライドでは1行 全角21文字程度・最大7行です。改行した位置はスライドでもそのまま改行されます。
+              ※ スライドでは1行 全角21文字程度・最大7行です。改行した位置はスライドでもそのまま改行されます。<br>
+              ※ 入力中は画面上部にスライドでの見え方が表示されます。
             </p>
 
             <!-- 紹介スライドのプレビュー（script.js の renderSlidePreview が描画する） -->
             <div class="slide-preview-panel mt-3">
               <button type="button" id="toggleSlidePreviewBtn" class="slide-preview-toggle">
-                🖼️ スライドでの見え方をプレビュー
+                🖼️ スライド全体をプレビュー（写真・背景つき）
               </button>
               <div id="liveSlidePreview" class="hidden mt-3"></div>
             </div>
