@@ -104,13 +104,25 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>新規出展申込</h1>
+            <h1><?= isWaitlist ? '新規出展申込（キャンセル待ち）' : '新規出展申込' ?></h1>
             <p style="margin: 5px 0 0;">
                 <?= data.submittedAt ?>
             </p>
         </div>
 
         <div class="content">
+            <? if (isWaitlist) { ?>
+            <!-- 満枠のブースへの申込。入金確認・座席の対象外 -->
+            <div style="background:#fff8e1; border:2px solid #ffb300; border-radius:8px; padding:16px; margin-bottom:20px;">
+                <p style="margin:0 0 8px; font-weight:bold; color:#e65100;">⏳ キャンセル待ちの申込です</p>
+                <p style="margin:0; font-size:14px; line-height:1.7;">
+                    満枠のブースへの申込のため、キャンセル待ちとして受け付けました。<br>
+                    スプレッドシートの「<?= waitlistSheetName ?>」シートに保存しています（出展者一覧・入金確認の対象外）。<br>
+                    申込者には、振込先・金額を載せないキャンセル待ちの確認メールを送っています。<br>
+                    繰り上げる場合は、行を「<?= sheetName ?>」シートへ移してから、管理画面で確認メールを再送してください（振込先入りの案内が届きます）。
+                </p>
+            </div>
+            <? } ?>
             <!-- 申込者情報 -->
             <div class="section">
                 <div class="section-title">申込者情報</div>
@@ -365,7 +377,7 @@
             </div>
 
             <div class="total-box">
-                <div>お振込金額合計</div>
+                <div><?= isWaitlist ? '繰り上げ時の合計（申込者には未案内）' : 'お振込金額合計' ?></div>
                 <div class="amount">¥
                     <?= calculationResult.totalFee.toLocaleString() ?>
                 </div>

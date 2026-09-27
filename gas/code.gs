@@ -11,6 +11,10 @@ const CONFIG = {
   // スプレッドシートID
   SPREADSHEET_ID: '1lJy6rcEiHawekobSmEe3evtbFwcNh7WDnQ_GZ_WcHnY',
   SHEET_NAME: '申込データ',
+  // 満枠のブースへの申込（キャンセル待ち）を保存するシート。列は「申込データ」と同じ。
+  // 出展者一覧・SNS画像・確認メール再送は「申込データ」だけを見るので、ここの行は対象外になる。
+  // 繰り上げが決まったら行を「申込データ」へ移し、管理画面から確認メールを再送すれば、振込先入りの案内が届く。
+  WAITLIST_SHEET_NAME: 'キャンセル待ち',
   
   // Google Drive 画像保存フォルダID
   DRIVE_FOLDER_ID: '12WmOIcUQPGxZEwl5jCoabLfeqmAdjQ4F',
@@ -66,6 +70,11 @@ const CONFIG = {
     "body_large": { name: "ボディケアブース大（標準2名）", regular: 20000, earlyBird: 19000, maxStaff: 1, maxChairs: 1 }
   }
 };
+
+// キャンセル待ちの申込としてWorkerが送ってくる action（worker/src/index.js の GAS_ACTION_APPLY_WAITLIST と揃える）
+const ACTION_APPLY_WAITLIST = 'apply_waitlist';
+// マスターDBの「申込区分」列に入れる値（通常の申込は空欄）
+const WAITLIST_LABEL = 'キャンセル待ち';
 
 // ========================================
 // メインエントリポイント
@@ -650,11 +659,16 @@ function doPost(e) {
     }
     
     // ここから下は申込フォームからの送信として処理する。
+    // 満枠のブースへの申込は、Workerが action=apply_waitlist を付けて送ってくる（キャンセル待ち）。
+    // action にしてあるのは、キャンセル待ちに対応していない古いデプロイが受け取ったとき、
+    // 下の「未対応のアクション」で止めるため。通常の申込として受けると、振込先入りの確認メールが届いてしまう。
+    const isWaitlist = params.action === ACTION_APPLY_WAITLIST;
+
     // action付きの未知のリクエストが申込として扱われると、意味の分からない
     // エラー（Invalid Booth ID など）になるうえ、条件次第ではゴミ行の保存や
     // 誤ったメール送信につながる。デプロイ済みバージョンが古くてアクションが
     // 無い場合もここに来るので、何が起きているか分かる形で止める。
-    if (params.action) {
+    if (params.action && !isWaitlist) {
       throw new Error(
         `未対応のアクションです: ${params.action}。`
         + 'Apps Scriptのデプロイ済みバージョンが古い可能性があります'
@@ -691,10 +705,13 @@ function doPost(e) {
       ...params,
       profileImageUrl: profileImageUrl,
       imageUploadError: imageUploadError,
-      imageUploadOk: !!profileImageUrl
+      imageUploadOk: !!profileImageUrl,
+      waitlist: isWaitlist
     };
-    
+
     // 料金再計算 (改ざん防止)
+    // キャンセル待ちでも計算して合計金額の列に残す（繰り上げ後に確認メールを再送するとき、この金額を使う）。
+    // 申込者への案内には金額を載せない。
     const calculationResult = calculatePrice(data);
     
     // スプレッドシート保存 (二重保存)
@@ -719,6 +736,7 @@ function doPost(e) {
     return ContentService
       .createTextOutput(JSON.stringify({
         success: true,
+        waitlist: isWaitlist,
         totalFee: calculationResult.totalFee,
         imageStatus: data.imageUploadOk ? 'ok' : 'missing',
         imageStatusText: formatImageUploadStatus(data),
@@ -865,8 +883,10 @@ function calculatePrice(data) {
 // スプレッドシート保存（二重保存対応）
 function saveToSpreadsheet(data, calculationResult, currentSsId, databaseSsId, eventName) {
   // 1. 今回のイベント用シートへ保存（座席番号列あり、元ファイル名なし）
+  //    キャンセル待ちは別シートに分け、出展者一覧・入金確認の対象に混ざらないようにする
   const targetId = currentSsId || CONFIG.SPREADSHEET_ID;
-  saveToEventSpreadsheet(targetId, data, calculationResult);
+  const eventSheetName = data.waitlist === true ? CONFIG.WAITLIST_SHEET_NAME : CONFIG.SHEET_NAME;
+  saveToEventSpreadsheet(targetId, data, calculationResult, eventSheetName);
   
   // 2. マスターデータベースへ保存（座席番号列なし、開催回あり）
   const masterId = databaseSsId || CONFIG.SPREADSHEET_ID;
@@ -877,14 +897,16 @@ function saveToSpreadsheet(data, calculationResult, currentSsId, databaseSsId, e
 }
 
 // イベント用スプレッドシートへの保存処理（座席番号列あり）
-function saveToEventSpreadsheet(spreadsheetId, data, calculationResult) {
+function saveToEventSpreadsheet(spreadsheetId, data, calculationResult, sheetName) {
   try {
     const ss = SpreadsheetApp.openById(spreadsheetId);
-    let sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
-    
+    const targetSheetName = sheetName || CONFIG.SHEET_NAME;
+    let sheet = ss.getSheetByName(targetSheetName);
+
     // シートがなければ作成
     if (!sheet) {
-      sheet = ss.insertSheet(CONFIG.SHEET_NAME);
+      // 末尾に足す（先頭に入ると、開いたときに「申込データ」ではなくこちらが出てしまう）
+      sheet = ss.insertSheet(targetSheetName, ss.getSheets().length);
       addEventHeaderRow(sheet);
     }
     
@@ -964,6 +986,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
     }
     ensureImageStatusHeader(sheet);
     ensureSlideNameHeader(sheet);
+    ensureApplicationTypeHeader(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -1009,7 +1032,8 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       data.advanceReservation || '不可',           // 事前予約
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
       formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
-      String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n') // スライド用出展名（改行位置の指定があるときだけ）
+      String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n'), // スライド用出展名（改行位置の指定があるときだけ）
+      data.waitlist === true ? WAITLIST_LABEL : ''  // 申込区分（キャンセル待ちのときだけ）
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -1061,6 +1085,28 @@ function ensureSlideNameHeader(sheet) {
   }
 }
 
+/**
+ * マスターDBに「申込区分」列の見出しを補う（定位置は「スライド用出展名」の隣）。
+ *
+ * キャンセル待ちの申込もマスターDBには残す（次回の申込で前回の内容を呼び出せるように）。
+ * 出展した申込と区別できるよう、キャンセル待ちの行だけこの列に「キャンセル待ち」と入れる。
+ */
+function ensureApplicationTypeHeader(sheet) {
+  try {
+    if (sheet.getLastRow() === 0) return;
+
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    if (headers.indexOf('申込区分') > -1) return;
+
+    const slideNameIdx = headers.indexOf('スライド用出展名');
+    const col = slideNameIdx > -1 ? slideNameIdx + 2 : lastCol + 1;
+    sheet.getRange(1, col).setValue('申込区分');
+  } catch (e) {
+    console.warn('Failed to add application type header: ' + e.message);
+  }
+}
+
 // マスターDB用ヘッダー行（開催回列あり）
 function addHeaderRow(sheet) {
   sheet.appendRow([
@@ -1070,7 +1116,7 @@ function addHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名', '申込区分'
   ]);
 }
 
@@ -1130,12 +1176,23 @@ function sendAdminEmail(data, calculationResult) {
   const linkPrefix = data.lineUserId ? '' : '【LINE未連携】';
   // 画像が登録できなかった申込も件名で分かるようにする（公式LINEで写真を受け取る必要があるため）
   const imagePrefix = data.profileImageUrl ? '' : '【画像未登録】';
-  const subject = `${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
+  // キャンセル待ちは入金確認・座席の対象外。件名の先頭で分かるようにする
+  const isWaitlist = data.waitlist === true;
+  const waitlistPrefix = isWaitlist ? '【キャンセル待ち】' : '';
+  const subject = `${waitlistPrefix}${imagePrefix}${linkPrefix}【出展申込】${data.name}様 (${data.exhibitorName})`;
+  const waitlistNote = isWaitlist
+    ? `
+★満枠のブースへの申込のため、キャンセル待ちとして受け付けました。
+　スプレッドシートの「${CONFIG.WAITLIST_SHEET_NAME}」シートに保存しています（出展者一覧・入金確認の対象外）。
+　申込者には、振込先・金額を載せないキャンセル待ちの確認メールを送っています。
+　繰り上げる場合は、行を「${CONFIG.SHEET_NAME}」シートへ移してから、管理画面で確認メールを再送してください（振込先入りの案内が届きます）。
+`
+    : '';
   
   // テキスト版（HTMLが表示できないクライアント用）
   const textBody = `
 新しい出展申込がありました。
-
+${waitlistNote}
 ■ 申込者情報
 お名前: ${data.name}
 ふりがな: ${data.furigana}
@@ -1187,7 +1244,7 @@ ${formatSnsLinks(data.snsLinks)}
 ${data.notes || 'なし'}
 
 ■ 料金
-合計: ¥${calculationResult.totalFee.toLocaleString()}
+${isWaitlist ? '繰り上げ時の合計（申込者には未案内）' : '合計'}: ¥${calculationResult.totalFee.toLocaleString()}
 
 申込日時: ${data.submittedAt}
   `.trim();
@@ -1198,6 +1255,9 @@ ${data.notes || 'なし'}
   template.calculationResult = calculationResult;
   template.snsLinksFormatted = formatSnsLinks(data.snsLinks);
   template.imageStatusText = formatImageUploadStatus(data);
+  template.isWaitlist = isWaitlist;
+  template.waitlistSheetName = CONFIG.WAITLIST_SHEET_NAME;
+  template.sheetName = CONFIG.SHEET_NAME;
   
   // 料金内訳の表示用リスト作成
   const breakdownList = buildFeeBreakdownList(data, calculationResult);
@@ -1222,6 +1282,9 @@ ${data.notes || 'なし'}
 function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   // 会員かどうか
   const isMember = data.isMember === '1';
+  // キャンセル待ちには金額・振込先・振込期限を一切載せない（誤って入金されるのを防ぐため）。
+  // 繰り上げが決まったら、行を「申込データ」へ移して再送すると通常の案内が届く。
+  const isWaitlist = data.waitlist === true;
   
   // テンプレート用のデータを準備（フィールド名をテンプレートの期待する形式に変換）
   const formData = {
@@ -1270,6 +1333,7 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   // 画像が登録できなかった場合、公式LINEでの送付をお願いする案内を出す
   template.imageUploadOk = !!data.profileImageUrl;
   template.exhibitorName = data.exhibitorName || '';
+  template.isWaitlist = isWaitlist;
   
   // HTMLを評価
   const htmlBody = template.evaluate().getContent();
@@ -1299,20 +1363,44 @@ ${CONFIG.OFFICIAL_LINE_URL}
 `;
   }
 
-  const textBody = `
-${data.name} 様
-
-この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
-以下の内容でお申し込みを受け付けました。
-${imageMessage}
-■ お申し込み内容
+  const applicationSummary = `■ お申し込み内容
 お名前: ${data.name}
 ふりがな: ${data.furigana}
 ご住所: ${data.address}
 メールアドレス: ${data.email}
 出展名: ${data.exhibitorName}
-出展ブース: ${data.boothName}
-出展メニュー: ${data.menuName}
+出展ブース: ${data.boothName}${isWaitlist ? '（キャンセル待ち）' : ''}
+出展メニュー: ${data.menuName}`;
+
+  const textBody = isWaitlist ? `
+${data.name} 様
+
+この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
+お選びいただいたブースは満枠のため、キャンセル待ちとしてお申し込みを受け付けました。
+
+━━━━━━━━━━━━━━━━━━━━
+■ キャンセル待ちについて
+━━━━━━━━━━━━━━━━━━━━
+・現時点では出展は確定しておりません。
+・お振り込みは不要です。このメールでは振込先のご案内はしておりません。
+・空きが出た場合は、事務局より公式LINEまたはメールでご連絡いたします。
+・繰り上げで出展が決まりましたら、そのときに改めてお支払いについてご案内いたします。
+━━━━━━━━━━━━━━━━━━━━
+${imageMessage}
+${applicationSummary}
+
+詳細はHTML版メールをご確認ください。
+
+-----
+ぶち癒やしフェスタin東京 事務局
+Email: ${CONFIG.REPLY_TO_EMAIL}
+  `.trim() : `
+${data.name} 様
+
+この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
+以下の内容でお申し込みを受け付けました。
+${imageMessage}
+${applicationSummary}
 
 ■ 料金
 合計: ¥${calculationResult.totalFee.toLocaleString()}
@@ -1325,7 +1413,9 @@ Email: ${CONFIG.REPLY_TO_EMAIL}
   `.trim();
   
   // メール送信
-  const subject = `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
+  const subject = isWaitlist
+    ? `【ぶち癒やしフェスタin東京】キャンセル待ちのお申し込みを受け付けました`
+    : `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
   
   const recipient = recipientOverride || data.email;
 
@@ -1379,6 +1469,8 @@ function buildLineConfirmationText(data, calculationResult) {
 
 function composeLineConfirmationText(data, calculationResult, notes) {
   const isMember = data.isMember === '1';
+  // キャンセル待ちには金額・振込先・振込期限を一切載せない（誤って入金されるのを防ぐため）
+  const isWaitlist = data.waitlist === true;
   const value = (v) => String(v === undefined || v === null ? '' : v).trim();
   const yen = (n) => `${Number(n).toLocaleString()}円`;
   const out = [];
@@ -1390,7 +1482,16 @@ function composeLineConfirmationText(data, calculationResult, notes) {
   out.push(`${value(data.name)} 様`);
   out.push('');
   out.push('この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。');
-  out.push('以下の内容でお申し込みを受け付けました。');
+  if (isWaitlist) {
+    out.push('お選びいただいたブースは満枠のため、キャンセル待ちとしてお申し込みを受け付けました。');
+    section('⏳ キャンセル待ちについて');
+    out.push('・現時点では出展は確定しておりません。');
+    out.push('・お振り込みは不要です。このメッセージでは振込先のご案内はしておりません。');
+    out.push('・空きが出た場合は、事務局よりこのトークまたはメールでご連絡いたします。');
+    out.push('・繰り上げで出展が決まりましたら、そのときに改めてお支払いについてご案内いたします。');
+  } else {
+    out.push('以下の内容でお申し込みを受け付けました。');
+  }
 
   if (!data.profileImageUrl) {
     section('⚠️ お写真のご送付のお願い');
@@ -1415,7 +1516,7 @@ function composeLineConfirmationText(data, calculationResult, notes) {
   item('出展名', data.exhibitorName);
   item('出展カテゴリ', data.category);
   if (value(data.specialtyGenres)) item('得意ジャンル', data.specialtyGenres);
-  item('出展ブース', data.boothName);
+  item('出展ブース', isWaitlist ? `${value(data.boothName)}（キャンセル待ち）` : data.boothName);
   if (value(data.equipment)) item('持ち込み物品', data.equipment);
   item('事前予約', data.advanceReservation || '不可');
 
@@ -1446,59 +1547,62 @@ function composeLineConfirmationText(data, calculationResult, notes) {
 
   if (notes) block('備考', notes);
 
-  // --- 料金 ---
-  section('■ 料金内訳');
-  buildFeeBreakdownList(data, calculationResult).forEach(row => {
-    out.push(`${row.item}：${yen(row.price)}`);
-  });
-  out.push('――――――');
-  out.push(`お振込金額合計：${yen(calculationResult.totalFee)}`);
-  if (isMember) {
-    out.push('');
-    out.push(`※アーキエンジェルハピネス協会会員様は早割価格の適用外となりますが、代わりに会員様特別割引（-${Number(CONFIG.MEMBER_DISCOUNT).toLocaleString()}円）を適用いたしました。`);
-  }
-  if (secondaryAttend === '出席') {
-    out.push('');
-    out.push(`※二次会（${data.secondaryPartyCount || 0}名）の費用は、当日現場にて直接徴収させていただきます。`);
-  }
+  // 料金〜当日・準備のご案内は、出展が確定した方向けの内容（キャンセル待ちには出さない）
+  if (!isWaitlist) {
+    // --- 料金 ---
+    section('■ 料金内訳');
+    buildFeeBreakdownList(data, calculationResult).forEach(row => {
+      out.push(`${row.item}：${yen(row.price)}`);
+    });
+    out.push('――――――');
+    out.push(`お振込金額合計：${yen(calculationResult.totalFee)}`);
+    if (isMember) {
+      out.push('');
+      out.push(`※アーキエンジェルハピネス協会会員様は早割価格の適用外となりますが、代わりに会員様特別割引（-${Number(CONFIG.MEMBER_DISCOUNT).toLocaleString()}円）を適用いたしました。`);
+    }
+    if (secondaryAttend === '出席') {
+      out.push('');
+      out.push(`※二次会（${data.secondaryPartyCount || 0}名）の費用は、当日現場にて直接徴収させていただきます。`);
+    }
 
-  // --- お振込 ---
-  section('■ 出展料のお振り込み');
-  out.push('上記「お振込金額合計」の金額を、お申し込み後【1週間以内】に下記口座へお振り込みください。');
-  out.push('イベント開催日の一ヶ月前を切ってからのお申し込みの場合は、【3日以内】のお振り込みをお願いいたします。');
-  out.push('', '▼お振込先');
-  CONFIG.BANK_ACCOUNT.forEach(([label, v]) => out.push(`${label}：${v}`));
-  out.push('');
-  out.push('・ご入金確認をもって、正式な出展確定とさせていただきます。');
-  out.push('・お振込み名義がお申込者名と異なる場合は、事前にこのトークでご連絡ください。');
-  out.push('・入金状況は随時確認しておりますので、お振込み後のご連絡は不要です。入金確認の個別連絡は行っておりません。確認が取れない場合のみ、こちらからご連絡いたします。');
-
-  // --- キャンセル ---
-  section('■ キャンセルポリシー');
-  out.push('・開催日の1ヶ月前から：出展料の50％');
-  out.push('・開催日の2週間前から：出展料の100％');
-  out.push('・上記以前：振込手数料を差し引いた全額を返金いたします。');
-  out.push('※キャンセルの場合は、必ずこのトークでご連絡ください。');
-
-  // --- 当日・準備のご案内 ---
-  section('■ 当日・準備のご案内');
-  out.push('☆スタンプラリーの景品');
-  out.push('ご提供いただける方は、当日朝、受付横でお渡しください。');
-  out.push('・割引券や無料券はNGとさせていただきます。');
-  out.push('・できましたら3つほど物品のご提供にご協力ください。');
-  out.push('・テーブルNo.や出展名（セラピスト名）の入った名刺やチラシなどを入れていただけると助かります。');
-  out.push('・お客様が選びやすいよう、中身が見える形でのご提供をお願いいたします。');
-  out.push('');
-  out.push('☆チラシ置き場');
-  out.push('会場に出展者様用のチラシ置き場をご用意します。テーブルNo.を記載の上ご利用ください。');
-  out.push('余ったチラシは、イベント終了後に忘れずにお持ち帰りください（残っているものは破棄となります）。');
-  out.push('');
-  out.push('☆テーブル配置');
-  out.push('イベント10日前を目安に決定し、決まりましたらこの公式LINEでご案内いたします。');
-  if (partyAttend === '出席') {
+    // --- お振込 ---
+    section('■ 出展料のお振り込み');
+    out.push('上記「お振込金額合計」の金額を、お申し込み後【1週間以内】に下記口座へお振り込みください。');
+    out.push('イベント開催日の一ヶ月前を切ってからのお申し込みの場合は、【3日以内】のお振り込みをお願いいたします。');
+    out.push('', '▼お振込先');
+    CONFIG.BANK_ACCOUNT.forEach(([label, v]) => out.push(`${label}：${v}`));
     out.push('');
-    out.push('☆懇親会');
-    out.push('お席・お料理の予約の都合上、4日前からキャンセル料100％が発生いたします。あらかじめご了承くださいませ。');
+    out.push('・ご入金確認をもって、正式な出展確定とさせていただきます。');
+    out.push('・お振込み名義がお申込者名と異なる場合は、事前にこのトークでご連絡ください。');
+    out.push('・入金状況は随時確認しておりますので、お振込み後のご連絡は不要です。入金確認の個別連絡は行っておりません。確認が取れない場合のみ、こちらからご連絡いたします。');
+
+    // --- キャンセル ---
+    section('■ キャンセルポリシー');
+    out.push('・開催日の1ヶ月前から：出展料の50％');
+    out.push('・開催日の2週間前から：出展料の100％');
+    out.push('・上記以前：振込手数料を差し引いた全額を返金いたします。');
+    out.push('※キャンセルの場合は、必ずこのトークでご連絡ください。');
+
+    // --- 当日・準備のご案内 ---
+    section('■ 当日・準備のご案内');
+    out.push('☆スタンプラリーの景品');
+    out.push('ご提供いただける方は、当日朝、受付横でお渡しください。');
+    out.push('・割引券や無料券はNGとさせていただきます。');
+    out.push('・できましたら3つほど物品のご提供にご協力ください。');
+    out.push('・テーブルNo.や出展名（セラピスト名）の入った名刺やチラシなどを入れていただけると助かります。');
+    out.push('・お客様が選びやすいよう、中身が見える形でのご提供をお願いいたします。');
+    out.push('');
+    out.push('☆チラシ置き場');
+    out.push('会場に出展者様用のチラシ置き場をご用意します。テーブルNo.を記載の上ご利用ください。');
+    out.push('余ったチラシは、イベント終了後に忘れずにお持ち帰りください（残っているものは破棄となります）。');
+    out.push('');
+    out.push('☆テーブル配置');
+    out.push('イベント10日前を目安に決定し、決まりましたらこの公式LINEでご案内いたします。');
+    if (partyAttend === '出席') {
+      out.push('');
+      out.push('☆懇親会');
+      out.push('お席・お料理の予約の都合上、4日前からキャンセル料100％が発生いたします。あらかじめご了承くださいませ。');
+    }
   }
 
   // --- 変更 ---
@@ -1702,7 +1806,10 @@ function buildApplicationDataFromRow(headers, row) {
     notes: cell('備考・質問'),
     lineUserId: cell('LINEユーザーID'),
     lineDisplayName: cell('LINE表示名'),
-    recordedTotalFee: toNumber(cell('合計金額'))
+    recordedTotalFee: toNumber(cell('合計金額')),
+    // マスターDBでキャンセル待ちと記録された行は、再送でも振込先を載せない。
+    // イベント用シートのキャンセル待ちは別シートなので、「申込データ」へ移した行は通常の案内になる
+    waitlist: cell('申込区分') === WAITLIST_LABEL
   };
 
   // 早割の適用有無も保存されていないため、逆算したブース料が早割価格と一致するかで判定する
