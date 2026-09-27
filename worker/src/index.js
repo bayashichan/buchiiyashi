@@ -1042,8 +1042,9 @@ async function handleFormSubmission(request, env, corsHeaders) {
         const gasResult = await gasResponse.json();
         console.log('GAS response JSON:', gasResult);
 
-        // LINE管理アプリへ申込者を連携する（申込受付とは独立。失敗しても申込は成功扱い）
-        await registerApplicantToLineManager(data, env);
+        // LINE管理アプリへ申込者を連携する（申込受付とは独立。失敗しても申込は成功扱い）。
+        // 出展名・開催回タグは、GASが受け付けた申込のときだけ付ける。
+        await registerApplicantToLineManager(data, env, !!(gasResult && gasResult.success));
 
         // 申込内容をLINEでも本人へ通知する（メールと二本立て。失敗しても申込は成功扱い）。
         // GASが受け付けなかった申込に「受け付けました」と送らないよう、成功したときだけ送る。
@@ -1115,15 +1116,37 @@ export async function resolveBoothAvailability(data, env) {
 }
 
 /**
+ * LINE管理アプリ(line-manager)の友だちに付ける、管理用ネームとタグ。
+ *
+ * - 管理用ネーム: 出展名（スライド用の改行は1行にまとめる）
+ * - タグ: 開催回ごとの「第7回出展者」。キャンセル待ちは出展が決まっていないため
+ *   「第7回キャンセル待ち」にする（出展者向けの配信が届かないように）
+ *
+ * 開催回は申込フォームと同じく eventName の「第◯回」を使う。無ければタグは付けない。
+ */
+export function buildLineManagerProfile(data) {
+    const internalName = String(data.exhibitorName || '').replace(/\s+/g, ' ').trim();
+    const eventName = String(data.eventName || '').trim();
+    const eventNumber = eventName.match(/第.+回/)?.[0] || eventName;
+    const tagNames = eventNumber
+        ? [`${eventNumber}${data.waitlist === '1' ? 'キャンセル待ち' : '出展者'}`]
+        : [];
+
+    return { internalName: internalName || null, tagNames };
+}
+
+/**
  * LINE管理アプリ(line-manager)へ申込者を連携する。
  *
  * ブラウザからではなくWorkerから呼ぶ。シークレットをクライアントに晒さないため。
  * 管理アプリ側で Messaging API を使って友だち判定を行い、友だちなら友だち一覧に、
  * 友だちでなければ「未友だち申込者」として記録される。
+ * accepted（GASが申込を受け付けた）のときは、出展名を管理用ネームに登録し、開催回のタグも付ける。
+ * 未友だちの人には、友だち追加したときに管理アプリ側で付けられる。
  *
  * ここでの失敗は申込受付を巻き添えにしない（ログのみ）。申込自体は既にGASへ保存済み。
  */
-async function registerApplicantToLineManager(data, env) {
+async function registerApplicantToLineManager(data, env, accepted) {
     if (!env.LINE_MANAGER_URL || !env.LINE_MANAGER_SECRET || !env.LINE_MANAGER_CHANNEL_ID) {
         console.log('line-manager連携: 未設定のためスキップ');
         return;
@@ -1148,6 +1171,7 @@ async function registerApplicantToLineManager(data, env) {
                 displayName: data.lineDisplayName || null,
                 source: env.LINE_MANAGER_SOURCE || 'buchiiyashi-apply',
                 appliedAt: data.submittedAt,
+                ...(accepted ? buildLineManagerProfile(data) : {}),
             }),
         });
 
@@ -1158,7 +1182,7 @@ async function registerApplicantToLineManager(data, env) {
         }
 
         const result = await response.json();
-        console.log(`line-manager連携成功: isFriend=${result.isFriend}`);
+        console.log(`line-manager連携成功: isFriend=${result.isFriend} profileApplied=${result.profileApplied}`);
     } catch (error) {
         console.error('line-manager連携エラー:', error);
     }
