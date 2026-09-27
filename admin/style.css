@@ -203,6 +203,33 @@ main {
 }
 
 /* 満枠設定 */
+.waitlist-setting {
+    padding: 16px;
+    border: 2px solid #ffb300;
+    background: #fff8e1;
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.waitlist-setting label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.waitlist-setting input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--primary);
+}
+
+.waitlist-setting .hint {
+    margin: 8px 0 0;
+    line-height: 1.7;
+}
+
 .availability-item {
     display: flex;
     align-items: center;

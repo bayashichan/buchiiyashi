@@ -152,6 +152,18 @@
             <!-- 満枠設定タブ -->
             <section id="tab-availability" class="tab-content hidden">
                 <h2>満枠設定</h2>
+
+                <div class="waitlist-setting">
+                    <label for="waitlistEnabled">
+                        <input type="checkbox" id="waitlistEnabled">
+                        満枠のブースも、キャンセル待ちとして受付を続ける
+                    </label>
+                    <p class="hint">
+                        オン：満枠のブースも申込フォームで選べ、「キャンセル待ち」として受け付けます。申込者には振込先・金額を載せないキャンセル待ち専用の自動返信が届き、スプレッドシートの「キャンセル待ち」シートに保存されます。<br>
+                        オフ：満枠のブースは選べなくなり、受付を締め切ります。
+                    </p>
+                </div>
+
                 <p class="hint">満枠にしたいブースにチェックを入れてください。</p>
                 <div id="availabilityList"></div>
             </section>

@@ -164,7 +164,24 @@
             <?= formData['お名前'] ?> 様
         </h3>
         <p>この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。</p>
+        <? if (isWaitlist) { ?>
+        <p>お選びいただいたブースは満枠のため、<strong>キャンセル待ち</strong>としてお申し込みを受け付けました。</p>
+
+        <!-- キャンセル待ちには金額・振込先・振込期限を載せない（誤って入金されるのを防ぐため） -->
+        <div style="background:#fff8e1; border:2px solid #ffb300; border-radius:8px; padding:16px; margin:20px 0;">
+            <p style="margin:0 0 10px; font-weight:bold; color:#e65100; font-size:16px;">
+                ⏳ キャンセル待ちについて
+            </p>
+            <ul style="margin:0; padding-left:20px; font-size:14px; line-height:1.8;">
+                <li>現時点では<strong>出展は確定しておりません</strong>。</li>
+                <li><strong>お振り込みは不要です。</strong>このメールでは振込先のご案内はしておりません。</li>
+                <li>空きが出た場合は、事務局より<a href="https://lin.ee/uqhsDx3" class="line-link">公式LINE</a>またはメールでご連絡いたします。</li>
+                <li>繰り上げで出展が決まりましたら、そのときに改めてお支払いについてご案内いたします。</li>
+            </ul>
+        </div>
+        <? } else { ?>
         <p>以下の内容でお申し込みを受け付けました。</p>
+        <? } ?>
 
         <? if (!imageUploadOk) { ?>
         <!-- 画像が登録できなかった場合のお願い -->
@@ -260,7 +277,7 @@
             <tr>
                 <th>出展ブース</th>
                 <td>
-                    <?= formData['出展ブース'] ?>
+                    <?= formData['出展ブース'] ?><?= isWaitlist ? '（キャンセル待ち）' : '' ?>
                 </td>
             </tr>
             <? if (formData['持ち込み物品']) { ?>
@@ -366,6 +383,8 @@
             <? } ?>
         </table>
 
+        <? if (!isWaitlist) { ?>
+        <!-- ここから懇親会のご案内までは、出展が確定した方向けの内容（キャンセル待ちには出さない） -->
         <h3 class="price-title">■ 料金内訳</h3>
 
         <? if (isMember) { ?>
@@ -478,6 +497,7 @@
             <h4>【懇親会について】</h4>
             <p>お席・お料理の予約の都合上、<strong>4日前からキャンセル料100％が発生いたします</strong>。あらかじめご了承くださいませ。</p>
         </div>
+        <? } ?>
         <? } ?>
 
         <div style="border: 2px solid #e74c3c; padding: 15px; margin: 20px 0; border-radius: 8px; background-color: #fff5f5;">

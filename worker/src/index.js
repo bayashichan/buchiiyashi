@@ -992,6 +992,26 @@ async function handleFormSubmission(request, env, corsHeaders) {
 
         data['imageUploadError'] = imageUploadError;
 
+        // action はGASの管理用の処理（再送・自己更新など）を呼び分けるキー。
+        // 公開の申込フォームから届いた値は使わず、キャンセル待ちのときだけこちらで付ける。
+        delete data.action;
+
+        // 満枠のブースへの申込は、キャンセル待ちとして受け付ける（管理画面でオフなら受付終了）
+        const availability = await resolveBoothAvailability(data, env);
+        if (availability === 'closed') {
+            // GASへは送らない（保存も確認メールもしない）。フォームは入力を残したままこの文言を出す
+            return new Response(JSON.stringify({ success: false, error: BOOTH_CLOSED_MESSAGE }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
+        }
+        const waitlist = availability === 'waitlist';
+        data['waitlist'] = waitlist ? '1' : '0';
+        if (waitlist) {
+            // action にしておくと、キャンセル待ちを知らない古いGASは「未対応のアクション」で止まる。
+            // 通常の申込として受けてしまうと、振込先入りの確認メールが届いてしまうため。
+            data['action'] = GAS_ACTION_APPLY_WAITLIST;
+        }
+
         // タイムスタンプ追加
         data['submittedAt'] = new Date().toISOString();
 
@@ -1025,8 +1045,11 @@ async function handleFormSubmission(request, env, corsHeaders) {
         // LINE管理アプリへ申込者を連携する（申込受付とは独立。失敗しても申込は成功扱い）
         await registerApplicantToLineManager(data, env);
 
-        // 申込内容をLINEでも本人へ通知する（メールと二本立て。失敗しても申込は成功扱い）
-        await sendLineConfirmation(data, gasResult, env);
+        // 申込内容をLINEでも本人へ通知する（メールと二本立て。失敗しても申込は成功扱い）。
+        // GASが受け付けなかった申込に「受け付けました」と送らないよう、成功したときだけ送る。
+        if (gasResult && gasResult.success) {
+            await sendLineConfirmation(data, gasResult, env);
+        }
 
         // LINE用の本文はWorkerで送るためのもの。ブラウザへは返さない
         const { lineMessage, ...clientResult } = gasResult || {};
@@ -1034,7 +1057,9 @@ async function handleFormSubmission(request, env, corsHeaders) {
         return new Response(JSON.stringify({
             success: true,
             message: 'Application submitted successfully',
-            ...clientResult
+            ...clientResult,
+            // 完了画面の出し分け用。フォームを開いたあとに満枠になった場合もここで伝わる
+            waitlist
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -1049,6 +1074,44 @@ async function handleFormSubmission(request, env, corsHeaders) {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }
+}
+
+// キャンセル待ちの申込としてGASへ送るときの action（gas/code.gs の ACTION_APPLY_WAITLIST と揃える）
+export const GAS_ACTION_APPLY_WAITLIST = 'apply_waitlist';
+
+// 満枠のブースでキャンセル待ちを受け付けない設定のときに、申込者へ出す文言
+export const BOOTH_CLOSED_MESSAGE =
+    'お選びいただいたブースは満枠のため、受付を終了しました。お手数ですが、他のブースをお選びのうえ、もう一度お申し込みください。';
+
+/**
+ * 申込をどう受け付けるか。'open'（通常）/ 'waitlist'（キャンセル待ち）/ 'closed'（受付終了）。
+ *
+ * フォームが送ってくる waitlist（満枠のブースを選んだ）に加え、最新の設定でもブースの状態を確かめる。
+ * フォームを開いたあとに管理画面で満枠にされた場合でも、振込先入りの案内を送らないため。
+ * 満枠で、管理画面の「キャンセル待ちとして受付を続ける」がオフなら受け付けない
+ * （未設定はオン扱い。申込フォーム・管理画面と同じ判定）。
+ * キャンセル待ちの画面を見て申し込んだ人は、その間に空きができていてもキャンセル待ちのままにする（画面の案内と揃える）。
+ * 設定が読めないときは、フォームの判定だけで受け付ける（申込ごと落とさない）。
+ */
+export async function resolveBoothAvailability(data, env) {
+    const requestedWaitlist = data.waitlist === '1';
+    if (!data.boothId || !env.GITHUB_TOKEN || !env.GITHUB_REPO) {
+        return requestedWaitlist ? 'waitlist' : 'open';
+    }
+
+    let config;
+    try {
+        config = await fetchConfigObject(env);
+    } catch (error) {
+        console.error('満枠の確認に失敗（フォームの判定のみで受け付けます）:', error);
+        return requestedWaitlist ? 'waitlist' : 'open';
+    }
+
+    const booth = (config.booths || []).find(b => b.id === data.boothId);
+    if (booth && booth.soldOut) {
+        return config.waitlistEnabled === false ? 'closed' : 'waitlist';
+    }
+    return requestedWaitlist ? 'waitlist' : 'open';
 }
 
 /**
@@ -1201,13 +1264,25 @@ export function selectLineConfirmationText(data, gasResult) {
 function buildLineConfirmationMessage(data, gasResult) {
     const eventName = data.eventName || 'ぶち癒やしフェスタin東京';
     const result = gasResult || {};
+    // キャンセル待ちには金額・振込の案内を一切載せない（誤って入金されるのを防ぐため）
+    const waitlist = data.waitlist === '1';
 
     const lines = [
         `${data.name || ''} 様`.trim(),
         '',
         `この度は「${eventName}」へのお申し込み、誠にありがとうございます。`,
-        '以下の内容でお申し込みを受け付けました。'
+        waitlist
+            ? 'お選びいただいたブースは満枠のため、キャンセル待ちとしてお申し込みを受け付けました。'
+            : '以下の内容でお申し込みを受け付けました。'
     ];
+
+    if (waitlist) {
+        lines.push('');
+        lines.push('■ キャンセル待ちについて');
+        lines.push('現時点では出展は確定しておりません。お振り込みは不要です。');
+        lines.push('空きが出た場合は、事務局よりこのトークまたはメールでご連絡いたします。');
+        lines.push('繰り上げで出展が決まりましたら、そのときに改めてお支払いについてご案内いたします。');
+    }
 
     // 値が取れなかった項目は行ごと出さない（「出展名: 」のような空行を送らないため）
     const detailLines = [
@@ -1225,7 +1300,7 @@ function buildLineConfirmationMessage(data, gasResult) {
     // GASが再計算した金額。取れなかったときは金額に触れない（誤った額を送らないため）
     const rawFee = result.totalFee;
     const totalFee = (rawFee === undefined || rawFee === null || rawFee === '') ? NaN : Number(rawFee);
-    if (Number.isFinite(totalFee)) {
+    if (!waitlist && Number.isFinite(totalFee)) {
         lines.push('');
         lines.push('■ お振込金額合計');
         lines.push(`¥${formatYen(totalFee)}`);
@@ -1245,7 +1320,9 @@ function buildLineConfirmationMessage(data, gasResult) {
     }
 
     lines.push('');
-    lines.push(`お申し込み内容の詳細とお振込先は、ご登録のメールアドレス${data.email ? `（${data.email}）` : ''}宛にお送りしています。`);
+    lines.push(waitlist
+        ? `お申し込み内容の詳細は、ご登録のメールアドレス${data.email ? `（${data.email}）` : ''}宛にお送りしています。`
+        : `お申し込み内容の詳細とお振込先は、ご登録のメールアドレス${data.email ? `（${data.email}）` : ''}宛にお送りしています。`);
     lines.push('メールが見当たらない場合は、迷惑メールフォルダもご確認ください。');
     lines.push('');
     lines.push('ぶち癒やしフェスタin東京 事務局');

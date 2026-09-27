@@ -357,16 +357,24 @@ function initBoothAccordion() {
             }
 
             const option = document.createElement('label');
-            option.className = 'booth-option' + (booth.soldOut ? ' sold-out' : '');
 
-            if (booth.soldOut) {
-                // 満枠の場合は選択不可
+            if (booth.soldOut && isWaitlistEnabled()) {
+                // 満枠でも、キャンセル待ちとして選べる（振込の案内は届かない）
+                option.className = 'booth-option waitlist';
+                option.innerHTML = `
+        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
+        <span class="ml-2 flex-1">${booth.name}<span class="waitlist-badge">満枠・キャンセル待ち受付中</span></span>
+      `;
+            } else if (booth.soldOut) {
+                // 満枠でキャンセル待ちも締め切っている場合は選択不可
+                option.className = 'booth-option sold-out';
                 option.innerHTML = `
         <input type="radio" name="boothRadio" value="${booth.id}" disabled>
         <span class="ml-2 flex-1">${booth.name}</span>
         <span class="sold-out-badge">満枠</span>
       `;
             } else {
+                option.className = 'booth-option';
                 option.innerHTML = `
         <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
         <span class="ml-2 flex-1">${booth.name}</span>
@@ -385,6 +393,22 @@ function initBoothAccordion() {
         container.appendChild(header);
         container.appendChild(content);
     });
+}
+
+/**
+ * 満枠のブースでキャンセル待ちを受け付けるか（管理画面の満枠設定）。
+ * 未設定はオン扱い（Worker・管理画面と同じ判定）。
+ */
+function isWaitlistEnabled() {
+    return CONFIG.waitlistEnabled !== false;
+}
+
+/**
+ * 選んだブースがキャンセル待ちでの申込になるか。
+ * キャンセル待ちには金額・振込の案内を出さない（誤って入金されるのを防ぐため）。
+ */
+function isWaitlistBooth() {
+    return !!(selectedBooth && selectedBooth.soldOut);
 }
 
 // ========================================
@@ -425,6 +449,9 @@ function selectBooth(boothId) {
     } else {
         equipmentSection.classList.add('hidden');
     }
+
+    // キャンセル待ちになるブースなら、選んだ時点でその旨を出す
+    document.getElementById('waitlistNotice').classList.toggle('hidden', !isWaitlistBooth());
 
     // UIとセッション警告を更新
     updateOptionsUI();
@@ -731,6 +758,13 @@ function calculatePrice() {
         const partyCost = optionValues.partyCount * CONFIG.unitPrices.party;
         breakdown.push(`懇親会×${optionValues.partyCount}: ¥${partyCost.toLocaleString()}`);
         total += partyCost;
+    }
+
+    // キャンセル待ちは出展が確定していないので、支払う金額として見せない
+    if (isWaitlistBooth()) {
+        document.getElementById('priceBreakdown').textContent = 'キャンセル待ち（現時点でのお支払いはありません）';
+        document.getElementById('totalPrice').textContent = 'なし';
+        return;
     }
 
     // 表示更新
@@ -1049,6 +1083,8 @@ async function sendApplication() {
         formData.append('boothName', selectedBooth.name);
         formData.append('category', selectedCategory);
         formData.append('isEarlyBird', isEarlyBird() ? '1' : '0');
+        // 満枠のブースはキャンセル待ちとして受け付ける（Worker側でも最新の設定で確かめる）
+        formData.append('waitlist', isWaitlistBooth() ? '1' : '0');
 
         // 料金計算結果
         const boothPrice = isEarlyBird()
@@ -1202,6 +1238,13 @@ async function sendApplication() {
 function showCompleteModal(result, clientImageError) {
     const modal = document.getElementById('completeModal');
     const warning = document.getElementById('imageMissingWarning');
+
+    // キャンセル待ちで受け付けたか。フォームを開いたあとに満枠になった場合もあるので、サーバーの判定を優先する
+    const waitlist = typeof result.waitlist === 'boolean' ? result.waitlist : isWaitlistBooth();
+    document.getElementById('completeTitle').textContent = waitlist
+        ? 'キャンセル待ちで受け付けました'
+        : 'お申し込みありがとうございます！';
+    document.getElementById('completeWaitlistNotice').classList.toggle('hidden', !waitlist);
 
     // サーバーの判定を優先する（ブラウザ側が失敗してもWorker側の変換で救えている場合があるため）。
     // 古いGASデプロイで imageStatus が返らない場合のみ、ブラウザ側の結果で判断する。
@@ -2051,6 +2094,11 @@ async function openConfirmModal() {
     const body = document.getElementById('confirmBody');
     body.innerHTML = buildConfirmHtml();
 
+    // キャンセル待ちであることを、押すボタンの文言でも分かるようにする
+    document.getElementById('confirmSubmitBtn').textContent = isWaitlistBooth()
+        ? 'この内容でキャンセル待ちに申し込む'
+        : 'この内容で申し込む';
+
     const modal = document.getElementById('confirmModal');
     modal.classList.remove('hidden');
     document.body.classList.add('modal-open');
@@ -2089,7 +2137,11 @@ function buildConfirmHtml() {
         </section>`;
 
     // --- 注意事項（送信は止めないが、必ず目に入る位置に出す） ---
+    const waitlist = isWaitlistBooth();
     const warnings = [];
+    if (waitlist) {
+        warnings.push('お選びのブースは満枠のため、キャンセル待ちとしてのお申し込みになります。出展は確定しておらず、現時点でのお支払いはありません。空きが出た場合に、事務局からご連絡いたします。');
+    }
     if (document.getElementById('sessionWarning')?.classList.contains('visible')) {
         warnings.push('選択されたブースでは「占い・スピリチュアル」「ボディケア・美容」のセッションを行うことができません。物販・飲食のみの出展となります。');
     }
@@ -2162,7 +2214,7 @@ function buildConfirmHtml() {
             row('出展名', normalizeSlideName(val('exhibitorName')), { pre: true }),
             row('出展カテゴリ', selectedCategory || ''),
             row('取扱いジャンル', val('specialtyGenres') || 'なし'),
-            row('出展ブース', selectedBooth?.name || ''),
+            row('出展ブース', `${selectedBooth?.name || ''}${waitlist ? '（キャンセル待ち）' : ''}`),
             ...(selectedBooth?.id?.startsWith('body_') ? [row('持ち込み物品', val('equipment'), { pre: true })] : []),
             row('出展メニュー', val('menuName'), { pre: true }),
             row('事前予約', radio('advanceReservation') === '可' ? '事前予約可' : '事前予約不可（当日受付のみ）'),
@@ -2193,6 +2245,12 @@ function buildConfirmHtml() {
             row('LINE連携', liffState.status === 'linked' ? `連携済み（${liffState.displayName}）` : '未連携'),
         ])}
 
+        ${waitlist ? `
+        <section class="confirm-group">
+            <h3>お支払いについて</h3>
+            <p class="text-sm">キャンセル待ちでのお申し込みのため、<strong>現時点でのお支払い・お振り込みは不要です。</strong></p>
+            <p class="text-xs text-gray-600 mt-1">繰り上げで出展が決まった場合に、改めてお支払いについてご案内します。</p>
+        </section>` : `
         <section class="confirm-group">
             <h3>お支払い金額</h3>
             <div class="confirm-fee">
@@ -2201,7 +2259,7 @@ function buildConfirmHtml() {
             </div>
             ${fee.memberNote ? `<p class="text-xs text-gray-600 mt-2">${escapeHtml(fee.memberNote)}</p>` : ''}
             <p class="text-xs text-gray-600 mt-1">お振込先は、お申し込み後の確認メールでご案内します。</p>
-        </section>
+        </section>`}
 
         <div class="confirm-final-note">
             お申し込み後の内容変更（プロフィール画像・出展メニュー・自己紹介文等）は原則できません。

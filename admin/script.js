@@ -494,6 +494,9 @@ function renderBooths() {
 }
 
 function renderAvailability() {
+    // 未設定（この項目ができる前の設定）は「受付を続ける」として扱う。申込フォームも同じ判定
+    document.getElementById('waitlistEnabled').checked = config.waitlistEnabled !== false;
+
     const container = document.getElementById('availabilityList');
     container.innerHTML = '';
 
@@ -621,6 +624,7 @@ function collectConfigFromUI() {
     });
 
     // 満枠設定
+    config.waitlistEnabled = document.getElementById('waitlistEnabled').checked;
     config.booths.forEach((booth, index) => {
         booth.soldOut = document.getElementById(`soldout_${index}`).checked;
     });
