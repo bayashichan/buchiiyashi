@@ -102,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
         insertTextAtCursor(document.getElementById('mailBody'), MAIL_NAME_TAG);
         onMailDraftChange();
     });
-    document.getElementById('mailSubject')?.addEventListener('input', onMailDraftChange);
+    document.getElementById('mailSubject')?.addEventListener('input', onMailSubjectChange);
     document.getElementById('mailBody')?.addEventListener('input', onMailDraftChange);
     document.getElementById('sendTestMailBtn')?.addEventListener('click', () => sendCustomMail(true));
     document.getElementById('sendCustomMailBtn')?.addEventListener('click', () => sendCustomMail(false));
@@ -1737,11 +1737,13 @@ const MAIL_NAME_TAG = '{{氏名}}';
 // 書きかけの件名・本文の保存先（再読み込みで消えないように）
 const MAIL_DRAFT_KEY = 'customMailDraft';
 
+// メールアドレスごとに1名へまとめた送信先（GASでまとめ済み）
 let mailRecipients = [];
 // 絞り込みで非表示になっても選択を保つため、メールアドレスをSetで持つ
 let mailSelectedEmails = new Set();
-// 本日あと何通送れるか（GASから取得。不明ならnull）
-let mailRemainingQuota = null;
+// 本日、一斉メールに使える通数（申込の確認メール用の枠を除く。不明ならnull）
+let mailAvailableQuota = null;
+let mailQuotaReserve = 0;
 
 // マスターDBから過去の出展者を読み込む
 async function loadMailRecipients() {
@@ -1765,12 +1767,24 @@ async function loadMailRecipients() {
 
         mailRecipients = result.recipients || [];
         mailSelectedEmails = new Set();
-        mailRemainingQuota = result.remainingQuota ?? null;
+        mailAvailableQuota = result.availableQuota ?? null;
+        mailQuotaReserve = result.quotaReserve || 0;
+        const sameNameCount = markSameNameRecipients();
 
-        const skipped = result.skipped
-            ? `（メールアドレスが空欄・形式不正の${result.skipped}行は除外しました）`
-            : '';
-        document.getElementById('mailRecipientsInfo').textContent = `${mailRecipients.length}名を読み込みました${skipped}`;
+        const lines = [
+            `延べ${result.totalRows ?? mailRecipients.length}件の申込から、重複するメールアドレス${result.duplicateRows || 0}件をまとめ、`
+            + `${mailRecipients.length}名を読み込みました（1名に1通だけ送ります）。`
+        ];
+        if (result.skipped) {
+            lines.push(`メールアドレスが空欄・形式不正の${result.skipped}行は除外しました。`);
+        }
+        if (sameNameCount) {
+            lines.push(`⚠️ 同じお名前で別のメールアドレスの方が${sameNameCount}名います（「同名」で絞り込めます）。`
+                + '同じ方なら、どちらか一方のチェックを外してください。');
+        }
+        const infoEl = document.getElementById('mailRecipientsInfo');
+        infoEl.style.whiteSpace = 'pre-line';
+        infoEl.textContent = lines.join('\n');
 
         renderMailRecipientList();
         renderMailQuota();
@@ -1782,18 +1796,55 @@ async function loadMailRecipients() {
     }
 }
 
+/**
+ * 同じお名前で別のアドレスが登録されている方に印を付け、その人数を返す。
+ *
+ * アドレスを変えて申し込んだ方は、アドレスでまとめても2名に分かれてしまう。
+ * 同姓同名の別人の可能性もあるため自動では外さず、一覧で知らせて選んでもらう。
+ */
+function markSameNameRecipients() {
+    const normalize = (name) => String(name || '').normalize('NFKC').replace(/\s/g, '');
+    const groups = {};
+    mailRecipients.forEach(r => {
+        const key = normalize(r.name);
+        if (key) (groups[key] = groups[key] || []).push(r);
+    });
+
+    let count = 0;
+    mailRecipients.forEach(r => {
+        const group = groups[normalize(r.name)] || [];
+        r.sameNameEmails = group.filter(other => other !== r).map(other => other.email);
+        if (r.sameNameEmails.length > 0) count++;
+    });
+    return count;
+}
+
+function currentMailSubject() {
+    return (document.getElementById('mailSubject')?.value || '').trim();
+}
+
+// 入力中の件名で送信済みなら、その記録を返す
+function findMailSentRecord(r) {
+    const subject = currentMailSubject();
+    if (!subject) return null;
+    return (r.sent || []).find(entry => entry.subject === subject) || null;
+}
+
 // 絞り込み条件に一致する送信先
 function getVisibleMailRecipients() {
     const keyword = (document.getElementById('mailFilter')?.value || '').trim().toLowerCase();
     if (!keyword) return mailRecipients;
 
-    return mailRecipients.filter(r => [r.name, r.email, r.exhibitorName, ...(r.events || [])]
-        .some(v => (v || '').toLowerCase().includes(keyword)));
+    return mailRecipients.filter(r => [
+        r.name, r.email, r.exhibitorName, ...(r.events || []),
+        r.sameNameEmails?.length ? '同名' : '',
+        findMailSentRecord(r) ? '送信済み' : '未送信'
+    ].some(v => (v || '').toLowerCase().includes(keyword)));
 }
 
-// 選択中の送信先（一覧と同じ、新しい順）
+// 選択中の送信先（一覧と同じ、新しい順）。入力中の件名で送信済みの方は含めない
 function getSelectedMailRecipients() {
-    return mailRecipients.filter(r => mailSelectedEmails.has(r.email));
+    return mailRecipients.filter(r => mailSelectedEmails.has(r.email) && !findMailSentRecord(r));
 }
 
 function renderMailRecipientList() {
@@ -1818,20 +1869,30 @@ function renderMailRecipientList() {
     }
 
     container.innerHTML = visible.map(r => {
-        const checked = mailSelectedEmails.has(r.email) ? 'checked' : '';
+        const sentRecord = findMailSentRecord(r);
+        // 同じ件名で送信済みの方は選べないようにする（二重に届かないように）
+        const checked = !sentRecord && mailSelectedEmails.has(r.email) ? 'checked' : '';
+        const disabled = sentRecord ? 'disabled' : '';
         // お名前が空だと {{氏名}} が空欄で届くので、目に付くようにする
         const name = r.name
             ? escapeHtml(r.name)
             : '<span style="color:#c53030;">お名前なし（C列が空欄）</span>';
-        const details = [r.exhibitorName, (r.events || []).join('・')]
-            .filter(Boolean)
-            .map(escapeHtml)
-            .join(' / ');
+        const badges = [
+            sentRecord ? `<span class="mail-badge sent">送信済み ${escapeHtml(sentRecord.sentAt)}</span>` : '',
+            r.sameNameEmails?.length
+                ? `<span class="mail-badge warn" title="${escapeHtml(r.sameNameEmails.join(', '))}">同名の別アドレスあり</span>`
+                : ''
+        ].join('');
+        const details = [
+            r.exhibitorName,
+            (r.events || []).join('・'),
+            r.rowCount > 1 ? `申込${r.rowCount}回` : ''
+        ].filter(Boolean).map(escapeHtml).join(' / ');
 
         return `
-        <label class="exhibitor-item">
-            <input type="checkbox" name="mailRecipient" value="${escapeHtml(r.email)}" ${checked}>
-            <span class="exhibitor-name">${name}<br><span class="exhibitor-seat">${escapeHtml(r.email)}</span></span>
+        <label class="exhibitor-item${sentRecord ? ' is-sent' : ''}">
+            <input type="checkbox" name="mailRecipient" value="${escapeHtml(r.email)}" ${checked} ${disabled}>
+            <span class="exhibitor-name">${name}${badges}<br><span class="exhibitor-seat">${escapeHtml(r.email)}</span></span>
             <span class="exhibitor-seat">${details}</span>
         </label>`;
     }).join('');
@@ -1848,10 +1909,11 @@ function toggleMailRecipient(email, checked) {
     updateMailSelection();
 }
 
-// 表示中の送信先をまとめて選択／解除
+// 表示中の送信先をまとめて選択／解除（送信済みの方は選ばない）
 function toggleAllMailRecipients(e) {
     const isChecked = e.target.checked;
     document.querySelectorAll('#mailRecipientList input[name="mailRecipient"]').forEach(cb => {
+        if (cb.disabled) return;
         cb.checked = isChecked;
         if (isChecked) {
             mailSelectedEmails.add(cb.value);
@@ -1864,7 +1926,11 @@ function toggleAllMailRecipients(e) {
 
 function updateMailSelection() {
     const countEl = document.getElementById('mailSelectedCount');
-    if (countEl) countEl.textContent = `${mailSelectedEmails.size}名を選択中`;
+    if (countEl) {
+        const sentCount = currentMailSubject() ? mailRecipients.filter(findMailSentRecord).length : 0;
+        countEl.textContent = `${getSelectedMailRecipients().length}名を選択中`
+            + (sentCount ? `（この件名で送信済み ${sentCount}名）` : '');
+    }
     renderMailPreview();
 }
 
@@ -1883,7 +1949,7 @@ function renderMailPreview() {
         return;
     }
 
-    const subject = personalizeMail(document.getElementById('mailSubject').value.trim(), first.name);
+    const subject = personalizeMail(currentMailSubject(), first.name);
     const body = personalizeMail(document.getElementById('mailBody').value, first.name);
 
     previewEl.innerHTML = `
@@ -1895,12 +1961,13 @@ function renderMailPreview() {
 function renderMailQuota() {
     const el = document.getElementById('mailQuota');
     if (!el) return;
-    el.textContent = mailRemainingQuota === null
+    el.textContent = mailAvailableQuota === null
         ? ''
-        : `本日あと${mailRemainingQuota}通送信できます（Googleの1日あたりの送信上限）。`;
+        : `本日、一斉メールで送れるのはあと${mailAvailableQuota}通です`
+            + `（Googleの1日の送信上限のうち、申込の確認メール用に${mailQuotaReserve}通を残しています）。`;
 }
 
-function onMailDraftChange() {
+function saveMailDraft() {
     try {
         localStorage.setItem(MAIL_DRAFT_KEY, JSON.stringify({
             subject: document.getElementById('mailSubject').value,
@@ -1909,6 +1976,16 @@ function onMailDraftChange() {
     } catch (e) {
         // 保存できないブラウザ設定でも送信はできるので無視する
     }
+}
+
+// 件名が変わると「送信済み」の判定も変わるので、一覧ごと描き直す
+function onMailSubjectChange() {
+    saveMailDraft();
+    renderMailRecipientList();
+}
+
+function onMailDraftChange() {
+    saveMailDraft();
     renderMailPreview();
 }
 
@@ -1927,14 +2004,14 @@ function restoreMailDraft() {
 async function sendCustomMail(isTest) {
     const statusEl = document.getElementById('mailStatus');
     const targets = getSelectedMailRecipients();
-    const subject = document.getElementById('mailSubject').value.trim();
+    const subject = currentMailSubject();
     const body = document.getElementById('mailBody').value;
     const testEmail = isTest ? document.getElementById('mailTestEmail').value.trim() : '';
 
     if (targets.length === 0) {
         alert(isTest
             ? 'テスト送信で差し込むお名前を決めるため、送信先を1名以上選択してください'
-            : '送信する出展者を選択してください');
+            : '送信する出展者を選択してください（この件名で送信済みの方は選べません）');
         return;
     }
     if (!subject) {
@@ -1950,17 +2027,25 @@ async function sendCustomMail(isTest) {
         return;
     }
 
-    const sendList = isTest ? targets.slice(0, 1) : targets;
-    if (mailRemainingQuota !== null && sendList.length > mailRemainingQuota) {
-        alert(`本日の送信可能数（残り${mailRemainingQuota}通）を超えています。送信先を減らすか、明日以降にお送りください。`);
-        return;
-    }
+    let sendList = isTest ? targets.slice(0, 1) : targets;
 
-    // 出展者本人へ届き取り消せないので、送信前に件名と宛先を確認してもらう
     if (!isTest) {
-        const names = targets.slice(0, 10).map(r => `・${r.name || r.email}`).join('\n');
-        const more = targets.length > 10 ? `\n…ほか${targets.length - 10}名` : '';
-        if (!confirm(`${targets.length}名の出展者さんへメールを送信します。\n\n件名: ${subject}\n\n${names}${more}\n\n送信後は取り消せません。よろしいですか？`)) {
+        // 1日の上限を超える分は、今日送れる人数だけ先に送る（残りは明日以降に同じ件名で送れば、送信済みの方は自動で外れる）
+        let quotaNote = '';
+        if (mailAvailableQuota !== null && sendList.length > mailAvailableQuota) {
+            if (mailAvailableQuota === 0) {
+                alert('本日、一斉メールで送れる数を使い切りました。明日以降に同じ件名で続きを送ってください（送信済みの方は自動で除外されます）。');
+                return;
+            }
+            sendList = sendList.slice(0, mailAvailableQuota);
+            quotaNote = `\n\n※本日送れるのはあと${mailAvailableQuota}通のため、今回は一覧の上から${sendList.length}名に送ります。`
+                + `\n残りの${targets.length - sendList.length}名には、明日以降に同じ件名のまま送ってください。`;
+        }
+
+        // 出展者本人へ届き取り消せないので、送信前に件名と宛先を確認してもらう
+        const names = sendList.slice(0, 10).map(r => `・${r.name || r.email}`).join('\n');
+        const more = sendList.length > 10 ? `\n…ほか${sendList.length - 10}名` : '';
+        if (!confirm(`${sendList.length}名の出展者さんへメールを送信します。\n\n件名: ${subject}\n\n${names}${more}${quotaNote}\n\n送信後は取り消せません。よろしいですか？`)) {
             return;
         }
     }
@@ -2006,13 +2091,14 @@ async function sendCustomMail(isTest) {
             }
 
             allResults.push(...(result.results || []));
-            if (result.remainingQuota !== undefined) mailRemainingQuota = result.remainingQuota;
+            if (result.availableQuota !== undefined) mailAvailableQuota = result.availableQuota;
             sent += chunk.length;
             statusEl.textContent = `送信中... (${sent}/${sendList.length})`;
         }
 
         const succeeded = allResults.filter(r => r.success).length;
-        const failed = allResults.length - succeeded;
+        const skipped = allResults.filter(r => r.skipped).length;
+        const failed = allResults.length - succeeded - skipped;
 
         statusEl.className = failed > 0 ? 'status error' : 'status success';
         if (isTest) {
@@ -2020,9 +2106,13 @@ async function sendCustomMail(isTest) {
                 ? '❌ テスト送信に失敗しました'
                 : `✅ テスト送信しました（${testEmail}）`;
         } else {
-            statusEl.textContent = failed > 0
-                ? `⚠️ ${succeeded}名へ送信しました（${failed}名は失敗）`
-                : `✅ ${succeeded}名への送信が完了しました`;
+            const remaining = targets.length - sendList.length;
+            statusEl.textContent = [
+                `${failed > 0 ? '⚠️' : '✅'} ${succeeded}名へ送信しました`
+                + (skipped ? `（送信済みのため${skipped}名は送りませんでした）` : '')
+                + (failed ? `（${failed}名は失敗）` : ''),
+                remaining > 0 ? `残りの${remaining}名は、明日以降に同じ件名のまま送ってください。` : ''
+            ].filter(Boolean).join('\n');
         }
     } catch (error) {
         console.error('Send custom mail error:', error);
@@ -2031,9 +2121,15 @@ async function sendCustomMail(isTest) {
         statusEl.textContent = `❌ エラー: ${error.message}\n（${allResults.filter(r => r.success).length}件は送信済み）`;
     } finally {
         renderMailResults(allResults);
-        // 送れた方は選択から外し、続けて押しても二重に届かないようにする
+        // 送った方・送信済みだった方に印を付ける。同じ件名では選べなくなり、二重に届かない
         if (!isTest) {
-            allResults.filter(r => r.success).forEach(r => mailSelectedEmails.delete(r.email));
+            allResults.filter(r => r.success || r.skipped).forEach(r => {
+                const recipient = mailRecipients.find(x => x.email === r.email);
+                if (recipient && !findMailSentRecord(recipient)) {
+                    recipient.sent = [...(recipient.sent || []), { subject, sentAt: r.sentAt || '今回' }];
+                }
+                mailSelectedEmails.delete(r.email);
+            });
             renderMailRecipientList();
         }
         renderMailQuota();
@@ -2054,10 +2150,11 @@ function renderMailResults(results) {
         <div class="exhibitor-list">
             ${results.map(r => `
             <div class="exhibitor-item">
-                <span>${r.success ? '✅' : '❌'}</span>
+                <span>${r.success ? '✅' : r.skipped ? '⏭️' : '❌'}</span>
                 <span class="exhibitor-name">${escapeHtml(r.name || r.email)}</span>
                 <span class="exhibitor-seat">${r.success
                     ? escapeHtml(r.sentTo || '') + (r.isTest ? '（テスト送信）' : '')
+                        + (r.logError ? `<br><span style="color:#c53030;">${escapeHtml(r.logError)}</span>` : '')
                     : escapeHtml(r.error || '送信できませんでした')}</span>
             </div>`).join('')}
         </div>`;

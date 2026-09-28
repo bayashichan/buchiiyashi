@@ -576,6 +576,31 @@ code {
     word-break: break-word;
 }
 
+.mail-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    vertical-align: middle;
+}
+
+.mail-badge.sent {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.mail-badge.warn {
+    background: #feebc8;
+    color: #7b341e;
+}
+
+.exhibitor-item.is-sent {
+    opacity: 0.6;
+    cursor: default;
+}
+
 /* プレースホルダーツールバー */
 .placeholder-toolbar {
     display: flex;
