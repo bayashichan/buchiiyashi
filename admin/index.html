@@ -141,6 +141,59 @@
                         <input type="number" id="unitPrice_party" min="0" step="100">
                     </div>
                 </div>
+
+                <h3>ワークショップブース（オプション）</h3>
+                <div class="workshop-setting">
+                    <label class="workshop-toggle" for="workshopEnabled">
+                        <input type="checkbox" id="workshopEnabled">
+                        ワークショップブースの申込を受け付ける
+                    </label>
+                    <p class="hint">
+                        オンにすると、申込フォームの「4. オプション・備品」に表示されます。各時間帯1名・先着順で、申込者が時間帯を選びます。<br>
+                        料金はブース料金に加算され、確認メールの振込額に含まれます。
+                    </p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>料金（円・全時間帯共通）</label>
+                            <input type="number" id="workshopPrice" min="0" step="100">
+                        </div>
+                        <div class="form-group">
+                            <label>開始時刻</label>
+                            <input type="time" id="workshopStartTime" step="300">
+                        </div>
+                        <div class="form-group">
+                            <label>1枠の長さ（分・準備と片付けを含む）</label>
+                            <input type="number" id="workshopSlotMinutes" min="1" step="5">
+                        </div>
+                        <div class="form-group">
+                            <label>枠数</label>
+                            <input type="number" id="workshopSlotCount" min="1" max="12" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>テーブル（台）</label>
+                            <input type="number" id="workshopTables" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>椅子（脚）</label>
+                            <input type="number" id="workshopChairs" min="0" step="1">
+                        </div>
+                    </div>
+
+                    <div class="availability-head">
+                        <h4>時間帯と予約状況</h4>
+                        <button id="reloadWorkshopBtn" type="button" class="btn-secondary small">予約状況を再読み込み</button>
+                    </div>
+                    <p id="workshopReservationStatus" class="hint hidden"></p>
+                    <ul id="workshopSlotPreview" class="workshop-slot-preview"></ul>
+                    <p class="hint">
+                        予約は、スプレッドシートの「申込データ」シートの「ワークショップ時間帯」列から数えています。取り消すときは、そのセルを空欄にすると枠が空きます。<br>
+                        キャンセル待ちの方の希望は「希望：11:00〜12:30」のように記録され、枠には数えません。
+                        繰り上げで割り当てるときは、行を「申込データ」へ移し、「希望：」を消して「11:00〜12:30」の形にしてから確認メールを再送してください（合計金額は直さなくて大丈夫です）。
+                    </p>
+
+                    <h4>ワークショップを付けられるブース</h4>
+                    <div id="workshopBoothList" class="workshop-booth-list"></div>
+                </div>
             </section>
 
             <!-- ブース設定タブ -->

@@ -77,8 +77,24 @@ const ACTION_APPLY_WAITLIST = 'apply_waitlist';
 // 保存の直前に「申込データ」の件数を数え、定員に達していればキャンセル待ち（または受付終了）にする。
 // action にしてあるのは、定員を知らない古いデプロイが定員を超えて通常の申込（振込先入りの案内）を受けないようにするため。
 const ACTION_APPLY_LIMITED = 'apply_limited';
+// ワークショップの時間帯を押さえる申込（worker/src/index.js の GAS_ACTION_APPLY_WORKSHOP と揃える）。
+// 定員の判定は apply_limited と同じ。別の action にしてあるのは、ワークショップを知らない古いデプロイが
+// 時間帯も料金も記録しないまま受け付けてしまわないよう、「未対応のアクション」で止めるため。
+const ACTION_APPLY_WORKSHOP = 'apply_workshop';
 // 定員に達していて、キャンセル待ちも受け付けないときのエラーコード（Workerが申込者向けの文言に置き換える）
 const ERROR_CODE_BOOTH_FULL = 'booth_full';
+
+// ワークショップブース（オプション）。時間帯ごとに1名だけ、申込者が選んだ時間帯を先着順で押さえる。
+// 時間帯・料金はWorkerが最新の設定（config.json の workshop）から付けてくる（workshopSlot / workshopLabel / workshopFee）。
+const WORKSHOP_SLOT_HEADER = 'ワークショップ時間帯';
+const WORKSHOP_FEE_HEADER = 'ワークショップ料金';
+// 1つの時間帯に入れる人数（worker/src/index.js の WORKSHOP_SLOT_CAPACITY と揃える）
+const WORKSHOP_SLOT_CAPACITY = 1;
+// キャンセル待ちの申込は時間帯を押さえず、この接頭辞を付けて希望として残す（空きの数には入れない）。
+// 繰り上げで割り当てるときは、事務局がこの接頭辞を消して「11:00〜12:30」の形にする。
+const WORKSHOP_WISH_PREFIX = '希望：';
+// 選んだ時間帯が先に埋まっていたときのエラーコード（Workerが申込者向けの文言に置き換える）
+const ERROR_CODE_WORKSHOP_SLOT_TAKEN = 'workshop_slot_taken';
 // マスターDBの「申込区分」列に入れる値（通常の申込は空欄）
 const WAITLIST_LABEL = 'キャンセル待ち';
 
@@ -187,12 +203,17 @@ function doGet(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    // ブースごとの申込数（申込フォームの残枠表示・管理画面の満枠設定用）
+    // ブースごとの申込数と、ワークショップの時間帯ごとの予約（申込フォームの空き状況・管理画面用）
     if (action === 'get_booth_counts') {
-      const counts = countApplicationsByBooth(e.parameter.spreadsheetId);
+      const spreadsheetId = e.parameter.spreadsheetId;
+      const result = {
+        success: true,
+        counts: countApplicationsByBooth(spreadsheetId),
+        workshopReservations: listWorkshopReservations(spreadsheetId)
+      };
 
       return ContentService
-        .createTextOutput(JSON.stringify({ success: true, counts: counts }))
+        .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -550,6 +571,114 @@ function resolveBoothCapacity(params) {
   return params.waitlistEnabled === '1' ? 'waitlist' : 'closed';
 }
 
+// ========================================
+// ワークショップブース（オプション）
+// ========================================
+/**
+ * 時間帯の表記から、枠の識別子（開始時刻 "HH:MM"）を取り出す。
+ * 「11:00〜12:30」→ "11:00"。先頭が時刻でないもの（「希望：…」や空欄）は空文字（＝押さえた枠ではない）。
+ */
+function workshopSlotKey(text) {
+  const pad = (n) => ('0' + n).slice(-2);
+  // 事務局がセルに「11:00」とだけ入力すると、スプレッドシートが時刻（Date）に変えてしまう
+  if (Object.prototype.toString.call(text) === '[object Date]') {
+    return isNaN(text.getTime()) ? '' : `${pad(text.getHours())}:${pad(text.getMinutes())}`;
+  }
+  const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})/);
+  return m ? `${pad(m[1])}:${m[2]}` : '';
+}
+
+/**
+ * 「申込データ」でワークショップの時間帯を押さえている出展者を、時間帯ごとに返す。{ "11:00": ["出展名"] }
+ * 時刻で始まる行だけを数える（キャンセル待ちの「希望：…」は数えない）。
+ * 事務局が行を消す・時間帯を空欄にすると、その枠が空く。
+ */
+function listWorkshopReservations(spreadsheetId) {
+  const ss = SpreadsheetApp.openById(spreadsheetId || CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+  const reservations = {};
+  if (!sheet || sheet.getLastRow() <= 1) return reservations;
+
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const slotIdx = headers.indexOf(WORKSHOP_SLOT_HEADER);
+  if (slotIdx < 0) return reservations; // まだ誰もワークショップを申し込んでいない（列が無い）
+  const nameIdx = headers.indexOf('出展名');
+
+  const numRows = sheet.getLastRow() - 1;
+  const slots = sheet.getRange(2, slotIdx + 1, numRows, 1).getValues();
+  const names = nameIdx > -1 ? sheet.getRange(2, nameIdx + 1, numRows, 1).getValues() : [];
+
+  slots.forEach((row, i) => {
+    const key = workshopSlotKey(row[0]);
+    if (!key) return;
+    const name = names[i] ? String(names[i][0] || '').trim() : '';
+    (reservations[key] = reservations[key] || []).push(name);
+  });
+  return reservations;
+}
+
+/**
+ * Workerが付けてきたワークショップの申込内容。申し込んでいなければ null。
+ * { slot: "11:00", label: "11:00〜12:30", fee: 3000 }
+ */
+function readWorkshopRequest(params) {
+  const slot = workshopSlotKey(params.workshopSlot);
+  if (!slot) return null;
+
+  const fee = parseInt(params.workshopFee, 10);
+  return {
+    slot: slot,
+    label: String(params.workshopLabel || slot).trim(),
+    fee: Number.isFinite(fee) && fee >= 0 ? fee : 0
+  };
+}
+
+// 選んだ時間帯が、もう埋まっているか。doPost のスクリプトロックの中で呼ぶ（数えてから保存するまでに割り込ませない）
+function isWorkshopSlotTaken(spreadsheetId, slot) {
+  const taken = (listWorkshopReservations(spreadsheetId)[slot] || []).length;
+  return taken >= WORKSHOP_SLOT_CAPACITY;
+}
+
+// シートの「ワークショップ時間帯」列に入れる値。押さえた枠は「11:00〜12:30」、キャンセル待ちの希望は「希望：11:00〜12:30」
+function formatWorkshopSlotCell(data) {
+  if (!data.workshop) return '';
+  return data.workshop.reserved ? data.workshop.label : WORKSHOP_WISH_PREFIX + data.workshop.label;
+}
+
+/**
+ * 確認メール・LINE・管理者メールに出す「ワークショップブース」の行。申し込んでいなければ null。
+ * キャンセル待ちの希望は、時間帯を押さえていないことが分かるように書く。
+ */
+function describeWorkshop(data) {
+  const workshop = data.workshop;
+  if (!workshop) return null;
+  if (workshop.reserved) {
+    return { reserved: true, label: 'ワークショップブース', value: `${workshop.label}（${Number(workshop.fee).toLocaleString()}円）` };
+  }
+  return { reserved: false, label: 'ワークショップブース（ご希望）', value: `${workshop.label} ※時間帯は未確保です` };
+}
+
+/**
+ * 既存シートに、ワークショップの2列（時間帯・料金）の見出しを補う。
+ * 定位置は anchorHeader の右隣から（イベント用は「スライド用出展名」、マスターDBは「申込区分」）。
+ */
+function ensureWorkshopHeaders(sheet, anchorHeader) {
+  try {
+    if (sheet.getLastRow() === 0) return;
+
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+    if (headers.indexOf(WORKSHOP_SLOT_HEADER) > -1) return;
+
+    const anchorIdx = headers.indexOf(anchorHeader);
+    const col = anchorIdx > -1 ? anchorIdx + 2 : lastCol + 1;
+    sheet.getRange(1, col, 1, 2).setValues([[WORKSHOP_SLOT_HEADER, WORKSHOP_FEE_HEADER]]);
+  } catch (e) {
+    console.warn('Failed to add workshop headers: ' + e.message);
+  }
+}
+
 
 // SNSリンク文字列（"Type: URL\nType: URL" または単純なURL）をパース
 // 返り値: [{type, url}, ...] の配列（同一タイプの複数エントリも全て保持）
@@ -744,7 +873,8 @@ function doPost(e) {
     // 下の「未対応のアクション」で止めるため。通常の申込として受けると、振込先入りの確認メールが届いてしまう。
     // 定員を設定したブースへの申込は、Workerが action=apply_limited を付けて送ってくる（ここで数えて決める）。
     let isWaitlist = params.action === ACTION_APPLY_WAITLIST;
-    const isLimited = params.action === ACTION_APPLY_LIMITED;
+    // ワークショップの時間帯を押さえる申込は action=apply_workshop（定員の判定も同じようにする）。
+    const isLimited = params.action === ACTION_APPLY_LIMITED || params.action === ACTION_APPLY_WORKSHOP;
 
     // action付きの未知のリクエストが申込として扱われると、意味の分からない
     // エラー（Invalid Booth ID など）になるうえ、条件次第ではゴミ行の保存や
@@ -771,6 +901,20 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
       isWaitlist = capacityStatus === 'waitlist';
+    }
+
+    // ワークショップブース（オプション）。出展が確定する申込だけ、選んだ時間帯を押さえる。
+    // 先に埋まっていたら、画像も保存せずに返す（申込者は別の時間帯を選んで申し込み直す）。
+    // キャンセル待ちは押さえずに、希望として残す（空きの数には入れない）。
+    const workshopRequest = readWorkshopRequest(params);
+    if (workshopRequest && !isWaitlist && isWorkshopSlotTaken(params.currentSpreadsheetId, workshopRequest.slot)) {
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          success: false,
+          code: ERROR_CODE_WORKSHOP_SLOT_TAKEN,
+          error: `お選びのワークショップの時間帯（${workshopRequest.label}）は、受付を終了しました。`
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
     // 画像アップロード処理
@@ -803,7 +947,9 @@ function doPost(e) {
       profileImageUrl: profileImageUrl,
       imageUploadError: imageUploadError,
       imageUploadOk: !!profileImageUrl,
-      waitlist: isWaitlist
+      waitlist: isWaitlist,
+      // reserved: 時間帯を押さえた（出展確定）/ false: キャンセル待ちの希望
+      workshop: workshopRequest ? { ...workshopRequest, reserved: !isWaitlist } : null
     };
 
     // 料金再計算 (改ざん防止)
@@ -961,11 +1107,16 @@ function calculatePrice(data) {
   const partyCount = parseInt(data.partyCount || 0);
   total += partyCount * CONFIG.UNIT_PRICES.party;
 
+  // ワークショップブース（料金はWorkerが最新の設定から付けてくる）。
+  // キャンセル待ちの希望も含める（合計金額の列は「繰り上げ時の合計」。申込者には金額を案内しない）
+  const workshopFee = data.workshop ? data.workshop.fee : 0;
+  total += workshopFee;
+
   // 会員割引
   if (isMember) {
     total -= CONFIG.MEMBER_DISCOUNT;
   }
-  
+
   return {
     totalFee: total,
     breakdown: {
@@ -974,6 +1125,7 @@ function calculatePrice(data) {
       chairs: extraChairs * CONFIG.UNIT_PRICES.chair,
       power: data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0,
       party: partyCount * CONFIG.UNIT_PRICES.party,
+      workshop: workshopFee,
       memberDiscount: isMember ? -CONFIG.MEMBER_DISCOUNT : 0
     }
   };
@@ -1015,10 +1167,11 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult, sheetNam
     }
     ensureImageStatusHeader(sheet);
     ensureSlideNameHeader(sheet);
-    
+    ensureWorkshopHeaders(sheet, 'スライド用出展名');
+
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
-    
+
     // データ行追加（座席番号列を含む、元ファイル名なし）
     sheet.appendRow([
       '',                                          // 座席番号（運営が後で入力）
@@ -1060,7 +1213,9 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult, sheetNam
       data.advanceReservation || '不可',           // 事前予約
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
       formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
-      String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n') // スライド用出展名（改行位置の指定があるときだけ）
+      String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n'), // スライド用出展名（改行位置の指定があるときだけ）
+      formatWorkshopSlotCell(data),                // ワークショップ時間帯（キャンセル待ちは「希望：…」）
+      data.workshop ? data.workshop.fee : ''       // ワークショップ料金（合計金額に含まれている額）
     ]);
   } catch (e) {
     console.error(`Failed to save to event spreadsheet ${spreadsheetId}:`, e);
@@ -1086,6 +1241,7 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
     ensureImageStatusHeader(sheet);
     ensureSlideNameHeader(sheet);
     ensureApplicationTypeHeader(sheet);
+    ensureWorkshopHeaders(sheet, '申込区分');
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
@@ -1132,7 +1288,9 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
       formatLineLinkStatus(data),                  // LINE連携状態（空欄で届いた原因の切り分け用）
       formatImageUploadStatus(data),               // 画像アップロード状態（未登録なら公式LINEで回収）
       String(data.exhibitorNameSlide || '').replace(/\r\n?/g, '\n'), // スライド用出展名（改行位置の指定があるときだけ）
-      data.waitlist === true ? WAITLIST_LABEL : ''  // 申込区分（キャンセル待ちのときだけ）
+      data.waitlist === true ? WAITLIST_LABEL : '',  // 申込区分（キャンセル待ちのときだけ）
+      formatWorkshopSlotCell(data),                // ワークショップ時間帯（キャンセル待ちは「希望：…」）
+      data.workshop ? data.workshop.fee : ''       // ワークショップ料金（合計金額に含まれている額）
     ]);
   } catch (e) {
     console.error(`Failed to save to master spreadsheet ${spreadsheetId}:`, e);
@@ -1215,7 +1373,8 @@ function addHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名', '申込区分'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名', '申込区分',
+    WORKSHOP_SLOT_HEADER, WORKSHOP_FEE_HEADER
   ]);
 }
 
@@ -1229,7 +1388,8 @@ function addEventHeaderRow(sheet) {
     '懇親会出欠', '懇親会人数', '二次会出欠', '二次会人数', '協会会員',
     '景品提供', '景品内容', '郵便番号', '住所', '備考・質問',
     'スタッフメモ', '合計金額', '入金確認', '入金日', 'LINEユーザーID', 'LINE表示名',
-    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名'
+    '得意ジャンル', '事前予約', 'LINE連携状態', '画像アップロード状態', 'スライド用出展名',
+    WORKSHOP_SLOT_HEADER, WORKSHOP_FEE_HEADER
   ]);
 }
 
@@ -1287,11 +1447,19 @@ function sendAdminEmail(data, calculationResult) {
 　繰り上げる場合は、行を「${CONFIG.SHEET_NAME}」シートへ移してから、管理画面で確認メールを再送してください（振込先入りの案内が届きます）。
 `
     : '';
-  
+  // ワークショップ。キャンセル待ちの希望は時間帯を押さえていないので、繰り上げ時に空きを確かめる必要がある
+  const workshop = describeWorkshop(data);
+  const workshopNote = data.workshop && !data.workshop.reserved
+    ? `
+★ワークショップブースは「希望」として記録しました（時間帯は未確保・空きの数には入れていません）: ${data.workshop.label}
+　繰り上げで割り当てる場合は、シートの「${WORKSHOP_SLOT_HEADER}」列の「${WORKSHOP_WISH_PREFIX}」を消して「${data.workshop.label}」の形にしてから再送してください。
+`
+    : '';
+
   // テキスト版（HTMLが表示できないクライアント用）
   const textBody = `
 新しい出展申込がありました。
-${waitlistNote}
+${waitlistNote}${workshopNote}
 ■ 申込者情報
 お名前: ${data.name}
 ふりがな: ${data.furigana}
@@ -1326,7 +1494,8 @@ ${data.profileImageUrl
 ■ オプション
 追加スタッフ: ${data.extraStaff || 0}名
 追加椅子: ${data.extraChairs || 0}脚
-電源: ${data.usePower === '1' ? 'あり' : 'なし'}
+電源: ${data.usePower === '1' ? 'あり' : 'なし'}${workshop ? `
+${workshop.label}: ${workshop.value}` : ''}
 
 ■ SNSリンク
 ${formatSnsLinks(data.snsLinks)}
@@ -1357,6 +1526,8 @@ ${isWaitlist ? '繰り上げ時の合計（申込者には未案内）' : '合�
   template.isWaitlist = isWaitlist;
   template.waitlistSheetName = CONFIG.WAITLIST_SHEET_NAME;
   template.sheetName = CONFIG.SHEET_NAME;
+  template.workshop = workshop;
+  template.workshopNote = workshopNote.trim();
   
   // 料金内訳の表示用リスト作成
   const breakdownList = buildFeeBreakdownList(data, calculationResult);
@@ -1417,6 +1588,8 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
     '二次会参加人数': data.secondaryPartyCount || 0,
     '備考': data.notes || ''
   };
+  // ワークショップブース（申し込んだときだけ行を出す）
+  const workshop = describeWorkshop(data);
 
   
   // 料金内訳の表示用リスト作成
@@ -1433,7 +1606,8 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   template.imageUploadOk = !!data.profileImageUrl;
   template.exhibitorName = data.exhibitorName || '';
   template.isWaitlist = isWaitlist;
-  
+  template.workshop = workshop;
+
   // HTMLを評価
   const htmlBody = template.evaluate().getContent();
   
@@ -1468,7 +1642,8 @@ ${CONFIG.OFFICIAL_LINE_URL}
 ご住所: ${data.address}
 メールアドレス: ${data.email}
 出展名: ${data.exhibitorName}
-出展ブース: ${data.boothName}${isWaitlist ? '（キャンセル待ち）' : ''}
+出展ブース: ${data.boothName}${isWaitlist ? '（キャンセル待ち）' : ''}${workshop ? `
+${workshop.label}: ${workshop.value}` : ''}
 出展メニュー: ${data.menuName}`;
 
   const textBody = isWaitlist ? `
@@ -1535,8 +1710,17 @@ function buildFeeBreakdownList(data, calculationResult) {
     { item: '追加椅子 (×' + (data.extraChairs || 0) + ')', price: calculationResult.breakdown.chairs },
     { item: '電源使用料', price: calculationResult.breakdown.power },
     { item: '懇親会費 (×' + (data.partyCount || 0) + ')', price: calculationResult.breakdown.party },
+    { item: workshopFeeLabel(data), price: calculationResult.breakdown.workshop || 0 },
     { item: '会員様特別割引', price: calculationResult.breakdown.memberDiscount || 0 }
   ].filter(item => item.price !== 0);
+}
+
+// 料金内訳に出すワークショップの項目名（キャンセル待ちの希望は、管理者メールの「繰り上げ時の合計」にだけ出る）
+function workshopFeeLabel(data) {
+  if (!data.workshop) return 'ワークショップブース';
+  return data.workshop.reserved
+    ? `ワークショップブース（${data.workshop.label}）`
+    : `ワークショップブース（希望：${data.workshop.label}・未確保）`;
 }
 
 // LINEのテキストメッセージは5000文字まで。絵文字などで数え方がずれても収まるよう余裕を持たせる
@@ -1635,6 +1819,8 @@ function composeLineConfirmationText(data, calculationResult, notes) {
   item('参加人数追加', extraStaff ? `${extraStaff}名` : 'なし');
   item('椅子追加', extraChairs ? `${extraChairs}脚` : 'なし');
   item('コンセント', data.usePower === '1' ? 'あり' : 'なし');
+  const workshop = describeWorkshop(data);
+  if (workshop) item(workshop.label, workshop.value);
 
   out.push('');
   const prize = data.stampRallyPrize || 'ない';
@@ -1911,10 +2097,32 @@ function buildApplicationDataFromRow(headers, row) {
     waitlist: cell('申込区分') === WAITLIST_LABEL
   };
 
+  // ワークショップ。料金列の額は、時間帯を押さえていても希望でも合計金額に含まれている（ブース料の逆算で差し引く）。
+  // 時間帯列が時刻で始まれば押さえた枠として料金に含め、「希望：…」や空欄なら含めない。
+  // 繰り上げで割り当てるときは、事務局が時間帯列だけ書き換えればよい（合計金額は直さなくてよい）
+  data.workshopRecordedFee = toNumber(cell(WORKSHOP_FEE_HEADER));
+  data.workshop = readWorkshopFromRow(cell(WORKSHOP_SLOT_HEADER), data.workshopRecordedFee);
+
   // 早割の適用有無も保存されていないため、逆算したブース料が早割価格と一致するかで判定する
   data.isEarlyBird = inferEarlyBird(data) ? '1' : '0';
 
   return data;
+}
+
+/**
+ * シートのワークショップ2列を、申込時と同じ data.workshop の形に戻す。申し込んでいなければ null。
+ * 時刻で始まれば押さえた枠（reserved）、「希望：…」なら希望のまま（キャンセル待ちから繰り上げて、まだ割り当てていない）。
+ */
+function readWorkshopFromRow(slotCell, fee) {
+  const text = String(slotCell || '').trim();
+  const slot = workshopSlotKey(text);
+  if (slot) return { slot: slot, label: text, fee: fee, reserved: true };
+
+  if (text.indexOf(WORKSHOP_WISH_PREFIX) === 0) {
+    const label = text.slice(WORKSHOP_WISH_PREFIX.length).trim();
+    return { slot: workshopSlotKey(label), label: label, fee: fee, reserved: false };
+  }
+  return null;
 }
 
 /**
@@ -1932,17 +2140,19 @@ function rebuildCalculationResult(data) {
       chairs: options.chairs,
       power: options.power,
       party: options.party,
+      workshop: options.workshop,
       memberDiscount: options.memberDiscount
     }
   };
 }
 
-// シートに残っている項目だけでオプション料金を積み直す
+// シートに残っている項目だけでオプション料金を積み直す（ワークショップは時間帯を押さえた行だけ）
 function buildOptionFees(data) {
   const staff = (parseInt(data.extraStaff || 0, 10) || 0) * CONFIG.UNIT_PRICES.staff;
   const chairs = (parseInt(data.extraChairs || 0, 10) || 0) * CONFIG.UNIT_PRICES.chair;
   const power = data.usePower === '1' ? CONFIG.UNIT_PRICES.power : 0;
   const party = (parseInt(data.partyCount || 0, 10) || 0) * CONFIG.UNIT_PRICES.party;
+  const workshop = data.workshop && data.workshop.reserved ? data.workshop.fee : 0;
   const memberDiscount = data.isMember === '1' ? -CONFIG.MEMBER_DISCOUNT : 0;
 
   return {
@@ -1950,8 +2160,9 @@ function buildOptionFees(data) {
     chairs: chairs,
     power: power,
     party: party,
+    workshop: workshop,
     memberDiscount: memberDiscount,
-    total: staff + chairs + power + party + memberDiscount
+    total: staff + chairs + power + party + workshop + memberDiscount
   };
 }
 
@@ -1961,11 +2172,13 @@ function buildOptionFees(data) {
  * 早割の適用有無は保存されていないため、確定額であるシートの合計金額を正とし、
  * 「合計 − オプション計」で逆算する。こうすると申込時に案内した金額と必ず一致する。
  * 合計金額が空の行（手入力の行など）だけ、ブース定義の通常価格にフォールバックする。
+ * ワークショップ料金列の額は、時間帯を押さえたかに関係なく合計金額に入っているので、いつも差し引く。
  */
 function deriveBoothFee(data) {
   const recordedTotalFee = parseInt(data.recordedTotalFee || 0, 10) || 0;
   if (recordedTotalFee > 0) {
-    return recordedTotalFee - buildOptionFees(data).total;
+    const options = buildOptionFees(data);
+    return recordedTotalFee - (options.total - options.workshop) - (data.workshopRecordedFee || 0);
   }
 
   const booth = CONFIG.BOOTHS[data.boothId];

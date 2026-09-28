@@ -123,6 +123,12 @@
                 </p>
             </div>
             <? } ?>
+            <? if (workshopNote) { ?>
+            <!-- キャンセル待ちのワークショップ希望。時間帯は押さえていない -->
+            <div style="background:#f3e5f5; border:2px solid #ab47bc; border-radius:8px; padding:16px; margin-bottom:20px;">
+                <p style="margin:0; font-size:14px; line-height:1.7; white-space:pre-line;"><?= workshopNote ?></p>
+            </div>
+            <? } ?>
             <!-- 申込者情報 -->
             <div class="section">
                 <div class="section-title">申込者情報</div>
@@ -300,6 +306,14 @@
                             <?= data.usePower === '1' ? 'あり' : 'なし' ?>
                         </td>
                     </tr>
+                    <? if (workshop) { ?>
+                    <tr>
+                        <th><?= workshop.label ?></th>
+                        <td>
+                            <?= workshop.value ?>
+                        </td>
+                    </tr>
+                    <? } ?>
                 </table>
             </div>
 

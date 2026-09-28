@@ -20,7 +20,7 @@
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="style.css?v=20260928a">
+  <link rel="stylesheet" href="style.css?v=20260928b">
 </head>
 
 <body>
@@ -567,6 +567,33 @@
           <input type="hidden" name="extraStaff" id="extraStaffInput" value="0">
         </div>
 
+        <!-- ワークショップブース（時間帯・料金・設備はJSで設定から入れる） -->
+        <div id="optionWorkshop" class="option-group hidden">
+          <label class="input-label">ワークショップブース（オプション・<span id="workshopPriceText"></span>）</label>
+          <div class="workshop-info">
+            <p>出展ブースとは別に、ワークショップ専用のスペースを<span id="workshopMinutesText"></span>分間ご利用いただけます。</p>
+            <ul>
+              <li>設備：テーブル<span id="workshopTablesText"></span>台・椅子<span id="workshopChairsText"></span>脚</li>
+              <li>ワークショップ専用のスペースです。個人セッション（占い・施術など）は行えません。</li>
+              <li>各時間帯とも1名様限り・先着順です。ご希望の時間帯をお選びください（時間には準備・片付けを含みます）。</li>
+            </ul>
+          </div>
+          <p id="workshopWaitlistNote" class="workshop-note hidden">※ ブースがキャンセル待ちのため、ワークショップの時間帯は確保されません。ご希望として承り、繰り上げの際に空いている時間帯をご案内します。</p>
+          <p id="workshopFullNote" class="workshop-note full hidden">満枠のため受付を終了しました。</p>
+          <div class="flex gap-4 mt-2">
+            <label class="checkbox-label">
+              <input type="radio" name="wantWorkshop" value="0" checked onchange="toggleWorkshopSlots()"> 利用しない
+            </label>
+            <label class="checkbox-label">
+              <input type="radio" name="wantWorkshop" value="1" onchange="toggleWorkshopSlots()"> 利用する
+            </label>
+          </div>
+          <div id="workshopSlotSection" class="mt-3 hidden">
+            <p class="text-sm text-gray-600 mb-1">ご希望の時間帯</p>
+            <div id="workshopSlotList"></div>
+          </div>
+        </div>
+
         <p id="noOptionsMessage" class="text-gray-500 text-sm mt-2">※ 選択されたブースでは追加オプションはありません</p>
       </section>
 
@@ -945,8 +972,8 @@
 
   <!-- Scripts -->
   <!-- LIFF SDKは<head>で読み込み済みなのでここでは読まない -->
-  <script src="config.js?v=20260928a"></script>
-  <script src="script.js?v=20260928a"></script>
+  <script src="config.js?v=20260928b"></script>
+  <script src="script.js?v=20260928b"></script>
 </body>
 
 </html>

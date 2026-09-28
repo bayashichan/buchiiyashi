@@ -1106,23 +1106,46 @@ async function handleFormSubmission(request, env, corsHeaders) {
         // 定員まわりも、最新の設定からこちらで付ける（フォームから届いた値は使わない）
         delete data.boothCapacity;
         delete data.waitlistEnabled;
+        // ワークショップは、フォームから届いた時間帯（開始時刻）だけを使う。表記・料金は最新の設定から付ける
+        const requestedWorkshopSlot = String(data.workshopSlot || '').trim();
+        delete data.workshopSlot;
+        delete data.workshopLabel;
+        delete data.workshopFee;
+
+        // 満枠・定員・ワークショップの判定に使う最新の設定（読めなければ null）
+        const config = await loadLatestConfig(env);
 
         // 満枠のブースへの申込は、キャンセル待ちとして受け付ける（管理画面でオフなら受付終了）
-        const availability = await resolveBoothAvailability(data, env);
+        const availability = resolveBoothAvailability(data, config);
         if (availability.status === 'closed') {
             // GASへは送らない（保存も確認メールもしない）。フォームは入力を残したままこの文言を出す
             return boothClosedResponse(corsHeaders);
         }
+
+        // ワークショップの時間帯が、いまの設定で選べるものか（空いているかは、GASが保存の直前に数えて決める）
+        const workshop = resolveWorkshopRequest(requestedWorkshopSlot, data.boothId, config);
+        if (workshop.error) {
+            return applicationErrorResponse(workshop.error, corsHeaders);
+        }
+
         let waitlist = availability.status === 'waitlist';
         data['waitlist'] = waitlist ? '1' : '0';
+        if (workshop.slot) {
+            data['workshopSlot'] = workshop.slot.start;
+            data['workshopLabel'] = workshop.slot.label;
+            data['workshopFee'] = String(workshop.fee);
+        }
         if (waitlist) {
             // action にしておくと、キャンセル待ちを知らない古いGASは「未対応のアクション」で止まる。
             // 通常の申込として受けてしまうと、振込先入りの確認メールが届いてしまうため。
+            // ワークショップの時間帯は押さえず、GASが希望として残す
             data['action'] = GAS_ACTION_APPLY_WAITLIST;
-        } else if (availability.status === 'limited') {
-            // 定員のあるブース。空きがあるかは、GASが保存の直前に（ほかの申込とぶつからないようロックの中で）数えて決める。
-            // 定員を知らない古いGASは「未対応のアクション」で止まる（定員を超えて振込先入りの案内を送らないため）。
-            data['action'] = GAS_ACTION_APPLY_LIMITED;
+        } else if (availability.status === 'limited' || workshop.slot) {
+            // 定員のあるブース・ワークショップの時間帯は、GASが保存の直前に（ほかの申込とぶつからないようロックの中で）数えて決める。
+            // 知らない古いGASは「未対応のアクション」で止まる（定員を超えた受付や、時間帯・料金の記録漏れを防ぐため）。
+            data['action'] = workshop.slot ? GAS_ACTION_APPLY_WORKSHOP : GAS_ACTION_APPLY_LIMITED;
+        }
+        if (availability.status === 'limited') {
             data['boothCapacity'] = String(availability.capacity);
             data['waitlistEnabled'] = availability.waitlistEnabled ? '1' : '0';
             // GASはシートの出展ブース名で数えるので、フォームから届いた名前ではなく設定の名前にそろえる
@@ -1159,12 +1182,19 @@ async function handleFormSubmission(request, env, corsHeaders) {
         const gasResult = await gasResponse.json();
         console.log('GAS response JSON:', gasResult);
 
-        if (availability.status === 'limited' && gasResult) {
+        if ((data.action === GAS_ACTION_APPLY_LIMITED || data.action === GAS_ACTION_APPLY_WORKSHOP) && gasResult) {
             // 定員に達していて、キャンセル待ちも受け付けない設定だった（GASは保存もメール送信もしていない）
             if (gasResult.code === GAS_ERROR_BOOTH_FULL) {
                 return boothClosedResponse(corsHeaders);
             }
-            // 定員に達していれば、GASがキャンセル待ちとして受け付けている。LINEの案内・完了画面もそちらに合わせる
+            // 選んだワークショップの時間帯が先に埋まっていた（GASは保存もメール送信もしていない）
+            if (gasResult.code === GAS_ERROR_WORKSHOP_SLOT_TAKEN && workshop.slot) {
+                return applicationErrorResponse(workshopSlotTakenMessage(workshop.slot.label), corsHeaders, {
+                    workshopSlotTaken: workshop.slot.start
+                });
+            }
+            // 定員に達していれば、GASがキャンセル待ちとして受け付けている（ワークショップは希望になる）。
+            // LINEの案内・完了画面もそちらに合わせる
             if (gasResult.success && typeof gasResult.waitlist === 'boolean') {
                 waitlist = gasResult.waitlist;
                 data['waitlist'] = waitlist ? '1' : '0';
@@ -1212,18 +1242,44 @@ export const GAS_ACTION_APPLY_WAITLIST = 'apply_waitlist';
 // 定員（残枠）を設定したブースへの申込としてGASへ送るときの action（gas/code.gs の ACTION_APPLY_LIMITED と揃える）
 export const GAS_ACTION_APPLY_LIMITED = 'apply_limited';
 
+// ワークショップの時間帯を押さえる申込としてGASへ送るときの action（gas/code.gs の ACTION_APPLY_WORKSHOP と揃える）。
+// 定員の判定も apply_limited と同じように行われる
+export const GAS_ACTION_APPLY_WORKSHOP = 'apply_workshop';
+
 // 定員に達していて、キャンセル待ちも受け付けないときにGASが返すエラーコード（gas/code.gs の ERROR_CODE_BOOTH_FULL と揃える）
 const GAS_ERROR_BOOTH_FULL = 'booth_full';
+
+// 選んだワークショップの時間帯が先に埋まっていたときにGASが返すエラーコード（gas/code.gs の ERROR_CODE_WORKSHOP_SLOT_TAKEN と揃える）
+const GAS_ERROR_WORKSHOP_SLOT_TAKEN = 'workshop_slot_taken';
 
 // 満枠のブースでキャンセル待ちを受け付けない設定のときに、申込者へ出す文言
 export const BOOTH_CLOSED_MESSAGE =
     'お選びいただいたブースは満枠のため、受付を終了しました。お手数ですが、他のブースをお選びのうえ、もう一度お申し込みください。';
 
-// 受付終了の応答。フォームが文言をそのまま出せるよう、通信エラー（4xx/5xx）にはしない
-function boothClosedResponse(corsHeaders) {
-    return new Response(JSON.stringify({ success: false, error: BOOTH_CLOSED_MESSAGE }), {
+// 申込を受け付けなかったときの応答。フォームが文言をそのまま出せるよう、通信エラー（4xx/5xx）にはしない
+function applicationErrorResponse(message, corsHeaders, extra = {}) {
+    return new Response(JSON.stringify({ success: false, error: message, ...extra }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
+}
+
+// 受付終了の応答
+function boothClosedResponse(corsHeaders) {
+    return applicationErrorResponse(BOOTH_CLOSED_MESSAGE, corsHeaders);
+}
+
+/**
+ * 申込の判定に使う最新の設定（GitHub上のconfig.json）。読めなければ null。
+ * フォームを開いたあとに管理画面で変えた満枠・定員・ワークショップの設定を、ここで反映する。
+ */
+async function loadLatestConfig(env) {
+    if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return null;
+    try {
+        return await fetchConfigObject(env);
+    } catch (error) {
+        console.error('満枠の確認に失敗（フォームの判定のみで受け付けます）:', error);
+        return null;
+    }
 }
 
 /**
@@ -1250,20 +1306,12 @@ export function boothCapacity(booth) {
  * 満枠で、管理画面の「キャンセル待ちとして受付を続ける」がオフなら受け付けない
  * （未設定はオン扱い。申込フォーム・管理画面と同じ判定）。
  * キャンセル待ちの画面を見て申し込んだ人は、その間に空きができていてもキャンセル待ちのままにする（画面の案内と揃える）。
- * 設定が読めないときは、フォームの判定だけで受け付ける（申込ごと落とさない）。
+ * 設定が読めないとき（config が null）は、フォームの判定だけで受け付ける（申込ごと落とさない）。
  */
-export async function resolveBoothAvailability(data, env) {
+export function resolveBoothAvailability(data, config) {
     const requestedWaitlist = data.waitlist === '1';
     const byForm = { status: requestedWaitlist ? 'waitlist' : 'open' };
-    if (!data.boothId || !env.GITHUB_TOKEN || !env.GITHUB_REPO) {
-        return byForm;
-    }
-
-    let config;
-    try {
-        config = await fetchConfigObject(env);
-    } catch (error) {
-        console.error('満枠の確認に失敗（フォームの判定のみで受け付けます）:', error);
+    if (!data.boothId || !config) {
         return byForm;
     }
 
@@ -1282,6 +1330,114 @@ export async function resolveBoothAvailability(data, env) {
         };
     }
     return byForm;
+}
+
+// ========================================
+// ワークショップブース（オプション）
+// ========================================
+// 1つの時間帯に入れる人数（gas/code.gs の WORKSHOP_SLOT_CAPACITY と揃える）
+export const WORKSHOP_SLOT_CAPACITY = 1;
+
+// 時間帯の既定値（管理画面で変えられる）。11:00 から 90分（準備・片付け込み）× 3枠
+const WORKSHOP_DEFAULTS = { startTime: '11:00', slotMinutes: 90, slotCount: 3 };
+
+// 設定が変わっていて、選んだ時間帯を受け付けられないときの文言
+export const WORKSHOP_UNAVAILABLE_MESSAGE =
+    'ワークショップブースの受付内容が変わったため、お申し込みを受け付けられませんでした。お手数ですが、ページを再読み込みして、もう一度お選びください。';
+
+// 選んだ時間帯が先に埋まっていたときの文言
+export function workshopSlotTakenMessage(label) {
+    return `お選びのワークショップの時間帯（${label}）は、先にお申し込みがあり受付を終了しました。`
+        + 'お手数ですが、別の時間帯をお選びのうえ、もう一度お申し込みください。';
+}
+
+// "11:00" → 660（分）。読めなければ null
+function parseClock(text) {
+    const m = String(text || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+}
+
+// 660 → "11:00"
+function formatClock(minutes) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+/**
+ * ワークショップの設定（config.json の workshop）を読む。受付がオフ・設定が読めないときは null。
+ *   { price, boothIds, slots: [{ start: "11:00", label: "11:00〜12:30" }] }
+ * 時間帯は開始時刻・1枠の長さ・枠数から作る（申込フォーム・管理画面も同じ規則で作る）。
+ * boothIds が無ければ、すべてのブースで選べる。
+ */
+export function workshopSettings(config) {
+    const workshop = config && config.workshop;
+    if (!workshop || workshop.enabled !== true) return null;
+
+    const start = parseClock(workshop.startTime ?? WORKSHOP_DEFAULTS.startTime);
+    const slotMinutes = Number(workshop.slotMinutes ?? WORKSHOP_DEFAULTS.slotMinutes);
+    const slotCount = Number(workshop.slotCount ?? WORKSHOP_DEFAULTS.slotCount);
+    const price = Number(workshop.price);
+    if (start === null
+        || !(Number.isInteger(slotMinutes) && slotMinutes > 0)
+        || !(Number.isInteger(slotCount) && slotCount > 0)
+        || !(Number.isInteger(price) && price >= 0)) {
+        return null;
+    }
+
+    const slots = [];
+    for (let i = 0; i < slotCount; i++) {
+        const from = start + slotMinutes * i;
+        const to = from + slotMinutes;
+        if (to > 24 * 60) break;
+        slots.push({ start: formatClock(from), label: `${formatClock(from)}〜${formatClock(to)}` });
+    }
+
+    return { price, slots, boothIds: Array.isArray(workshop.boothIds) ? workshop.boothIds : null };
+}
+
+// そのブースでワークショップを付けられるか
+export function workshopAvailableForBooth(settings, boothId) {
+    return !!settings && (!settings.boothIds || settings.boothIds.includes(boothId));
+}
+
+/**
+ * フォームから届いたワークショップの時間帯（開始時刻）を、最新の設定で確かめる。
+ *   {}                              申し込んでいない
+ *   { slot: { start, label }, fee } 選べる時間帯（空いているかは、GASが保存の直前に数えて決める）
+ *   { error }                       受付がオフ・対象外のブース・無い時間帯（設定が変わった）、または設定が読めない
+ */
+export function resolveWorkshopRequest(requestedSlot, boothId, config) {
+    if (!requestedSlot) return {};
+    if (!config) {
+        // 料金も時間帯も確かめられないまま受け付けない（時間をおけば読めることがほとんど）
+        return { error: 'ただいまワークショップブースの受付状況を確認できません。お手数ですが、時間をおいてもう一度お申し込みください。' };
+    }
+
+    const settings = workshopSettings(config);
+    const slot = workshopAvailableForBooth(settings, boothId)
+        ? settings.slots.find(s => s.start === requestedSlot)
+        : null;
+    if (!slot) return { error: WORKSHOP_UNAVAILABLE_MESSAGE };
+
+    return { slot, fee: settings.price };
+}
+
+/**
+ * ワークショップの時間帯ごとの空き（申込フォーム用）。受付がオフなら null。{ slots: { "11:00": { full } } }
+ * reservations はGASが返す「時間帯（開始時刻）→ 押さえた出展者」。出展名は公開の応答に載せない。
+ * 1つの時間帯に1名なので、残枠の表示設定に関係なく、埋まった時間帯は常に満枠として返す。
+ */
+export function buildPublicWorkshopAvailability(config, reservations) {
+    const settings = workshopSettings(config);
+    if (!settings) return null;
+
+    const slots = {};
+    settings.slots.forEach(slot => {
+        const taken = ((reservations || {})[slot.start] || []).length;
+        slots[slot.start] = { full: taken >= WORKSHOP_SLOT_CAPACITY };
+    });
+    return { slots };
 }
 
 /**
@@ -1481,6 +1637,12 @@ function buildLineConfirmationMessage(data, gasResult) {
     const detailLines = [
         data.exhibitorName ? `出展名: ${data.exhibitorName}` : '',
         data.boothName ? `出展ブース: ${data.boothName}` : '',
+        // キャンセル待ちのワークショップは時間帯を押さえていない（希望として記録）
+        data.workshopLabel
+            ? (waitlist
+                ? `ワークショップブース（ご希望）: ${data.workshopLabel} ※時間帯は未確保です`
+                : `ワークショップブース: ${data.workshopLabel}`)
+            : '',
         data.menuName ? `出展メニュー: ${data.menuName}` : ''
     ].filter(Boolean);
 
@@ -1783,20 +1945,23 @@ export async function handleBoothAvailability(request, env, corsHeaders, url, ct
     try {
         const config = await fetchConfigObject(env);
 
-        // 定員を設定したブースが無ければ、GASに数えさせるまでもない
+        // 定員を設定したブースも、受付中のワークショップも無ければ、GASに数えさせるまでもない
         let counts = null;
-        if ((config.booths || []).some(booth => boothCapacity(booth) !== null)) {
+        let workshopReservations = null;
+        if ((config.booths || []).some(booth => boothCapacity(booth) !== null) || workshopSettings(config)) {
             const result = await getGasJson(env, {
                 action: 'get_booth_counts',
                 spreadsheetId: config.currentSpreadsheetId
             });
             if (!result.success) throw new Error(result.error || '申込数を取得できませんでした');
             counts = result.counts || {};
+            workshopReservations = result.workshopReservations || {};
         }
 
         const response = new Response(JSON.stringify({
             success: true,
-            booths: buildPublicBoothAvailability(config, counts)
+            booths: buildPublicBoothAvailability(config, counts),
+            workshop: buildPublicWorkshopAvailability(config, workshopReservations)
         }), {
             headers: {
                 ...corsHeaders,

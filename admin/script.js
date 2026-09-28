@@ -51,8 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // スプレッドシート作成
     document.getElementById('createSpreadsheetBtn').addEventListener('click', createSpreadsheet);
 
-    // 満枠設定：ブースごとの申込数
+    // 満枠設定：ブースごとの申込数／料金設定：ワークショップの予約状況（同じ読み込み）
     document.getElementById('reloadBoothCountsBtn')?.addEventListener('click', loadBoothCounts);
+    document.getElementById('reloadWorkshopBtn')?.addEventListener('click', loadBoothCounts);
 
     // 確認ページ参照フォルダ
     document.getElementById('refreshFoldersBtn')?.addEventListener('click', () => loadImageFolders(true));
@@ -337,6 +338,9 @@ function renderConfig() {
         document.getElementById('unitPrice_party').value = config.unitPrices.party || 0;
     }
 
+    // ワークショップブース（料金設定タブ）
+    renderWorkshopSettings();
+
     // ブース設定
     renderBooths();
 
@@ -523,6 +527,129 @@ const DEFAULT_REMAINING_THRESHOLD = 3;
 
 // ブースごとの申込数（「申込データ」シートの出展ブース名 → 件数）。読み込めていなければ null
 let boothCounts = null;
+// ワークショップの予約（時間帯の開始時刻 → 押さえた出展名の一覧）。読み込めていなければ null
+let workshopReservations = null;
+
+// ========================================
+// ワークショップブース（料金設定タブ）
+// ========================================
+// 時間帯の既定値（Worker・申込フォームと同じ）。11:00 から 90分（準備・片付け込み）× 3枠
+const WORKSHOP_DEFAULTS = { enabled: false, price: 0, startTime: '11:00', slotMinutes: 90, slotCount: 3, tables: 3, chairs: 6 };
+
+function renderWorkshopSettings() {
+    const workshop = { ...WORKSHOP_DEFAULTS, ...(config.workshop || {}) };
+    // 対象ブースの既定は全ブース
+    const boothIds = Array.isArray(workshop.boothIds) ? workshop.boothIds : (config.booths || []).map(b => b.id);
+
+    document.getElementById('workshopEnabled').checked = workshop.enabled === true;
+    document.getElementById('workshopPrice').value = workshop.price;
+    document.getElementById('workshopStartTime').value = workshop.startTime;
+    document.getElementById('workshopSlotMinutes').value = workshop.slotMinutes;
+    document.getElementById('workshopSlotCount').value = workshop.slotCount;
+    document.getElementById('workshopTables').value = workshop.tables;
+    document.getElementById('workshopChairs').value = workshop.chairs;
+
+    document.getElementById('workshopBoothList').innerHTML = (config.booths || []).map((booth, index) => `
+        <label class="workshop-booth-item">
+            <input type="checkbox" id="workshopBooth_${index}" ${boothIds.includes(booth.id) ? 'checked' : ''}>
+            ${escapeHtml(booth.name)}
+        </label>`).join('');
+
+    ['workshopStartTime', 'workshopSlotMinutes', 'workshopSlotCount'].forEach(id => {
+        document.getElementById(id).oninput = renderWorkshopPreview;
+    });
+    renderWorkshopPreview();
+}
+
+/**
+ * 入力中の設定から時間帯を作る（Worker の workshopSettings と同じ規則）。
+ * { slots: [{ start, label }] } か、読めない入力なら { error }
+ */
+function buildWorkshopSlotsFromInputs() {
+    const m = document.getElementById('workshopStartTime').value.trim().match(/^(\d{1,2}):(\d{2})$/);
+    const slotMinutes = Number(document.getElementById('workshopSlotMinutes').value);
+    const slotCount = Number(document.getElementById('workshopSlotCount').value);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return { error: '開始時刻を入力してください（例：11:00）' };
+    if (!(Number.isInteger(slotMinutes) && slotMinutes > 0)) return { error: '1枠の長さは1分以上の整数で入力してください' };
+    if (!(Number.isInteger(slotCount) && slotCount > 0 && slotCount <= 12)) return { error: '枠数は1〜12で入力してください' };
+
+    const clock = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    const start = Number(m[1]) * 60 + Number(m[2]);
+    if (start + slotMinutes * slotCount > 24 * 60) return { error: '最後の時間帯が24時を過ぎています' };
+
+    const slots = [];
+    for (let i = 0; i < slotCount; i++) {
+        const from = start + slotMinutes * i;
+        slots.push({ start: clock(from), label: `${clock(from)}〜${clock(from + slotMinutes)}` });
+    }
+    return { slots };
+}
+
+// 時間帯の一覧と、それぞれの予約（読み込めていれば出展名）を出す
+function renderWorkshopPreview() {
+    const list = document.getElementById('workshopSlotPreview');
+    if (!list) return;
+
+    const { slots, error } = buildWorkshopSlotsFromInputs();
+    if (error) {
+        list.innerHTML = `<li class="workshop-preview-error">${escapeHtml(error)}</li>`;
+        return;
+    }
+
+    list.innerHTML = slots.map(slot => {
+        let state = '';
+        if (workshopReservations) {
+            const names = workshopReservations[slot.start] || [];
+            state = names.length
+                ? `<span class="workshop-reserved">予約済み：${escapeHtml(names.join('、') || '（出展名なし）')}</span>`
+                : '<span class="workshop-open">空き</span>';
+        }
+        return `<li><span class="workshop-slot-time">${slot.label}</span>${state}</li>`;
+    }).join('');
+}
+
+/**
+ * 保存前のチェック。受付がオンのときだけ確かめる（オフのままなら入力途中でも保存できる）。
+ * 問題があれば文言を返す。
+ */
+function validateWorkshopInputs() {
+    if (!document.getElementById('workshopEnabled').checked) return '';
+
+    const priceText = document.getElementById('workshopPrice').value.trim();
+    const price = Number(priceText);
+    if (priceText === '' || !Number.isInteger(price) || price < 0) return 'ワークショップの料金は0以上の整数で入力してください';
+
+    const { error } = buildWorkshopSlotsFromInputs();
+    if (error) return `ワークショップ：${error}`;
+
+    for (const id of ['workshopTables', 'workshopChairs']) {
+        const value = Number(document.getElementById(id).value);
+        if (!Number.isInteger(value) || value < 0) return 'ワークショップのテーブル・椅子の数は0以上の整数で入力してください';
+    }
+
+    const anyBooth = (config.booths || []).some((_, index) => document.getElementById(`workshopBooth_${index}`)?.checked);
+    if (!anyBooth) return 'ワークショップを付けられるブースを1つ以上選んでください';
+    return '';
+}
+
+function collectWorkshopFromUI() {
+    const number = (id, fallback) => {
+        const value = Number(document.getElementById(id).value);
+        return Number.isInteger(value) && value >= 0 ? value : fallback;
+    };
+    config.workshop = {
+        enabled: document.getElementById('workshopEnabled').checked,
+        price: number('workshopPrice', 0),
+        startTime: document.getElementById('workshopStartTime').value.trim() || WORKSHOP_DEFAULTS.startTime,
+        slotMinutes: number('workshopSlotMinutes', WORKSHOP_DEFAULTS.slotMinutes) || WORKSHOP_DEFAULTS.slotMinutes,
+        slotCount: number('workshopSlotCount', WORKSHOP_DEFAULTS.slotCount) || WORKSHOP_DEFAULTS.slotCount,
+        tables: number('workshopTables', WORKSHOP_DEFAULTS.tables),
+        chairs: number('workshopChairs', WORKSHOP_DEFAULTS.chairs),
+        boothIds: (config.booths || [])
+            .filter((_, index) => document.getElementById(`workshopBooth_${index}`)?.checked)
+            .map(booth => booth.id)
+    };
+}
 
 function renderAvailability() {
     // 未設定（この項目ができる前の設定）は「受付を続ける」として扱う。申込フォームも同じ判定
@@ -577,8 +704,15 @@ function parseCapacityInput(value) {
 // ブースごとの申込数を読み込む（満枠設定タブを開いたとき・再読み込みボタン）
 async function loadBoothCounts() {
     const statusEl = document.getElementById('boothCountsStatus');
-    statusEl.className = 'hint';
-    statusEl.textContent = '申込数を読み込み中...';
+    // ワークショップの予約状況（料金設定タブ）も同じ読み込みで更新する
+    const workshopStatusEl = document.getElementById('workshopReservationStatus');
+    const setStatus = (el, className, text) => {
+        el.className = className;
+        el.textContent = text;
+    };
+    setStatus(statusEl, 'hint', '申込数を読み込み中...');
+    setStatus(workshopStatusEl, 'hint', '予約状況を読み込み中...');
+    const gasHint = 'GASが古い可能性があります。「デプロイ」タブからGASデプロイを実行してください。';
 
     try {
         const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value;
@@ -602,16 +736,27 @@ async function loadBoothCounts() {
         boothCounts = result.counts || {};
         const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
         statusEl.textContent = `申込数は ${time} 時点の「申込データ」シートの件数です。`;
+
+        if (result.workshopReservations) {
+            workshopReservations = result.workshopReservations;
+            workshopStatusEl.textContent = `予約状況は ${time} 時点の「申込データ」シートの内容です。`;
+        } else {
+            // ワークショップを知らないGASは予約を返さない（その状態ではワークショップ付きの申込も通らない）
+            workshopReservations = null;
+            setStatus(workshopStatusEl, 'status error', `⚠️ ワークショップの予約状況を読み込めませんでした。${gasHint}`);
+        }
     } catch (error) {
         console.error('Load booth counts error:', error);
         boothCounts = null;
-        statusEl.className = 'status error';
-        // GASが古いと、この読み込みも申込（定員のあるブース）も通らない。気づけるようにここで出す
-        statusEl.textContent = `⚠️ 申込数を読み込めませんでした（${error.message}）。`
-            + 'GASが古い可能性があります。「デプロイ」タブからGASデプロイを実行してください。';
+        workshopReservations = null;
+        // GASが古いと、この読み込みも申込（定員のあるブース・ワークショップ）も通らない。気づけるようにここで出す
+        const message = `⚠️ 申込数を読み込めませんでした（${error.message}）。${gasHint}`;
+        setStatus(statusEl, 'status error', message);
+        setStatus(workshopStatusEl, 'status error', message);
     }
 
     renderAllCapacityStatus();
+    renderWorkshopPreview();
 }
 
 function renderAllCapacityStatus() {
@@ -664,7 +809,7 @@ function switchTab(tabName) {
     // 連携が切れていてもデプロイを押すまで気づけないため、タブを開いた時点で出す
     if (tabName === 'deploy') loadGoogleOAuthStatus();
     // 残枠はシートの申込数で変わるので、開くたびに読み直す
-    if (tabName === 'availability') loadBoothCounts();
+    if (tabName === 'availability' || tabName === 'pricing') loadBoothCounts();
 
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -684,6 +829,12 @@ async function saveConfig() {
     if (invalidCapacity) {
         switchTab('availability');
         alert(`「${invalidCapacity.name}」の定員は、0以上の整数で入力してください（定員なしにする場合は空欄）。`);
+        return;
+    }
+    const workshopError = validateWorkshopInputs();
+    if (workshopError) {
+        switchTab('pricing');
+        alert(workshopError);
         return;
     }
 
@@ -777,6 +928,9 @@ function collectConfigFromUI() {
         booth.limits.maxStaff = parseInt(document.getElementById(`booth_${index}_maxStaff`).value) || 0;
         booth.limits.maxChairs = parseInt(document.getElementById(`booth_${index}_maxChairs`).value) || 0;
     });
+
+    // ワークショップブース
+    collectWorkshopFromUI();
 
     // 満枠設定
     config.waitlistEnabled = document.getElementById('waitlistEnabled').checked;

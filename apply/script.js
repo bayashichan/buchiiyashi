@@ -422,7 +422,7 @@ function hasBoothCapacity(booth) {
  * ここで取れなくても定員を超えて受け付けることはない。
  */
 async function loadBoothAvailability() {
-    if (!CONFIG.workerUrl || !CONFIG.booths.some(hasBoothCapacity)) return;
+    if (!CONFIG.workerUrl || !(CONFIG.booths.some(hasBoothCapacity) || getWorkshopSettings())) return;
 
     try {
         const response = await fetch(`${CONFIG.workerUrl}/api/public/booth-availability`);
@@ -430,8 +430,15 @@ async function loadBoothAvailability() {
         const result = await response.json();
         if (!result.success || !result.booths) return;
 
+        const hadWorkshopSlot = selectedWorkshopSlot;
         boothAvailability = result.booths;
+        workshopAvailability = result.workshop?.slots || {};
         refreshBoothOptions();
+
+        // 選んでいたワークショップの時間帯が、すでに埋まっていた（ブースはそのまま選べている）
+        if (hadWorkshopSlot && !selectedWorkshopSlot && selectedBooth) {
+            alert('お選びのワークショップの時間帯は、受付を終了しました。お手数ですが、別の時間帯をお選びください。');
+        }
     } catch (error) {
         console.warn('空き状況の取得に失敗（満枠チェックだけで表示します）:', error);
     }
@@ -444,7 +451,10 @@ function refreshBoothOptions() {
         if (booth) renderBoothOption(option, booth);
     });
 
-    if (!selectedBooth) return;
+    if (!selectedBooth) {
+        updateWorkshopUI();
+        return;
+    }
 
     const radio = document.querySelector(`input[name="boothRadio"][value="${selectedBooth.id}"]`);
     if (radio && !radio.disabled) {
@@ -452,6 +462,8 @@ function refreshBoothOptions() {
         radio.closest('.booth-option').classList.add('selected');
         // 満枠に変わっていれば、キャンセル待ちの案内と「お支払いなし」に切り替える
         document.getElementById('waitlistNotice').classList.toggle('hidden', !isWaitlistBooth());
+        // ワークショップの空き・キャンセル待ちの注記も最新にする
+        updateWorkshopUI();
         calculatePrice();
         return;
     }
@@ -500,6 +512,147 @@ function isWaitlistBooth() {
 }
 
 // ========================================
+// ワークショップブース（オプション）
+// ========================================
+// 選んだ時間帯（開始時刻 "11:00"）。利用しないときは空文字
+let selectedWorkshopSlot = '';
+// Workerから届いた時間帯ごとの空き。{ "11:00": { full } }
+let workshopAvailability = {};
+
+/**
+ * ワークショップの設定（config.json の workshop）。受付がオフ・読めないときは null。
+ * 時間帯は開始時刻・1枠の長さ・枠数から作る（Worker の workshopSettings と同じ規則）。
+ */
+function getWorkshopSettings() {
+    const workshop = CONFIG.workshop;
+    if (!workshop || workshop.enabled !== true) return null;
+
+    const m = String(workshop.startTime ?? '11:00').trim().match(/^(\d{1,2}):(\d{2})$/);
+    const slotMinutes = Number(workshop.slotMinutes ?? 90);
+    const slotCount = Number(workshop.slotCount ?? 3);
+    const price = Number(workshop.price);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59
+        || !(Number.isInteger(slotMinutes) && slotMinutes > 0)
+        || !(Number.isInteger(slotCount) && slotCount > 0)
+        || !(Number.isInteger(price) && price >= 0)) {
+        return null;
+    }
+
+    const clock = (minutes) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    const start = Number(m[1]) * 60 + Number(m[2]);
+    const slots = [];
+    for (let i = 0; i < slotCount; i++) {
+        const from = start + slotMinutes * i;
+        const to = from + slotMinutes;
+        if (to > 24 * 60) break;
+        slots.push({ start: clock(from), label: `${clock(from)}〜${clock(to)}` });
+    }
+
+    return {
+        price,
+        slots,
+        slotMinutes,
+        tables: workshop.tables ?? 3,
+        chairs: workshop.chairs ?? 6,
+        boothIds: Array.isArray(workshop.boothIds) ? workshop.boothIds : null
+    };
+}
+
+// 選んでいるブースで、ワークショップを付けられるか
+function isWorkshopOffered() {
+    const settings = getWorkshopSettings();
+    return !!(settings && selectedBooth && (!settings.boothIds || settings.boothIds.includes(selectedBooth.id)));
+}
+
+function isWorkshopSlotFull(start) {
+    return !!workshopAvailability[start]?.full;
+}
+
+// 選んでいる時間帯の { start, label }。選んでいなければ null
+function getSelectedWorkshopSlot() {
+    if (!selectedWorkshopSlot || !isWorkshopOffered()) return null;
+    return getWorkshopSettings().slots.find(s => s.start === selectedWorkshopSlot) || null;
+}
+
+/**
+ * ワークショップ欄を、選んでいるブース・設定・空き状況に合わせて描く。表示したら true。
+ * 埋まった時間帯は選べない（キャンセル待ちの希望でも同じ）。選んでいた時間帯が埋まっていたら外す。
+ */
+function updateWorkshopUI() {
+    const section = document.getElementById('optionWorkshop');
+    const settings = getWorkshopSettings();
+
+    if (!isWorkshopOffered()) {
+        section.classList.add('hidden');
+        resetWorkshopSelection();
+        return false;
+    }
+    section.classList.remove('hidden');
+
+    document.getElementById('workshopPriceText').textContent = `＋${settings.price.toLocaleString()}円`;
+    document.getElementById('workshopMinutesText').textContent = settings.slotMinutes;
+    document.getElementById('workshopTablesText').textContent = settings.tables;
+    document.getElementById('workshopChairsText').textContent = settings.chairs;
+    document.getElementById('workshopWaitlistNote').classList.toggle('hidden', !isWaitlistBooth());
+
+    const allFull = settings.slots.every(slot => isWorkshopSlotFull(slot.start));
+    document.getElementById('workshopFullNote').classList.toggle('hidden', !allFull);
+    document.querySelector('input[name="wantWorkshop"][value="1"]').disabled = allFull;
+
+    if (selectedWorkshopSlot && isWorkshopSlotFull(selectedWorkshopSlot)) {
+        resetWorkshopSelection();
+    }
+
+    document.getElementById('workshopSlotList').innerHTML = settings.slots.map(slot => {
+        const full = isWorkshopSlotFull(slot.start);
+        const checked = slot.start === selectedWorkshopSlot;
+        return `
+        <label class="workshop-slot${full ? ' full' : ''}${checked ? ' selected' : ''}">
+          <input type="radio" name="workshopSlotChoice" value="${slot.start}" ${full ? 'disabled' : ''} ${checked ? 'checked' : ''} onchange="selectWorkshopSlot('${slot.start}')">
+          <span>${slot.label}</span>
+          ${full ? '<span class="workshop-slot-badge">受付終了</span>' : ''}
+        </label>`;
+    }).join('');
+
+    return true;
+}
+
+// 「利用する / 利用しない」の切り替え
+function toggleWorkshopSlots() {
+    const want = document.querySelector('input[name="wantWorkshop"]:checked')?.value === '1';
+    document.getElementById('workshopSlotSection').classList.toggle('hidden', !want);
+    if (!want) {
+        selectedWorkshopSlot = '';
+        document.querySelectorAll('#workshopSlotList .workshop-slot').forEach(el => el.classList.remove('selected'));
+        document.querySelectorAll('input[name="workshopSlotChoice"]').forEach(input => { input.checked = false; });
+    }
+    calculatePrice();
+}
+
+function selectWorkshopSlot(start) {
+    selectedWorkshopSlot = start;
+    document.querySelectorAll('#workshopSlotList .workshop-slot').forEach(el => {
+        el.classList.toggle('selected', el.querySelector('input').value === start);
+    });
+    calculatePrice();
+}
+
+// 「利用しない」に戻す（ブースを選び直したとき・選べなくなったとき）
+function resetWorkshopSelection() {
+    selectedWorkshopSlot = '';
+    const none = document.querySelector('input[name="wantWorkshop"][value="0"]');
+    if (none) none.checked = true;
+    document.getElementById('workshopSlotSection')?.classList.add('hidden');
+}
+
+// 送信したら時間帯が先に埋まっていた。その時間帯を「受付終了」にして、選び直してもらう
+function markWorkshopSlotTaken(start) {
+    workshopAvailability = { ...workshopAvailability, [start]: { full: true } };
+    updateWorkshopUI();
+    calculatePrice();
+}
+
+// ========================================
 // ブース選択処理
 // ========================================
 function selectBooth(boothId) {
@@ -541,6 +694,9 @@ function selectBooth(boothId) {
     // キャンセル待ちになるブースなら、選んだ時点でその旨を出す
     document.getElementById('waitlistNotice').classList.toggle('hidden', !isWaitlistBooth());
 
+    // ワークショップも、ほかのオプションと同じくブースを選び直したら「利用しない」に戻す
+    resetWorkshopSelection();
+
     // UIとセッション警告を更新
     updateOptionsUI();
     updateSessionWarning();
@@ -556,6 +712,9 @@ function updateOptionsUI() {
     const powerSection = document.getElementById('optionPower');
     const noOptionsMessage = document.getElementById('noOptionsMessage');
 
+    // ワークショップ（選べるブースでだけ出る）
+    const hasWorkshop = updateWorkshopUI();
+
     if (!selectedBooth) {
         // ブース未選択時はすべて非表示
         staffSection.classList.add('hidden');
@@ -566,7 +725,7 @@ function updateOptionsUI() {
     }
 
     const limits = selectedBooth.limits;
-    let hasAnyOption = false;
+    let hasAnyOption = hasWorkshop;
 
     // 追加スタッフ
     if (limits.maxStaff > 0) {
@@ -839,6 +998,13 @@ function calculatePrice() {
         } else {
             optionValues.power = false;
         }
+
+        // ワークショップ
+        if (getSelectedWorkshopSlot()) {
+            const workshopPrice = getWorkshopSettings().price;
+            breakdown.push(`ワークショップ: ¥${workshopPrice.toLocaleString()}`);
+            total += workshopPrice;
+        }
     }
 
     // 懇親会（二次会は料金計算に含めない）
@@ -848,7 +1014,7 @@ function calculatePrice() {
         total += partyCost;
     }
 
-    // キャンセル待ちは出展が確定していないので、支払う金額として見せない
+    // キャンセル待ちは出展が確定していないので、支払う金額として見せない（ワークショップも希望のため加算しない）
     if (isWaitlistBooth()) {
         document.getElementById('priceBreakdown').textContent = 'キャンセル待ち（現時点でのお支払いはありません）';
         document.getElementById('totalPrice').textContent = 'なし';
@@ -1049,6 +1215,12 @@ function validateForm() {
         errors.push('出展ブースタイプを選択してください');
     }
 
+    // ワークショップ（「利用する」なら時間帯が必要）
+    const wantWorkshop = document.querySelector('input[name="wantWorkshop"]:checked')?.value === '1';
+    if (isWorkshopOffered() && wantWorkshop && !getSelectedWorkshopSlot()) {
+        errors.push('ワークショップブースの時間帯を選択してください');
+    }
+
     // 写真
     const photoInput = form.querySelector('[name="profileImage"]');
     // 写真再利用の場合はチェックを緩和
@@ -1185,6 +1357,12 @@ async function sendApplication() {
         formData.append('partyCount', optionValues.partyCount);
         formData.append('secondaryPartyCount', optionValues.secondaryPartyCount);
 
+        // ワークショップは時間帯（開始時刻）だけ送る。表記・料金はWorkerが最新の設定から付ける
+        formData.delete('wantWorkshop');
+        formData.delete('workshopSlotChoice');
+        const workshopSlot = getSelectedWorkshopSlot();
+        if (workshopSlot) formData.append('workshopSlot', workshopSlot.start);
+
         // 得意ジャンルを収集（チェックされた項目をカンマ区切りに）
         const checkedGenres = [...document.querySelectorAll('input[name="specialtyGenre"]:checked')]
             .map(cb => cb.value).join('、');
@@ -1305,6 +1483,8 @@ async function sendApplication() {
             // 完了モーダル表示（画像が登録できていない場合は案内を添える）
             showCompleteModal(result, imageUploadError);
         } else {
+            // ワークショップの時間帯が先に埋まっていた。「受付終了」にして、別の時間帯を選び直してもらう
+            if (result.workshopSlotTaken) markWorkshopSlotTaken(result.workshopSlotTaken);
             throw new Error(result.error || '送信に失敗しました。再度お試しください。');
         }
 
@@ -2269,6 +2449,17 @@ function buildConfirmHtml() {
     if (limits.allowPower) optionRows.push(row('コンセント使用', optionValues.power ? 'あり' : 'なし'));
     if (limits.maxChairs > 0) optionRows.push(row('椅子の追加', optionValues.chairs > 0 ? `${optionValues.chairs}脚` : 'なし'));
     if (limits.maxStaff > 0) optionRows.push(row('参加人数の追加', optionValues.staff > 0 ? `${optionValues.staff}名` : 'なし'));
+    if (isWorkshopOffered()) {
+        const workshopSlot = getSelectedWorkshopSlot();
+        let workshopText = '利用しない';
+        if (workshopSlot) {
+            // キャンセル待ちは時間帯を押さえない（希望として承る）
+            workshopText = waitlist
+                ? `ご希望：${workshopSlot.label} ※時間帯は未確保です`
+                : `${workshopSlot.label}（${getWorkshopSettings().price.toLocaleString()}円）`;
+        }
+        optionRows.push(row('ワークショップブース', workshopText));
+    }
     if (optionRows.length === 0) optionRows.push(row('オプション', '選択されたブースでは追加オプションはありません'));
 
     const partyAttend = radio('partyAttend') || '欠席';
@@ -2384,6 +2575,12 @@ function calculateConfirmFee() {
         if (optionValues.power) {
             lines.push({ label: 'コンセント使用', amount: CONFIG.unitPrices.power });
             total += CONFIG.unitPrices.power;
+        }
+        const workshopSlot = getSelectedWorkshopSlot();
+        if (workshopSlot) {
+            const workshopPrice = getWorkshopSettings().price;
+            lines.push({ label: `ワークショップブース（${workshopSlot.label}）`, amount: workshopPrice });
+            total += workshopPrice;
         }
     }
 

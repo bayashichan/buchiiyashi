@@ -611,6 +611,77 @@ textarea.input-field {
   margin-top: 0.25rem;
 }
 
+/* ワークショップブース（オプション） */
+.workshop-info {
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: #4b5563;
+  margin-top: 0.25rem;
+}
+
+.workshop-info ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin-top: 0.25rem;
+}
+
+.workshop-note {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: #fffbeb;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.workshop-note.full {
+  background-color: #fef2f2;
+  border-color: var(--error);
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.workshop-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  margin: 0.4rem 0;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: white;
+  cursor: pointer;
+}
+
+.workshop-slot.selected {
+  border-color: var(--primary);
+}
+
+.workshop-slot input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--primary);
+}
+
+.workshop-slot.full {
+  opacity: 0.7;
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.workshop-slot-badge {
+  margin-left: auto;
+  background-color: var(--error);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
 /* 残りの枠数（管理画面で残枠を表示する設定のとき） */
 .remaining-badge {
   background-color: #ecfdf5;
