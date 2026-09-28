@@ -352,6 +352,14 @@
                     <?= formData['コンセント使用'] || 'なし' ?>
                 </td>
             </tr>
+            <? if (workshop) { ?>
+            <tr>
+                <th>オプション（ワークショップ）</th>
+                <td>
+                    <?= workshop.reserved ? '' : 'ご希望：' ?><?= workshop.value ?>
+                </td>
+            </tr>
+            <? } ?>
             <tr>
                 <th>スタンプラリー景品</th>
                 <td>

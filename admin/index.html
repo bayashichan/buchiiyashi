@@ -141,6 +141,59 @@
                         <input type="number" id="unitPrice_party" min="0" step="100">
                     </div>
                 </div>
+
+                <h3>ワークショップブース（オプション）</h3>
+                <div class="workshop-setting">
+                    <label class="workshop-toggle" for="workshopEnabled">
+                        <input type="checkbox" id="workshopEnabled">
+                        ワークショップブースの申込を受け付ける
+                    </label>
+                    <p class="hint">
+                        オンにすると、申込フォームの「4. オプション・備品」に表示されます。各時間帯1名・先着順で、申込者が時間帯を選びます。<br>
+                        料金はブース料金に加算され、確認メールの振込額に含まれます。
+                    </p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>料金（円・全時間帯共通）</label>
+                            <input type="number" id="workshopPrice" min="0" step="100">
+                        </div>
+                        <div class="form-group">
+                            <label>開始時刻</label>
+                            <input type="time" id="workshopStartTime" step="300">
+                        </div>
+                        <div class="form-group">
+                            <label>1枠の長さ（分・準備と片付けを含む）</label>
+                            <input type="number" id="workshopSlotMinutes" min="1" step="5">
+                        </div>
+                        <div class="form-group">
+                            <label>枠数</label>
+                            <input type="number" id="workshopSlotCount" min="1" max="12" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>テーブル（台）</label>
+                            <input type="number" id="workshopTables" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label>椅子（脚）</label>
+                            <input type="number" id="workshopChairs" min="0" step="1">
+                        </div>
+                    </div>
+
+                    <div class="availability-head">
+                        <h4>時間帯と予約状況</h4>
+                        <button id="reloadWorkshopBtn" type="button" class="btn-secondary small">予約状況を再読み込み</button>
+                    </div>
+                    <p id="workshopReservationStatus" class="hint hidden"></p>
+                    <ul id="workshopSlotPreview" class="workshop-slot-preview"></ul>
+                    <p class="hint">
+                        予約は、スプレッドシートの「申込データ」シートの「ワークショップ時間帯」列から数えています。取り消すときは、そのセルを空欄にすると枠が空きます。<br>
+                        キャンセル待ちの方の希望は「希望：11:00〜12:30」のように記録され、枠には数えません。
+                        繰り上げで割り当てるときは、行を「申込データ」へ移し、「希望：」を消して「11:00〜12:30」の形にしてから確認メールを再送してください（合計金額は直さなくて大丈夫です）。
+                    </p>
+
+                    <h4>ワークショップを付けられるブース</h4>
+                    <div id="workshopBoothList" class="workshop-booth-list"></div>
+                </div>
             </section>
 
             <!-- ブース設定タブ -->
@@ -165,7 +218,35 @@
                     </p>
                 </div>
 
-                <p class="hint">満枠にしたいブースにチェックを入れてください。</p>
+                <div class="remaining-setting">
+                    <h3>申込フォームでの残枠の表示</h3>
+                    <div class="remaining-options">
+                        <label><input type="radio" name="remainingDisplay" value="hidden"> 表示しない</label>
+                        <label><input type="radio" name="remainingDisplay" value="always"> 最初から表示する</label>
+                        <label><input type="radio" name="remainingDisplay" value="few"> 残りわずかになったら表示する</label>
+                    </div>
+                    <label class="remaining-threshold" for="remainingDisplayThreshold">
+                        残り <input type="number" id="remainingDisplayThreshold" min="1" step="1"> 枠以下で「残りわずか」と表示
+                    </label>
+                    <p class="hint">
+                        残枠は、下で定員を入れたブースだけに表示します（例：「残り5枠」「残りわずか・あと2枠」）。<br>
+                        「最初から表示する」でも、上の枠数以下になると「残りわずか」の目立つ表示に変わります。<br>
+                        「表示しない」を選ぶと、残枠は申込フォームに一切出ません（定員に達したら満枠になるのは同じです）。
+                    </p>
+                </div>
+
+                <div class="availability-head">
+                    <h3>ブースごとの定員・満枠</h3>
+                    <button id="reloadBoothCountsBtn" type="button" class="btn-secondary small">申込数を再読み込み</button>
+                </div>
+                <p class="hint">
+                    定員（枠数）を入れたブースは、申込が定員に達した時点で自動的に満枠になります（空欄は定員なし）。
+                    満枠になったあとは、上の「キャンセル待ちとして受付を続ける」の設定に従います。<br>
+                    チェックを入れたブースは、定員に関係なくすぐ満枠になります。<br>
+                    申込数は、スプレッドシートの「申込データ」シートの行を数えています（「キャンセル待ち」シートは数えません）。
+                    キャンセルが出たときは、その行を削除（または別のシートへ移動）すると、その分の枠が空きます。
+                </p>
+                <p id="boothCountsStatus" class="hint hidden"></p>
                 <div id="availabilityList"></div>
             </section>
 
