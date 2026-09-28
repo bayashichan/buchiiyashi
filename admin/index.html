@@ -39,6 +39,7 @@
             <button class="tab" data-tab="images">📷 画像生成</button>
             <button class="tab" data-tab="captions">✍️ キャプション</button>
             <button class="tab" data-tab="resend">📧 メール再送</button>
+            <button class="tab" data-tab="mail">✉️ 一斉メール</button>
             <button class="tab" data-tab="deploy">🚀 デプロイ</button>
         </nav>
 
@@ -407,6 +408,90 @@
 
                     <div id="resendStatus" class="status"></div>
                     <div id="resendResults" class="mt-3"></div>
+                </div>
+            </section>
+
+            <!-- 一斉メールタブ -->
+            <section id="tab-mail" class="tab-content hidden">
+                <h2>✉️ 過去の出展者へメール送信</h2>
+                <p class="hint">マスターデータベース（全履歴）のC列（お名前）・E列（メールアドレス）をもとに、
+                    過去の出展者さんへ自由な件名・本文でメールをお送りします。<br>
+                    ・複数回出展した方の同じメールアドレスは1名にまとめるので、1人に1通だけ届きます。<br>
+                    ・送った記録はスプレッドシートの「メール送信履歴」シートに残り、<strong>同じ件名のメールを受け取った方には二度と送りません</strong>。
+                    1日の送信上限で全員に送り切れないときは、翌日以降に同じ件名のまま続きを送れます。<br>
+                    ※送信には、デプロイタブの「Googleアカウント連携」が必要です。</p>
+
+                <div class="card">
+                    <h3>送信先を選ぶ</h3>
+                    <div class="flex-row">
+                        <input type="text" id="mailFilter" placeholder="お名前・メールアドレス・出展名・開催回・「未送信」「同名」で絞り込み"
+                            style="flex-grow: 1;">
+                        <button id="loadMailRecipientsBtn" class="btn-secondary small">過去の出展者を読み込む</button>
+                    </div>
+                    <p id="mailRecipientsInfo" class="hint mt-2"></p>
+
+                    <div id="mailSelectAllContainer" class="checkbox-wrapper mt-2"
+                        style="display: none; align-items: center;">
+                        <input type="checkbox" id="selectAllMailRecipients">
+                        <label for="selectAllMailRecipients" style="font-weight: bold; cursor: pointer;">表示中を全て選択 /
+                            解除</label>
+                        <span id="mailSelectedCount" class="hint" style="margin-left: auto;"></span>
+                    </div>
+
+                    <div id="mailRecipientList" class="exhibitor-list mt-2">
+                        <p class="hint">「過去の出展者を読み込む」を押してください。</p>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>メールを作成</h3>
+                    <div class="form-group">
+                        <label for="mailSubject">件名</label>
+                        <input type="text" id="mailSubject" placeholder="例: 【ぶち癒やしフェスタin東京】次回開催のご案内">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="mailBody">本文</label>
+                        <div class="placeholder-toolbar">
+                            <button type="button" id="mailInsertNameBtn" class="btn-secondary small">お名前を差し込む
+                                {{氏名}}</button>
+                        </div>
+                        <textarea id="mailBody" rows="12" placeholder="{{氏名}} 様
+
+いつもぶち癒やしフェスタin東京をご愛顧いただき、ありがとうございます。
+..."></textarea>
+                        <p class="hint">「{{氏名}}」は、送信先ごとにC列のお名前へ置き換わります（件名でも使えます）。
+                            書きかけの件名・本文はこのブラウザに自動で保存されます。<br>
+                            ※何日かに分けて送るときは、件名を変えないでください。件名を変えると別のメールとして扱い、送信済みの方にも届きます。</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>プレビュー（選択中の先頭の方）</label>
+                        <div id="mailPreview" class="mail-preview">
+                            <p class="hint">送信先を選ぶと、ここに実際の文面が表示されます。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>送信</h3>
+                    <p id="mailQuota" class="hint"></p>
+
+                    <div class="form-group">
+                        <label for="mailTestEmail">テスト送信先</label>
+                        <div class="flex-row">
+                            <input type="email" id="mailTestEmail" placeholder="例: staff@example.com" style="flex-grow: 1;">
+                            <button id="sendTestMailBtn" class="btn-secondary small">テスト送信（1通）</button>
+                        </div>
+                        <p class="hint">選択中の先頭の方のお名前で差し込んだメールを、1通だけこのアドレスへ送ります。出展者さんには届きません。</p>
+                    </div>
+
+                    <div class="button-group mt-3">
+                        <button id="sendCustomMailBtn" class="btn-primary">選択した出展者へ送信する</button>
+                    </div>
+
+                    <div id="mailStatus" class="status"></div>
+                    <div id="mailResults" class="mt-3"></div>
                 </div>
             </section>
 

@@ -555,6 +555,52 @@ code {
     font-size: 0.9em;
 }
 
+/* 一斉メールのプレビュー */
+.mail-preview {
+    padding: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.mail-preview-subject {
+    font-weight: 500;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.mail-preview-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.mail-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    vertical-align: middle;
+}
+
+.mail-badge.sent {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.mail-badge.warn {
+    background: #feebc8;
+    color: #7b341e;
+}
+
+.exhibitor-item.is-sent {
+    opacity: 0.6;
+    cursor: default;
+}
+
 /* プレースホルダーツールバー */
 .placeholder-toolbar {
     display: flex;

@@ -657,7 +657,23 @@ function doPost(e) {
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
     }
-    
+
+    // 一斉メール：マスターDBの過去出展者一覧（管理画面用）
+    if (params.action === 'get_mail_recipients') {
+      const result = getMailRecipients(params.accessToken, params.spreadsheetId);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 一斉メール：任意の件名・本文で送信（管理画面用）
+    if (params.action === 'send_custom_email') {
+      const result = sendCustomEmails(params);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ここから下は申込フォームからの送信として処理する。
     // 満枠のブースへの申込は、Workerが action=apply_waitlist を付けて送ってくる（キャンセル待ち）。
     // action にしてあるのは、キャンセル待ちに対応していない古いデプロイが受け取ったとき、
@@ -1907,6 +1923,382 @@ function toNumber(value) {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+// ========================================
+// 過去出展者への一斉メール（管理画面用）
+// ========================================
+
+// マスターDBの列位置（1始まり）。氏名はC列、メールアドレスはE列
+const MASTER_NAME_COLUMN = 3;
+const MASTER_EMAIL_COLUMN = 5;
+
+// 1回のリクエストで送れる上限。doPost のロックを長時間握らないための保険。
+const CUSTOM_MAIL_MAX_PER_REQUEST = 20;
+
+// 件名・本文のこの文字を、送信先ごとのお名前（C列）に置き換える
+const CUSTOM_MAIL_NAME_TAG = '{{氏名}}';
+
+// 一斉メールの送信履歴（マスターDBと同じスプレッドシートに作る）。
+// Gmailの1日の送信上限で全員に送り切れず日をまたぐときも、同じ件名のメールを
+// 同じ方へ二度送らないために使う。
+const CUSTOM_MAIL_LOG_SHEET_NAME = 'メール送信履歴';
+const CUSTOM_MAIL_LOG_HEADERS = ['送信日時', '件名', 'メールアドレス', 'お名前'];
+
+// 一斉メールに使わずに残しておく1日の送信数。
+// 案内を見た方がその日に申し込むと、申込者への確認メールと事務局への通知で1件2通を使う。
+// 一斉メールで上限を使い切ると、その確認メールが送れず申込がエラーになるため、枠を残しておく。
+const CUSTOM_MAIL_QUOTA_RESERVE = 20;
+
+/**
+ * 管理画面（Worker）からの呼び出しであることを確かめる。
+ *
+ * GASのWebアプリURLは公開リポジトリに載っていて誰でも呼べる。任意の件名・本文を
+ * 事務局のGmailから送れる操作や、過去出展者全員の連絡先を返す操作を素通しにすると、
+ * なりすましメールの踏み台や個人情報の漏えいにつながる。
+ * Workerは管理画面の認証を通ったときだけ、GASデプロイ用に連携済みの
+ * 所有アカウント本人のGoogleトークンを添えてくる。そのトークンでこのプロジェクトを
+ * 読めるかをApps Script APIで確かめ、読めなければ断る。
+ */
+function verifyAdminAccessToken(accessToken) {
+  if (!accessToken) {
+    throw new Error('認証情報がありません。管理画面から操作してください');
+  }
+  try {
+    scriptApi(accessToken, `projects/${ScriptApp.getScriptId()}`);
+  } catch (e) {
+    console.warn('verifyAdminAccessToken failed: ' + e.message);
+    throw new Error('Googleアカウントの認証を確認できませんでした。管理画面のデプロイタブで連携状態を確認してください');
+  }
+}
+
+// 全角の＠や前後の空白が混ざっていても送れる形にそろえる
+function normalizeEmailAddress(value) {
+  return String(value || '').normalize('NFKC').replace(/\s/g, '');
+}
+
+/**
+ * マスターDB（全履歴）から、メールアドレスごとに1名へまとめた送信先を作る。
+ *
+ * 複数回出展した方は同じアドレスの行が複数あるため、アドレス（大小文字・全角半角・空白の
+ * 違いは同じとみなす）で1名にまとめ、1通しか届かないようにする。
+ * お名前は、空欄でない一番新しい行のものを使う。
+ * 開催回・出展名・申込区分は補足表示用なので、列位置ではなく見出し名で引く。
+ *
+ * @return {{recipients: Array, byEmail: Object, totalRows: number, duplicateRows: number, skipped: number}}
+ */
+function loadMasterMailRecipients(ss) {
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME) || ss.getSheets()[0];
+  const values = sheet.getDataRange().getDisplayValues();
+  const headers = (values[0] || []).map(h => String(h).trim());
+
+  const colIndex = (names) => {
+    for (const name of names) {
+      const idx = headers.indexOf(name);
+      if (idx > -1) return idx;
+    }
+    return -1;
+  };
+  const eventIdx = colIndex(['開催回', '元ファイル名']);
+  const exhibitorIdx = colIndex(['出展名']);
+  const typeIdx = colIndex(['申込区分']);
+  const cell = (row, idx) => (idx < 0 || idx >= row.length) ? '' : String(row[idx] || '').trim();
+
+  const byEmail = {};
+  let totalRows = 0;
+  let duplicateRows = 0;
+  let skipped = 0;
+
+  // 1行目は見出し
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const email = normalizeEmailAddress(row[MASTER_EMAIL_COLUMN - 1]);
+    const name = cell(row, MASTER_NAME_COLUMN - 1);
+
+    if (!email && !name) continue; // 空行
+    if (!isValidEmail(email)) {
+      skipped++;
+      continue;
+    }
+
+    totalRows++;
+    const key = email.toLowerCase();
+    let recipient = byEmail[key];
+    if (recipient) {
+      duplicateRows++;
+    } else {
+      recipient = byEmail[key] = { email: email, name: '', exhibitorName: '', events: [], rowCount: 0, lastRow: 0 };
+    }
+
+    // 行は申込順に並んでいるので、後の行ほど新しい
+    recipient.email = email;
+    recipient.rowCount++;
+    recipient.lastRow = i;
+    if (name) recipient.name = name;
+    const exhibitorName = cell(row, exhibitorIdx);
+    if (exhibitorName) recipient.exhibitorName = exhibitorName;
+
+    let eventLabel = cell(row, eventIdx);
+    if (eventLabel && cell(row, typeIdx) === WAITLIST_LABEL) eventLabel += `（${WAITLIST_LABEL}）`;
+    if (eventLabel && recipient.events.indexOf(eventLabel) < 0) recipient.events.push(eventLabel);
+  }
+
+  // 直近に申し込んだ方を上に出す
+  const recipients = Object.keys(byEmail)
+    .map(key => byEmail[key])
+    .sort((a, b) => b.lastRow - a.lastRow);
+
+  return {
+    recipients: recipients,
+    byEmail: byEmail,
+    totalRows: totalRows,
+    duplicateRows: duplicateRows,
+    skipped: skipped
+  };
+}
+
+/**
+ * 一斉メールの送信履歴を、アドレスごとの [{subject, sentAt}] にして返す（アドレスは小文字）。
+ */
+function loadCustomMailLog(ss) {
+  const sheet = ss.getSheetByName(CUSTOM_MAIL_LOG_SHEET_NAME);
+  if (!sheet) return {};
+
+  const values = sheet.getDataRange().getDisplayValues();
+  const log = {};
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const subject = String(row[1] || '').trim();
+    const key = normalizeEmailAddress(row[2]).toLowerCase();
+    if (!subject || !key) continue;
+    (log[key] = log[key] || []).push({ subject: subject, sentAt: String(row[0] || '') });
+  }
+  return log;
+}
+
+function getOrCreateCustomMailLogSheet(ss) {
+  let sheet = ss.getSheetByName(CUSTOM_MAIL_LOG_SHEET_NAME);
+  if (!sheet) {
+    // 末尾に足す（先頭に入ると、開いたときに「申込データ」ではなくこちらが出てしまう）
+    sheet = ss.insertSheet(CUSTOM_MAIL_LOG_SHEET_NAME, ss.getSheets().length);
+    sheet.appendRow(CUSTOM_MAIL_LOG_HEADERS);
+  }
+  return sheet;
+}
+
+// 本日あと何通送れるか。取得できなければ null
+function getRemainingMailQuota() {
+  try {
+    return MailApp.getRemainingDailyQuota();
+  } catch (e) {
+    console.warn('Failed to read mail quota: ' + e.message);
+    return null;
+  }
+}
+
+// 本日、一斉メールに使える通数（申込の確認メール用の枠を除く）。取得できなければ null
+function getAvailableCustomMailQuota(remainingQuota) {
+  return remainingQuota === null ? null : Math.max(0, remainingQuota - CUSTOM_MAIL_QUOTA_RESERVE);
+}
+
+/**
+ * 一斉メールの送信先一覧を返す。
+ *
+ * 各送信先には、これまでに一斉メールで送った件名（sent）を添える。
+ * 管理画面は入力中の件名と照らして、送信済みの方を選べないようにする。
+ */
+function getMailRecipients(accessToken, spreadsheetId) {
+  try {
+    verifyAdminAccessToken(accessToken);
+
+    const ss = SpreadsheetApp.openById(spreadsheetId || CONFIG.SPREADSHEET_ID);
+    const loaded = loadMasterMailRecipients(ss);
+    const log = loadCustomMailLog(ss);
+    const remainingQuota = getRemainingMailQuota();
+
+    return {
+      success: true,
+      recipients: loaded.recipients.map(r => ({
+        email: r.email,
+        name: r.name,
+        exhibitorName: r.exhibitorName,
+        events: r.events,
+        rowCount: r.rowCount,
+        sent: log[r.email.toLowerCase()] || []
+      })),
+      totalRows: loaded.totalRows,
+      duplicateRows: loaded.duplicateRows,
+      skipped: loaded.skipped,
+      remainingQuota: remainingQuota,
+      availableQuota: getAvailableCustomMailQuota(remainingQuota),
+      quotaReserve: CUSTOM_MAIL_QUOTA_RESERVE
+    };
+  } catch (error) {
+    console.error('getMailRecipients error:', error);
+    return { success: false, error: error.message, recipients: [] };
+  }
+}
+
+/**
+ * 選ばれた過去出展者へ、任意の件名・本文のメールを送る。
+ *
+ * - 送信先はマスターDBにあるアドレスに限る（任意のアドレスへは送らない）
+ * - 同じアドレスは1通だけ。同じ件名のメールを送信済みの方には送らない（送信履歴で判定）
+ * - 件名・本文の {{氏名}} は、送信先ごとにC列のお名前へ置き換える
+ * - testEmail を指定したときは、先頭の方のお名前で差し込んだ1通だけをそのアドレスへ送る
+ *   （出展者には届かないので、送信履歴には残さない）
+ *
+ * @param {{accessToken: string, spreadsheetId: string, emails: Array<string>,
+ *          subject: string, body: string, testEmail: string}} params
+ */
+function sendCustomEmails(params) {
+  try {
+    verifyAdminAccessToken(params.accessToken);
+
+    const subject = String(params.subject || '').trim();
+    const body = String(params.body || '').replace(/\r\n?/g, '\n');
+    if (!subject) {
+      return { success: false, error: '件名を入力してください', results: [] };
+    }
+    if (!body.trim()) {
+      return { success: false, error: '本文を入力してください', results: [] };
+    }
+
+    const seen = {};
+    let targets = (Array.isArray(params.emails) ? params.emails : [])
+      .map(normalizeEmailAddress)
+      .filter(email => {
+        const key = email.toLowerCase();
+        if (!email || seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
+
+    if (targets.length === 0) {
+      return { success: false, error: '送信先が選択されていません', results: [] };
+    }
+    if (targets.length > CUSTOM_MAIL_MAX_PER_REQUEST) {
+      return {
+        success: false,
+        error: `一度に送れるのは${CUSTOM_MAIL_MAX_PER_REQUEST}件までです（${targets.length}件が指定されました）`,
+        results: []
+      };
+    }
+
+    const override = normalizeEmailAddress(params.testEmail);
+    if (override && !isValidEmail(override)) {
+      return { success: false, error: `テスト送信先のメールアドレスが正しくありません: ${override}`, results: [] };
+    }
+    const isTest = !!override;
+    // テスト送信は、差し込みの確認用に1通だけ送る
+    if (isTest) targets = targets.slice(0, 1);
+
+    const ss = SpreadsheetApp.openById(params.spreadsheetId || CONFIG.SPREADSHEET_ID);
+    const byEmail = loadMasterMailRecipients(ss).byEmail;
+    const log = isTest ? {} : loadCustomMailLog(ss);
+    const results = [];
+
+    // 送信済みの方は、送る前に振り分けておく（残りの送信数の確認に含めないため）
+    const toSend = [];
+    targets.forEach(email => {
+      const key = email.toLowerCase();
+      const recipient = byEmail[key];
+      const already = (log[key] || []).filter(entry => entry.subject === subject)[0];
+      if (recipient && already) {
+        results.push({
+          email: recipient.email,
+          name: recipient.name,
+          success: false,
+          skipped: true,
+          sentAt: already.sentAt,
+          error: `この件名のメールは送信済みです（${already.sentAt}）`
+        });
+      } else {
+        toSend.push(email);
+      }
+    });
+
+    // 送信途中で日次上限に当たると「一部だけ届いた」状態になるため、先に残数を確認する。
+    // 本送信では、申込の確認メール用の枠には手を付けない
+    const remainingQuota = getRemainingMailQuota();
+    const usableQuota = isTest ? remainingQuota : getAvailableCustomMailQuota(remainingQuota);
+    if (usableQuota !== null && usableQuota < toSend.length) {
+      return {
+        success: false,
+        error: isTest
+          ? `本日の送信可能数が足りません（残り${remainingQuota}通）。明日以降にお試しください。`
+          : `本日、一斉メールに使える送信数が足りません（残り${usableQuota}通 / 送信${toSend.length}通。`
+            + `申込の確認メール用に${CUSTOM_MAIL_QUOTA_RESERVE}通を残しています）。明日以降に同じ件名で続きを送ってください。`,
+        results: []
+      };
+    }
+
+    const logSheet = isTest || toSend.length === 0 ? null : getOrCreateCustomMailLogSheet(ss);
+
+    toSend.forEach(email => {
+      const recipient = byEmail[email.toLowerCase()];
+      try {
+        if (!recipient) {
+          throw new Error('マスターデータベースに見つかりません（一覧を読み込み直してください）');
+        }
+
+        const personalize = (text) => text.split(CUSTOM_MAIL_NAME_TAG).join(recipient.name);
+        const sentTo = override || recipient.email;
+
+        GmailApp.sendEmail(sentTo, personalize(subject), personalize(body), {
+          name: 'ぶち癒やしフェスタin東京事務局',
+          replyTo: CONFIG.REPLY_TO_EMAIL
+        });
+
+        const result = {
+          email: recipient.email,
+          name: recipient.name,
+          sentTo: sentTo,
+          isTest: isTest,
+          success: true
+        };
+
+        // 1通ごとに記録する。途中で止まっても、送った分は次回の送信から外れる
+        if (logSheet) {
+          const sentAt = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm');
+          try {
+            logSheet.appendRow([sentAt, subject, recipient.email, recipient.name]);
+            result.sentAt = sentAt;
+          } catch (logError) {
+            // メールは届いているので失敗扱いにはしない。記録漏れだけ伝える
+            console.error(`Failed to log custom email for ${recipient.email}:`, logError);
+            result.logError = '送信履歴に記録できませんでした（同じ件名で再度送ると、この方にも届きます）';
+          }
+        }
+
+        results.push(result);
+      } catch (rowError) {
+        console.error(`Custom email failed for ${email}:`, rowError);
+        results.push({
+          email: email,
+          name: recipient ? recipient.name : '',
+          success: false,
+          error: rowError.message
+        });
+      }
+    });
+
+    const remainingAfter = getRemainingMailQuota();
+    return {
+      success: true,
+      total: results.length,
+      succeeded: results.filter(r => r.success).length,
+      skipped: results.filter(r => r.skipped).length,
+      failed: results.filter(r => !r.success && !r.skipped).length,
+      results: results,
+      remainingQuota: remainingAfter,
+      availableQuota: getAvailableCustomMailQuota(remainingAfter)
+    };
+
+  } catch (error) {
+    console.error('sendCustomEmails error:', error);
+    return { success: false, error: error.message, results: [] };
+  }
 }
 
 // ========================================

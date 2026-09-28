@@ -171,6 +171,18 @@ async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
             return await resendConfirmation(env, body, corsHeaders);
         }
 
+        // GET /api/admin/mail-recipients - 一斉メールの送信先（マスターDBの過去出展者）
+        if (url.pathname === '/api/admin/mail-recipients' && request.method === 'GET') {
+            const spreadsheetId = url.searchParams.get('spreadsheetId');
+            return await getMailRecipients(env, spreadsheetId, corsHeaders);
+        }
+
+        // POST /api/admin/send-custom-email - 過去出展者へ任意の件名・本文でメール送信
+        if (url.pathname === '/api/admin/send-custom-email' && request.method === 'POST') {
+            const body = await request.json();
+            return await sendCustomEmail(env, body, corsHeaders);
+        }
+
         // POST /api/admin/generate-image - 画像生成
         if (url.pathname === '/api/admin/generate-image' && request.method === 'POST') {
             const body = await request.json();
@@ -848,6 +860,75 @@ async function resendConfirmation(env, body, corsHeaders) {
         });
     } catch (error) {
         console.error('Resend confirmation error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// ========================================
+// 過去出展者への一斉メール（GASへ中継）
+// ========================================
+//
+// GASのWebアプリURLは公開されているため、GASは所有アカウント本人のGoogleトークンが
+// 添えられているときだけ応じる（verifyAdminAccessToken）。ここで管理画面の認証を
+// 通ったリクエストにだけ、GASデプロイ用に連携済みのトークンを付けて渡す。
+
+// 送信先一覧（マスターDBの氏名・メールアドレス）
+async function getMailRecipients(env, spreadsheetId, corsHeaders) {
+    try {
+        const accessToken = await getGoogleUserAccessToken(env);
+        const result = await postToGas(env, {
+            action: 'get_mail_recipients',
+            accessToken,
+            spreadsheetId: spreadsheetId || ''
+        });
+
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Get mail recipients error:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// 任意の件名・本文で送信
+async function sendCustomEmail(env, body, corsHeaders) {
+    const { spreadsheetId, emails, subject, body: mailBody, testEmail } = body || {};
+
+    let invalid = '';
+    if (!Array.isArray(emails) || emails.length === 0) invalid = '送信先が選択されていません';
+    else if (!String(subject || '').trim()) invalid = '件名を入力してください';
+    else if (!String(mailBody || '').trim()) invalid = '本文を入力してください';
+    if (invalid) {
+        return new Response(JSON.stringify({ success: false, error: invalid }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+
+    try {
+        const accessToken = await getGoogleUserAccessToken(env);
+        const result = await postToGas(env, {
+            action: 'send_custom_email',
+            accessToken,
+            spreadsheetId: spreadsheetId || '',
+            emails,
+            subject,
+            body: mailBody,
+            testEmail: testEmail || ''
+        });
+
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Send custom email error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
