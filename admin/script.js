@@ -1964,7 +1964,9 @@ function renderMailQuota() {
     el.textContent = mailAvailableQuota === null
         ? ''
         : `本日、一斉メールで送れるのはあと${mailAvailableQuota}通です`
-            + `（Googleの1日の送信上限のうち、申込の確認メール用に${mailQuotaReserve}通を残しています）。`;
+            + (mailQuotaReserve
+                ? `（Googleの1日の送信上限のうち、申込の確認メール用に${mailQuotaReserve}通を残しています）。`
+                : '（Googleの1日の送信上限。申込受付の開始前なので、確認メール用の枠は残していません）。');
 }
 
 function saveMailDraft() {

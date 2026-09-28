@@ -1950,6 +1950,11 @@ const CUSTOM_MAIL_LOG_HEADERS = ['送信日時', '件名', 'メールアドレ�
 // 一斉メールで上限を使い切ると、その確認メールが送れず申込がエラーになるため、枠を残しておく。
 const CUSTOM_MAIL_QUOTA_RESERVE = 20;
 
+// 申込の受付を始める日（日本時間）。この日より前は申込が来ないので、上の枠を残さず全部を一斉メールに使う。
+// 次の開催回でも受付開始前に案内を送るなら、その回の受付開始日に書き換える
+// （過ぎた日付のままなら、常に枠を残す安全側の動きになる）。
+const CUSTOM_MAIL_RESERVE_FROM = '2026-10-01';
+
 /**
  * 管理画面（Worker）からの呼び出しであることを確かめる。
  *
@@ -2096,9 +2101,15 @@ function getRemainingMailQuota() {
   }
 }
 
+// 本日、申込の確認メール用に残しておく通数（受付開始前は0）
+function getCustomMailQuotaReserve() {
+  const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  return today < CUSTOM_MAIL_RESERVE_FROM ? 0 : CUSTOM_MAIL_QUOTA_RESERVE;
+}
+
 // 本日、一斉メールに使える通数（申込の確認メール用の枠を除く）。取得できなければ null
 function getAvailableCustomMailQuota(remainingQuota) {
-  return remainingQuota === null ? null : Math.max(0, remainingQuota - CUSTOM_MAIL_QUOTA_RESERVE);
+  return remainingQuota === null ? null : Math.max(0, remainingQuota - getCustomMailQuotaReserve());
 }
 
 /**
@@ -2131,7 +2142,7 @@ function getMailRecipients(accessToken, spreadsheetId) {
       skipped: loaded.skipped,
       remainingQuota: remainingQuota,
       availableQuota: getAvailableCustomMailQuota(remainingQuota),
-      quotaReserve: CUSTOM_MAIL_QUOTA_RESERVE
+      quotaReserve: getCustomMailQuotaReserve()
     };
   } catch (error) {
     console.error('getMailRecipients error:', error);
@@ -2221,14 +2232,16 @@ function sendCustomEmails(params) {
     // 送信途中で日次上限に当たると「一部だけ届いた」状態になるため、先に残数を確認する。
     // 本送信では、申込の確認メール用の枠には手を付けない
     const remainingQuota = getRemainingMailQuota();
+    const reserve = getCustomMailQuotaReserve();
     const usableQuota = isTest ? remainingQuota : getAvailableCustomMailQuota(remainingQuota);
     if (usableQuota !== null && usableQuota < toSend.length) {
       return {
         success: false,
         error: isTest
           ? `本日の送信可能数が足りません（残り${remainingQuota}通）。明日以降にお試しください。`
-          : `本日、一斉メールに使える送信数が足りません（残り${usableQuota}通 / 送信${toSend.length}通。`
-            + `申込の確認メール用に${CUSTOM_MAIL_QUOTA_RESERVE}通を残しています）。明日以降に同じ件名で続きを送ってください。`,
+          : `本日、一斉メールに使える送信数が足りません（残り${usableQuota}通 / 送信${toSend.length}通`
+            + (reserve ? `。申込の確認メール用に${reserve}通を残しています` : '')
+            + '）。明日以降に同じ件名で続きを送ってください。',
         results: []
       };
     }
