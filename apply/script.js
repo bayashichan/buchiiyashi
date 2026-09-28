@@ -66,6 +66,15 @@ function hasInvalidLinkChar(str) {
 // ========================================
 // config.json読み込み完了後に初期化
 window.addEventListener('configLoaded', () => {
+    updateHeaderInfo();
+    // 受付期間の外（開始前・終了後）なら、フォームの代わりに予告・受付終了の画面を出す。
+    // フォームの初期化（空き状況の取得・LINE連携など）は、受付が始まってから行う
+    if (applyApplicationPeriod()) {
+        initApplicationForm();
+    }
+});
+
+function initApplicationForm() {
     initCategories();
     initBoothAccordion();
     initCharCounters();
@@ -74,8 +83,6 @@ window.addEventListener('configLoaded', () => {
     initEmailConfirmation();
     initFileSizeCheck();
     initRepeaterSearch();
-    updateHeaderInfo();
-    updateEarlyBirdBanner();
     updateOptionsUI();
     calculatePrice();
     initSpecialtyGenres();
@@ -84,7 +91,7 @@ window.addEventListener('configLoaded', () => {
     // LIFF初期化（取得中の表示を先に出してから開始する）
     renderLiffStatus();
     initLiff();
-});
+}
 
 // 得意ジャンルのチェックボックス変更時に隠しinputを同期
 function initSpecialtyGenres() {
@@ -213,13 +220,14 @@ function escapeHtml(str) {
 
 /**
  * 早割バナーの表示/非表示
+ * periodStatus は申込の受付期間（getApplicationPeriod）。受付開始前は「期間中」ではなく締切だけを案内し、受付終了後は出さない
  */
-function updateEarlyBirdBanner() {
+function updateEarlyBirdBanner(periodStatus = 'open') {
     const deadline = new Date(CONFIG.earlyBirdDeadline);
     const now = new Date();
     const banner = document.getElementById('earlyBirdBanner');
 
-    if (now > deadline) {
+    if (now > deadline || periodStatus === 'closed') {
         banner.style.display = 'none';
     } else {
         // 日付を「M/D」形式にする
@@ -230,7 +238,9 @@ function updateEarlyBirdBanner() {
         // バナーのテキストを更新
         const badge = banner.querySelector('.early-bird-badge');
         if (badge) {
-            badge.textContent = `🎉 早割期間中！${dateStr}まで`;
+            badge.textContent = periodStatus === 'before'
+                ? `🎉 早割は${dateStr}まで`
+                : `🎉 早割期間中！${dateStr}まで`;
         }
     }
 }
@@ -281,6 +291,165 @@ function isEarlyBird() {
     const deadline = new Date(CONFIG.earlyBirdDeadline);
     const now = new Date();
     return now <= deadline;
+}
+
+// ========================================
+// 申込の受付期間（管理画面の「申込受付期間」）
+// ========================================
+// config.json の applicationStart / applicationEnd は日本時間の "2026-10-01 10:00:00" 形式。
+// 端末のタイムゾーンに左右されないよう、日本時間として読む（worker/src/index.js の parseJstDateTime と同じ解釈）。
+// 期間外の申込はWorkerも受け付けないので、端末の時計がずれていても申込が紛れ込むことはない。
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// "2026-10-01 10:00:00" → Date。空欄・読めない値は null（その側は制限なし）
+function parseJstDateTime(text) {
+    const m = String(text || '').trim()
+        .match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!m) return null;
+    const date = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}+09:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Date → "2026年10月1日（木）10:00"（日本時間）
+function formatJstDateTime(date) {
+    const jst = new Date(date.getTime() + JST_OFFSET_MS);
+    const weekday = '日月火水木金土'[jst.getUTCDay()];
+    const hh = String(jst.getUTCHours()).padStart(2, '0');
+    const mm = String(jst.getUTCMinutes()).padStart(2, '0');
+    return `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日（${weekday}）${hh}:${mm}`;
+}
+
+/**
+ * いまが受付期間かどうか。{ status: 'before' | 'open' | 'closed', start, end }（start / end は Date か null）
+ * 開始日時ちょうどから、終了日時まで受け付ける。未設定の側は制限なし（Workerの resolveApplicationPeriod と同じ判定）
+ */
+function getApplicationPeriod(now = new Date()) {
+    const start = parseJstDateTime(CONFIG.applicationStart);
+    const end = parseJstDateTime(CONFIG.applicationEnd);
+    let status = 'open';
+    if (start && now < start) status = 'before';
+    else if (end && now > end) status = 'closed';
+    return { status, start, end };
+}
+
+// 管理画面の「予告画面を確認」から開いたとき（?periodPreview=before|closed）は、期間に関係なくその画面を見せる。
+// 見た目の確認用で、受付前・終了後にフォームを開ける使い方はできない
+function getPeriodPreview() {
+    const value = new URLSearchParams(window.location.search).get('periodPreview');
+    return value === 'before' || value === 'closed' ? value : '';
+}
+
+// カウントダウンの setInterval と、タブに戻ったときに数え直す処理（止めるときに外す）
+let periodCountdownTimer = null;
+let periodCountdownTick = null;
+
+/**
+ * 受付期間に合わせて、フォームと予告・受付終了の画面を切り替える。受付中なら true。
+ * それまでは body の period-checking でフォームを隠しておき、開始前に一瞬フォームが見えないようにしている
+ */
+function applyApplicationPeriod() {
+    stopPeriodCountdown();
+
+    const period = getApplicationPeriod();
+    const preview = getPeriodPreview();
+    const status = preview || period.status;
+    const outside = status !== 'open';
+
+    document.body.classList.remove('period-checking');
+    document.body.classList.toggle('period-outside', outside);
+    document.getElementById('periodNotice').classList.toggle('hidden', !outside);
+    updateEarlyBirdBanner(status);
+    renderApplicationDeadline(status === 'open' ? period.end : null);
+
+    if (outside) {
+        renderPeriodNotice(status, period, !!preview);
+    }
+    return !outside;
+}
+
+// 受付中のフォームのヘッダーに締切を出す（終了日時が未設定なら出さない）
+function renderApplicationDeadline(end) {
+    const el = document.getElementById('applicationDeadline');
+    if (!el) return;
+    el.textContent = end ? `📅 申込締切：${formatJstDateTime(end)}` : '';
+    el.classList.toggle('hidden', !end);
+}
+
+// 予告（開始前）・受付終了の画面の中身
+function renderPeriodNotice(status, period, isPreview) {
+    const before = status === 'before';
+    const { start, end } = period;
+    const setText = (id, text) => { document.getElementById(id).textContent = text; };
+
+    document.querySelector('#periodNotice .period-notice').classList.toggle('is-closed', !before);
+
+    setText('periodNoticeEyebrow', before ? 'COMING SOON' : '受付終了');
+    // 見出しはスマホで語の途中から折り返さないよう、改行位置を決めておく（CSSの white-space: pre-line）
+    setText('periodNoticeTitle', before ? '出展者募集\n受付開始のお知らせ' : '出展申込の受付は\n終了しました');
+
+    // 開始日時（開始前のみ）
+    const startBox = document.getElementById('periodStartBox');
+    startBox.classList.toggle('hidden', !(before && start));
+    if (before && start) setText('periodStartText', formatJstDateTime(start));
+
+    // 受付期間（開始前は終了日時があるとき、終了後は常に）。スマホで日付の途中から折り返さないよう、日時ごとに改行する
+    const rangeEl = document.getElementById('periodRangeText');
+    let range = '';
+    if (start && end) range = `受付期間\n${formatJstDateTime(start)} 〜\n${formatJstDateTime(end)}`;
+    else if (end) range = `受付締切\n${formatJstDateTime(end)}`;
+    rangeEl.textContent = range;
+    rangeEl.classList.toggle('hidden', !range || (before && !end));
+
+    if (before) {
+        setText('periodNoticeBody', start
+            ? '受付開始の時刻になると、このページがそのまま申込フォームに切り替わります。ページを開いたままお待ちいただけます。'
+            : '受付開始の日時は、決まり次第お知らせします。');
+        setText('periodLineLink', '公式LINEで最新情報を見る');
+    } else {
+        setText('periodNoticeBody', 'お申し込みいただいた皆さま、ありがとうございました。出展に関するお問い合わせは、公式LINEまでお願いいたします。');
+        setText('periodLineLink', '公式LINEで問い合わせる');
+    }
+    document.getElementById('periodLineLink').href = OFFICIAL_LINE_URL;
+
+    const countdown = document.getElementById('periodCountdown');
+    const counting = before && start && start.getTime() > Date.now();
+    countdown.classList.toggle('hidden', !counting);
+    if (counting) startPeriodCountdown(start, isPreview);
+}
+
+/**
+ * 受付開始までのカウントダウン。開始の時刻になったら、ページを開いたままでも申込フォームに切り替える
+ * （プレビューでは切り替えない）。スリープ明け・タブの切り替え後も、端末の時計で残りを数え直す
+ */
+function startPeriodCountdown(start, isPreview) {
+    const pad = n => String(n).padStart(2, '0');
+    const tick = () => {
+        const remainingSec = Math.max(0, Math.ceil((start.getTime() - Date.now()) / 1000));
+        const days = Math.floor(remainingSec / 86400);
+        document.getElementById('periodCountdownDays').textContent = days;
+        document.getElementById('periodCountdownDaysUnit').classList.toggle('hidden', days === 0);
+        document.getElementById('periodCountdownHours').textContent = pad(Math.floor(remainingSec % 86400 / 3600));
+        document.getElementById('periodCountdownMinutes').textContent = pad(Math.floor(remainingSec % 3600 / 60));
+        document.getElementById('periodCountdownSeconds').textContent = pad(remainingSec % 60);
+
+        if (remainingSec > 0) return;
+        stopPeriodCountdown();
+        if (!isPreview && applyApplicationPeriod()) {
+            initApplicationForm();
+            window.scrollTo(0, 0);
+        }
+    };
+    periodCountdownTimer = setInterval(tick, 1000);
+    periodCountdownTick = tick;
+    document.addEventListener('visibilitychange', tick);
+    tick();
+}
+
+function stopPeriodCountdown() {
+    if (periodCountdownTimer) clearInterval(periodCountdownTimer);
+    if (periodCountdownTick) document.removeEventListener('visibilitychange', periodCountdownTick);
+    periodCountdownTimer = null;
+    periodCountdownTick = null;
 }
 
 // ========================================

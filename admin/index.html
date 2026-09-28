@@ -64,6 +64,31 @@
                     <input type="text" id="eventLocation" placeholder="例: 東京都立産業貿易センター浜松町館 2F">
                 </div>
 
+                <div class="period-setting">
+                    <h3>📅 申込受付期間</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="applicationStart">受付開始日時</label>
+                            <input type="datetime-local" id="applicationStart">
+                        </div>
+                        <div class="form-group">
+                            <label for="applicationEnd">受付終了日時</label>
+                            <input type="datetime-local" id="applicationEnd">
+                        </div>
+                    </div>
+                    <p id="applicationPeriodStatus" class="period-status"></p>
+                    <p class="hint">
+                        日本時間で入力してください。空欄にした側は制限なしです（開始が空欄ならすぐ受付、終了が空欄なら締め切りません）。<br>
+                        開始前は、申込フォームの代わりに受付開始日時とカウントダウンを載せた予告画面が表示され、開始の時刻になると自動でフォームに切り替わります。<br>
+                        終了日時は、その分の終わりまで受け付けます（例：23:59 → 23:59:59まで）。過ぎると「受付終了」の画面になり、フォームを開いたまま締切を過ぎた申込も受け付けません。
+                    </p>
+                    <div class="flex-row">
+                        <a id="previewPeriodBeforeLink" href="#" target="_blank" rel="noopener" class="btn-secondary small">予告画面を確認</a>
+                        <a id="previewPeriodClosedLink" href="#" target="_blank" rel="noopener" class="btn-secondary small">受付終了画面を確認</a>
+                    </div>
+                    <p class="hint period-preview-hint">確認画面は保存済みの設定で表示します。日時を変えたときは、保存して1〜2分おいてから開いてください。</p>
+                </div>
+
                 <div class="form-group">
                     <label>現在のデータ保存先 (スプレッドシートID)</label>
                     <div class="flex-row">

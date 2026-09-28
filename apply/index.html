@@ -20,10 +20,11 @@
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="style.css?v=20260928b">
+  <link rel="stylesheet" href="style.css?v=20260928c">
 </head>
 
-<body>
+<body class="period-checking">
+  <!-- body の period-checking：受付期間を確かめるまで（script.js の applyApplicationPeriod）、フォームを出さない -->
   <!-- ローディングオーバーレイ -->
   <div id="loadingOverlay" class="loading-overlay">
     <div class="loading-spinner"></div>
@@ -47,10 +48,41 @@
     <div id="earlyBirdBanner" class="mt-3">
       <span class="early-bird-badge">🎉 早割期間中！5/31まで</span>
     </div>
+
+    <!-- 受付の締切（管理画面の「申込受付期間」で終了日時を入れたときだけ表示） -->
+    <p id="applicationDeadline" class="application-deadline hidden"></p>
   </header>
 
+  <!-- 受付期間外の案内（開始前は予告、終了後は受付終了）。script.js の showPeriodNotice が中身を切り替える -->
+  <div id="periodNotice" class="period-notice-wrap hidden" aria-live="polite">
+    <section class="period-notice">
+      <p id="periodNoticeEyebrow" class="period-notice-eyebrow"></p>
+      <h2 id="periodNoticeTitle" class="period-notice-title"></h2>
+
+      <div id="periodStartBox" class="period-start hidden">
+        <p class="period-start-label">受付開始</p>
+        <p id="periodStartText" class="period-start-date"></p>
+      </div>
+
+      <div id="periodCountdown" class="period-countdown hidden" role="timer" aria-label="受付開始までの残り時間">
+        <p class="period-countdown-label">受付開始まで あと</p>
+        <div class="period-countdown-units">
+          <span id="periodCountdownDaysUnit" class="period-countdown-unit"><b id="periodCountdownDays">0</b><small>日</small></span>
+          <span class="period-countdown-unit"><b id="periodCountdownHours">00</b><small>時間</small></span>
+          <span class="period-countdown-unit"><b id="periodCountdownMinutes">00</b><small>分</small></span>
+          <span class="period-countdown-unit"><b id="periodCountdownSeconds">00</b><small>秒</small></span>
+        </div>
+      </div>
+
+      <p id="periodRangeText" class="period-range hidden"></p>
+      <p id="periodNoticeBody" class="period-notice-body"></p>
+
+      <a id="periodLineLink" href="https://lin.ee/uqhsDx3" target="_blank" rel="noopener" class="period-line-btn"></a>
+    </section>
+  </div>
+
   <!-- メインフォーム -->
-  <main class="form-container max-w-2xl mx-auto px-4 py-6">
+  <main id="applicationMain" class="form-container max-w-2xl mx-auto px-4 py-6">
     <form id="applicationForm" novalidate>
       <!-- LINEユーザー情報（LIFF用） -->
       <input type="hidden" name="lineUserId" id="lineUserId">
@@ -723,7 +755,7 @@
   </main>
 
   <!-- 申し込み前の注意 -->
-  <div class="max-w-2xl mx-auto px-4 pb-2">
+  <div id="preSubmitNote" class="max-w-2xl mx-auto px-4 pb-2">
     <p class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 text-center">
       ⚠️ <strong>お申し込み後の内容変更（画像・メニュー等）は原則できません。</strong>ご確認の上お申し込みください。
     </p>
@@ -972,8 +1004,8 @@
 
   <!-- Scripts -->
   <!-- LIFF SDKは<head>で読み込み済みなのでここでは読まない -->
-  <script src="config.js?v=20260928b"></script>
-  <script src="script.js?v=20260928b"></script>
+  <script src="config.js?v=20260928c"></script>
+  <script src="script.js?v=20260928c"></script>
 </body>
 
 </html>
