@@ -555,6 +555,27 @@ code {
     font-size: 0.9em;
 }
 
+/* 一斉メールのプレビュー */
+.mail-preview {
+    padding: 12px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.mail-preview-subject {
+    font-weight: 500;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.mail-preview-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* プレースホルダーツールバー */
 .placeholder-toolbar {
     display: flex;

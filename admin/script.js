@@ -91,6 +91,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('selectAllResendExhibitors')?.addEventListener('change', toggleAllResendExhibitors);
     document.getElementById('resendConfirmationBtn')?.addEventListener('click', resendConfirmationEmails);
 
+    // 過去の出展者への一斉メール
+    document.getElementById('loadMailRecipientsBtn')?.addEventListener('click', loadMailRecipients);
+    document.getElementById('mailFilter')?.addEventListener('input', renderMailRecipientList);
+    document.getElementById('selectAllMailRecipients')?.addEventListener('change', toggleAllMailRecipients);
+    document.getElementById('mailRecipientList')?.addEventListener('change', (e) => {
+        if (e.target.name === 'mailRecipient') toggleMailRecipient(e.target.value, e.target.checked);
+    });
+    document.getElementById('mailInsertNameBtn')?.addEventListener('click', () => {
+        insertTextAtCursor(document.getElementById('mailBody'), MAIL_NAME_TAG);
+        onMailDraftChange();
+    });
+    document.getElementById('mailSubject')?.addEventListener('input', onMailDraftChange);
+    document.getElementById('mailBody')?.addEventListener('input', onMailDraftChange);
+    document.getElementById('sendTestMailBtn')?.addEventListener('click', () => sendCustomMail(true));
+    document.getElementById('sendCustomMailBtn')?.addEventListener('click', () => sendCustomMail(false));
+    restoreMailDraft();
+
     // プレースホルダーボタン
     document.querySelectorAll('.placeholder-btn').forEach(btn => {
         btn.addEventListener('click', () => insertPlaceholder(btn.dataset.tag));
@@ -105,7 +122,11 @@ let lastFocusedTextarea = 'captionTemplateInsta'; // デフォルト
 
 // プレースホルダー挿入
 function insertPlaceholder(tag) {
-    const textarea = document.getElementById(lastFocusedTextarea);
+    insertTextAtCursor(document.getElementById(lastFocusedTextarea), tag);
+}
+
+// テキストエリアのカーソル位置に文字を挿入する
+function insertTextAtCursor(textarea, tag) {
     if (!textarea) return;
 
     const start = textarea.selectionStart;
@@ -1696,6 +1717,345 @@ function renderResendResults(results) {
             <div class="exhibitor-item">
                 <span>${r.success ? '✅' : '❌'}</span>
                 <span class="exhibitor-name">${escapeHtml(r.exhibitorName || `${r.rowId}行目`)}</span>
+                <span class="exhibitor-seat">${r.success
+                    ? escapeHtml(r.sentTo || '') + (r.isTest ? '（テスト送信）' : '')
+                    : escapeHtml(r.error || '送信できませんでした')}</span>
+            </div>`).join('')}
+        </div>`;
+}
+
+// ========================================
+// 過去の出展者への一斉メール
+// ========================================
+
+// 1リクエストあたりの件数。GAS側の上限(20件)より小さくして、進捗を細かく出す。
+const MAIL_CHUNK_SIZE = 5;
+
+// 件名・本文のこの文字を、送信先ごとのお名前に置き換える（GASの CUSTOM_MAIL_NAME_TAG と揃える）
+const MAIL_NAME_TAG = '{{氏名}}';
+
+// 書きかけの件名・本文の保存先（再読み込みで消えないように）
+const MAIL_DRAFT_KEY = 'customMailDraft';
+
+let mailRecipients = [];
+// 絞り込みで非表示になっても選択を保つため、メールアドレスをSetで持つ
+let mailSelectedEmails = new Set();
+// 本日あと何通送れるか（GASから取得。不明ならnull）
+let mailRemainingQuota = null;
+
+// マスターDBから過去の出展者を読み込む
+async function loadMailRecipients() {
+    showLoading();
+    try {
+        const spreadsheetId = document.getElementById('databaseSpreadsheetId')?.value || '';
+        let url = `${API_BASE}/api/admin/mail-recipients`;
+        if (spreadsheetId) {
+            url += `?spreadsheetId=${encodeURIComponent(spreadsheetId)}`;
+        }
+
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (response.status === 401) return handleLogout();
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || '不明なエラー');
+        }
+
+        mailRecipients = result.recipients || [];
+        mailSelectedEmails = new Set();
+        mailRemainingQuota = result.remainingQuota ?? null;
+
+        const skipped = result.skipped
+            ? `（メールアドレスが空欄・形式不正の${result.skipped}行は除外しました）`
+            : '';
+        document.getElementById('mailRecipientsInfo').textContent = `${mailRecipients.length}名を読み込みました${skipped}`;
+
+        renderMailRecipientList();
+        renderMailQuota();
+    } catch (error) {
+        console.error('Load mail recipients error:', error);
+        alert('過去の出展者の取得に失敗しました: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 絞り込み条件に一致する送信先
+function getVisibleMailRecipients() {
+    const keyword = (document.getElementById('mailFilter')?.value || '').trim().toLowerCase();
+    if (!keyword) return mailRecipients;
+
+    return mailRecipients.filter(r => [r.name, r.email, r.exhibitorName, ...(r.events || [])]
+        .some(v => (v || '').toLowerCase().includes(keyword)));
+}
+
+// 選択中の送信先（一覧と同じ、新しい順）
+function getSelectedMailRecipients() {
+    return mailRecipients.filter(r => mailSelectedEmails.has(r.email));
+}
+
+function renderMailRecipientList() {
+    const container = document.getElementById('mailRecipientList');
+    const selectAllContainer = document.getElementById('mailSelectAllContainer');
+    if (!container) return;
+
+    if (mailRecipients.length === 0) {
+        container.innerHTML = '<p class="hint">送信できる出展者データがありません</p>';
+        if (selectAllContainer) selectAllContainer.style.display = 'none';
+        updateMailSelection();
+        return;
+    }
+
+    if (selectAllContainer) selectAllContainer.style.display = 'flex';
+
+    const visible = getVisibleMailRecipients();
+    if (visible.length === 0) {
+        container.innerHTML = '<p class="hint">絞り込み条件に一致する出展者がいません</p>';
+        updateMailSelection();
+        return;
+    }
+
+    container.innerHTML = visible.map(r => {
+        const checked = mailSelectedEmails.has(r.email) ? 'checked' : '';
+        // お名前が空だと {{氏名}} が空欄で届くので、目に付くようにする
+        const name = r.name
+            ? escapeHtml(r.name)
+            : '<span style="color:#c53030;">お名前なし（C列が空欄）</span>';
+        const details = [r.exhibitorName, (r.events || []).join('・')]
+            .filter(Boolean)
+            .map(escapeHtml)
+            .join(' / ');
+
+        return `
+        <label class="exhibitor-item">
+            <input type="checkbox" name="mailRecipient" value="${escapeHtml(r.email)}" ${checked}>
+            <span class="exhibitor-name">${name}<br><span class="exhibitor-seat">${escapeHtml(r.email)}</span></span>
+            <span class="exhibitor-seat">${details}</span>
+        </label>`;
+    }).join('');
+
+    updateMailSelection();
+}
+
+function toggleMailRecipient(email, checked) {
+    if (checked) {
+        mailSelectedEmails.add(email);
+    } else {
+        mailSelectedEmails.delete(email);
+    }
+    updateMailSelection();
+}
+
+// 表示中の送信先をまとめて選択／解除
+function toggleAllMailRecipients(e) {
+    const isChecked = e.target.checked;
+    document.querySelectorAll('#mailRecipientList input[name="mailRecipient"]').forEach(cb => {
+        cb.checked = isChecked;
+        if (isChecked) {
+            mailSelectedEmails.add(cb.value);
+        } else {
+            mailSelectedEmails.delete(cb.value);
+        }
+    });
+    updateMailSelection();
+}
+
+function updateMailSelection() {
+    const countEl = document.getElementById('mailSelectedCount');
+    if (countEl) countEl.textContent = `${mailSelectedEmails.size}名を選択中`;
+    renderMailPreview();
+}
+
+function personalizeMail(text, name) {
+    return String(text || '').split(MAIL_NAME_TAG).join(name || '');
+}
+
+// 選択中の先頭の方に届く文面を表示する
+function renderMailPreview() {
+    const previewEl = document.getElementById('mailPreview');
+    if (!previewEl) return;
+
+    const first = getSelectedMailRecipients()[0];
+    if (!first) {
+        previewEl.innerHTML = '<p class="hint">送信先を選ぶと、ここに実際の文面が表示されます。</p>';
+        return;
+    }
+
+    const subject = personalizeMail(document.getElementById('mailSubject').value.trim(), first.name);
+    const body = personalizeMail(document.getElementById('mailBody').value, first.name);
+
+    previewEl.innerHTML = `
+        <p class="hint" style="margin-bottom: 8px;">宛先: ${escapeHtml(first.name || '（お名前なし）')} &lt;${escapeHtml(first.email)}&gt;</p>
+        <div class="mail-preview-subject">件名: ${escapeHtml(subject) || '（未入力）'}</div>
+        <div class="mail-preview-body">${escapeHtml(body) || '（未入力）'}</div>`;
+}
+
+function renderMailQuota() {
+    const el = document.getElementById('mailQuota');
+    if (!el) return;
+    el.textContent = mailRemainingQuota === null
+        ? ''
+        : `本日あと${mailRemainingQuota}通送信できます（Googleの1日あたりの送信上限）。`;
+}
+
+function onMailDraftChange() {
+    try {
+        localStorage.setItem(MAIL_DRAFT_KEY, JSON.stringify({
+            subject: document.getElementById('mailSubject').value,
+            body: document.getElementById('mailBody').value
+        }));
+    } catch (e) {
+        // 保存できないブラウザ設定でも送信はできるので無視する
+    }
+    renderMailPreview();
+}
+
+function restoreMailDraft() {
+    try {
+        const draft = JSON.parse(localStorage.getItem(MAIL_DRAFT_KEY) || 'null');
+        if (!draft) return;
+        document.getElementById('mailSubject').value = draft.subject || '';
+        document.getElementById('mailBody').value = draft.body || '';
+    } catch (e) {
+        // 読めなければ空のまま始める
+    }
+}
+
+// 選択した出展者へ送信する。isTest のときは先頭の方の差し込みで1通だけテスト送信先へ送る
+async function sendCustomMail(isTest) {
+    const statusEl = document.getElementById('mailStatus');
+    const targets = getSelectedMailRecipients();
+    const subject = document.getElementById('mailSubject').value.trim();
+    const body = document.getElementById('mailBody').value;
+    const testEmail = isTest ? document.getElementById('mailTestEmail').value.trim() : '';
+
+    if (targets.length === 0) {
+        alert(isTest
+            ? 'テスト送信で差し込むお名前を決めるため、送信先を1名以上選択してください'
+            : '送信する出展者を選択してください');
+        return;
+    }
+    if (!subject) {
+        alert('件名を入力してください');
+        return;
+    }
+    if (!body.trim()) {
+        alert('本文を入力してください');
+        return;
+    }
+    if (isTest && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+        alert('テスト送信先のメールアドレスを正しく入力してください');
+        return;
+    }
+
+    const sendList = isTest ? targets.slice(0, 1) : targets;
+    if (mailRemainingQuota !== null && sendList.length > mailRemainingQuota) {
+        alert(`本日の送信可能数（残り${mailRemainingQuota}通）を超えています。送信先を減らすか、明日以降にお送りください。`);
+        return;
+    }
+
+    // 出展者本人へ届き取り消せないので、送信前に件名と宛先を確認してもらう
+    if (!isTest) {
+        const names = targets.slice(0, 10).map(r => `・${r.name || r.email}`).join('\n');
+        const more = targets.length > 10 ? `\n…ほか${targets.length - 10}名` : '';
+        if (!confirm(`${targets.length}名の出展者さんへメールを送信します。\n\n件名: ${subject}\n\n${names}${more}\n\n送信後は取り消せません。よろしいですか？`)) {
+            return;
+        }
+    }
+
+    const spreadsheetId = document.getElementById('databaseSpreadsheetId')?.value || '';
+    const allResults = [];
+    let sent = 0;
+
+    showLoading();
+    statusEl.className = 'status loading';
+    statusEl.style.whiteSpace = 'pre-line';
+    statusEl.textContent = `送信中... (0/${sendList.length})`;
+    renderMailResults([]);
+
+    try {
+        // GAS側のロック（申込の受付と共有）を長く握らないよう、小分けにして送る
+        for (let i = 0; i < sendList.length; i += MAIL_CHUNK_SIZE) {
+            const chunk = sendList.slice(i, i + MAIL_CHUNK_SIZE);
+
+            const response = await fetch(`${API_BASE}/api/admin/send-custom-email`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    spreadsheetId,
+                    emails: chunk.map(r => r.email),
+                    subject,
+                    body,
+                    testEmail
+                })
+            });
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || '不明なエラー');
+            }
+
+            allResults.push(...(result.results || []));
+            if (result.remainingQuota !== undefined) mailRemainingQuota = result.remainingQuota;
+            sent += chunk.length;
+            statusEl.textContent = `送信中... (${sent}/${sendList.length})`;
+        }
+
+        const succeeded = allResults.filter(r => r.success).length;
+        const failed = allResults.length - succeeded;
+
+        statusEl.className = failed > 0 ? 'status error' : 'status success';
+        if (isTest) {
+            statusEl.textContent = failed > 0
+                ? '❌ テスト送信に失敗しました'
+                : `✅ テスト送信しました（${testEmail}）`;
+        } else {
+            statusEl.textContent = failed > 0
+                ? `⚠️ ${succeeded}名へ送信しました（${failed}名は失敗）`
+                : `✅ ${succeeded}名への送信が完了しました`;
+        }
+    } catch (error) {
+        console.error('Send custom mail error:', error);
+        statusEl.className = 'status error';
+        // 途中まで送れている可能性があるので、成功分も残して表示する
+        statusEl.textContent = `❌ エラー: ${error.message}\n（${allResults.filter(r => r.success).length}件は送信済み）`;
+    } finally {
+        renderMailResults(allResults);
+        // 送れた方は選択から外し、続けて押しても二重に届かないようにする
+        if (!isTest) {
+            allResults.filter(r => r.success).forEach(r => mailSelectedEmails.delete(r.email));
+            renderMailRecipientList();
+        }
+        renderMailQuota();
+        hideLoading();
+    }
+}
+
+function renderMailResults(results) {
+    const resultsEl = document.getElementById('mailResults');
+    if (!resultsEl) return;
+
+    if (!results || results.length === 0) {
+        resultsEl.innerHTML = '';
+        return;
+    }
+
+    resultsEl.innerHTML = `
+        <div class="exhibitor-list">
+            ${results.map(r => `
+            <div class="exhibitor-item">
+                <span>${r.success ? '✅' : '❌'}</span>
+                <span class="exhibitor-name">${escapeHtml(r.name || r.email)}</span>
                 <span class="exhibitor-seat">${r.success
                     ? escapeHtml(r.sentTo || '') + (r.isTest ? '（テスト送信）' : '')
                     : escapeHtml(r.error || '送信できませんでした')}</span>
