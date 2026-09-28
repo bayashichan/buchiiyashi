@@ -73,6 +73,12 @@ const CONFIG = {
 
 // キャンセル待ちの申込としてWorkerが送ってくる action（worker/src/index.js の GAS_ACTION_APPLY_WAITLIST と揃える）
 const ACTION_APPLY_WAITLIST = 'apply_waitlist';
+// 定員（残枠）を設定したブースへの申込としてWorkerが送ってくる action（worker/src/index.js の GAS_ACTION_APPLY_LIMITED と揃える）。
+// 保存の直前に「申込データ」の件数を数え、定員に達していればキャンセル待ち（または受付終了）にする。
+// action にしてあるのは、定員を知らない古いデプロイが定員を超えて通常の申込（振込先入りの案内）を受けないようにするため。
+const ACTION_APPLY_LIMITED = 'apply_limited';
+// 定員に達していて、キャンセル待ちも受け付けないときのエラーコード（Workerが申込者向けの文言に置き換える）
+const ERROR_CODE_BOOTH_FULL = 'booth_full';
 // マスターDBの「申込区分」列に入れる値（通常の申込は空欄）
 const WAITLIST_LABEL = 'キャンセル待ち';
 
@@ -175,9 +181,18 @@ function doGet(e) {
     if (action === 'get_exhibitors') {
       const spreadsheetId = e.parameter.spreadsheetId || CONFIG.SPREADSHEET_ID;
       const result = getExhibitorList(spreadsheetId);
-      
+
       return ContentService
         .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ブースごとの申込数（申込フォームの残枠表示・管理画面の満枠設定用）
+    if (action === 'get_booth_counts') {
+      const counts = countApplicationsByBooth(e.parameter.spreadsheetId);
+
+      return ContentService
+        .createTextOutput(JSON.stringify({ success: true, counts: counts }))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -479,11 +494,60 @@ function getExhibitorList(spreadsheetId) {
     }
     
     return { success: true, exhibitors: exhibitors };
-    
+
   } catch (error) {
     console.error('getExhibitorList error:', error);
     return { success: false, error: error.message, exhibitors: [] };
   }
+}
+
+// ========================================
+// ブースごとの申込数（定員・残枠）
+// ========================================
+// 「出展ブース」列の定位置（addEventHeaderRow の並び）。見出しが見つからないときに使う
+const EVENT_BOOTH_COLUMN_INDEX = 8;
+
+/**
+ * イベント用スプレッドシートの「申込データ」を、出展ブースごとに数える。
+ *
+ * 定員の判定と、申込フォームの残枠表示に使う。キャンセル待ちは別シートなので数えない。
+ * キャンセルが出たら行を消す（または別のシートへ移す）と、その分の枠が空く。
+ * シートに残っているのはブースの表示名（config.json の booths[].name）なので、名前ごとに返す。
+ */
+function countApplicationsByBooth(spreadsheetId) {
+  const ss = SpreadsheetApp.openById(spreadsheetId || CONFIG.SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+  const counts = {};
+  if (!sheet || sheet.getLastRow() <= 1) return counts;
+
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const found = headers.indexOf('出展ブース');
+  const col = (found > -1 ? found : EVENT_BOOTH_COLUMN_INDEX) + 1;
+
+  sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues().forEach(row => {
+    const name = String(row[0] || '').trim();
+    if (name) counts[name] = (counts[name] || 0) + 1;
+  });
+  return counts;
+}
+
+/**
+ * 定員を設定したブースへの申込を、どう受け付けるか。'open'（通常）/ 'waitlist'（キャンセル待ち）/ 'closed'（受付終了）。
+ *
+ * 必ず doPost のスクリプトロックの中で呼ぶ（数えてから保存するまでに、ほかの申込を割り込ませない）。
+ * フォームやWorkerで数えると、最後の1枠に同時に申し込んだ2人がどちらも通ってしまうため。
+ * 定員（boothCapacity）と、満枠のときにキャンセル待ちを受けるか（waitlistEnabled）は、Workerが最新の設定から付けてくる。
+ */
+function resolveBoothCapacity(params) {
+  const capacity = parseInt(params.boothCapacity, 10);
+  if (!(capacity >= 0)) return 'open';
+
+  const counts = countApplicationsByBooth(params.currentSpreadsheetId);
+  const applied = counts[String(params.boothName || '').trim()] || 0;
+  if (applied < capacity) return 'open';
+
+  return params.waitlistEnabled === '1' ? 'waitlist' : 'closed';
 }
 
 
@@ -678,18 +742,35 @@ function doPost(e) {
     // 満枠のブースへの申込は、Workerが action=apply_waitlist を付けて送ってくる（キャンセル待ち）。
     // action にしてあるのは、キャンセル待ちに対応していない古いデプロイが受け取ったとき、
     // 下の「未対応のアクション」で止めるため。通常の申込として受けると、振込先入りの確認メールが届いてしまう。
-    const isWaitlist = params.action === ACTION_APPLY_WAITLIST;
+    // 定員を設定したブースへの申込は、Workerが action=apply_limited を付けて送ってくる（ここで数えて決める）。
+    let isWaitlist = params.action === ACTION_APPLY_WAITLIST;
+    const isLimited = params.action === ACTION_APPLY_LIMITED;
 
     // action付きの未知のリクエストが申込として扱われると、意味の分からない
     // エラー（Invalid Booth ID など）になるうえ、条件次第ではゴミ行の保存や
     // 誤ったメール送信につながる。デプロイ済みバージョンが古くてアクションが
     // 無い場合もここに来るので、何が起きているか分かる形で止める。
-    if (params.action && !isWaitlist) {
+    if (params.action && !isWaitlist && !isLimited) {
       throw new Error(
         `未対応のアクションです: ${params.action}。`
         + 'Apps Scriptのデプロイ済みバージョンが古い可能性があります'
         + '（エディタの「デプロイを管理」から新バージョンをデプロイしてください）'
       );
+    }
+
+    // 定員に達していれば、キャンセル待ちにする（受け付けない設定なら、画像の保存もせずにここで返す）
+    if (isLimited) {
+      const capacityStatus = resolveBoothCapacity(params);
+      if (capacityStatus === 'closed') {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            success: false,
+            code: ERROR_CODE_BOOTH_FULL,
+            error: 'お選びのブースは満枠のため、受付を終了しました。'
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      isWaitlist = capacityStatus === 'waitlist';
     }
 
     // 画像アップロード処理
@@ -732,7 +813,9 @@ function doPost(e) {
     
     // スプレッドシート保存 (二重保存)
     saveToSpreadsheet(data, calculationResult, params.currentSpreadsheetId, params.databaseSpreadsheetId, params.eventName);
-    
+    // ロックを離す前に書き込みを確定させる。次の申込が定員を数えるときに、この行が見えているように
+    SpreadsheetApp.flush();
+
     // 申込者へ確認メール送信
     sendConfirmationEmail(data, calculationResult);
     

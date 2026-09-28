@@ -611,6 +611,25 @@ textarea.input-field {
   margin-top: 0.25rem;
 }
 
+/* 残りの枠数（管理画面で残枠を表示する設定のとき） */
+.remaining-badge {
+  background-color: #ecfdf5;
+  color: #047857;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.6rem;
+  border-radius: 9999px;
+  display: block;
+  width: fit-content;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+}
+
+.remaining-badge.few {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
 .waitlist-notice {
   margin-top: 0.75rem;
   padding: 0.75rem 1rem;

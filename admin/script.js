@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // スプレッドシート作成
     document.getElementById('createSpreadsheetBtn').addEventListener('click', createSpreadsheet);
 
+    // 満枠設定：ブースごとの申込数
+    document.getElementById('reloadBoothCountsBtn')?.addEventListener('click', loadBoothCounts);
+
     // 確認ページ参照フォルダ
     document.getElementById('refreshFoldersBtn')?.addEventListener('click', () => loadImageFolders(true));
     document.getElementById('introImagesFolderSelect')?.addEventListener('change', (e) => {
@@ -514,9 +517,23 @@ function renderBooths() {
     });
 }
 
+// 残枠の見せ方（Workerの REMAINING_DISPLAY_MODES と揃える）。未設定は「表示しない」
+const REMAINING_DISPLAY_MODES = ['hidden', 'always', 'few'];
+const DEFAULT_REMAINING_THRESHOLD = 3;
+
+// ブースごとの申込数（「申込データ」シートの出展ブース名 → 件数）。読み込めていなければ null
+let boothCounts = null;
+
 function renderAvailability() {
     // 未設定（この項目ができる前の設定）は「受付を続ける」として扱う。申込フォームも同じ判定
     document.getElementById('waitlistEnabled').checked = config.waitlistEnabled !== false;
+
+    // 残枠の表示。未設定は「表示しない」（この項目ができる前と同じ見え方。Workerも同じ判定）
+    const mode = REMAINING_DISPLAY_MODES.includes(config.remainingDisplay) ? config.remainingDisplay : 'hidden';
+    document.querySelector(`input[name="remainingDisplay"][value="${mode}"]`).checked = true;
+    const thresholdInput = document.getElementById('remainingDisplayThreshold');
+    thresholdInput.value = config.remainingDisplayThreshold || DEFAULT_REMAINING_THRESHOLD;
+    thresholdInput.oninput = renderAllCapacityStatus;
 
     const container = document.getElementById('availabilityList');
     container.innerHTML = '';
@@ -527,12 +544,117 @@ function renderAvailability() {
         const item = document.createElement('div');
         item.className = 'availability-item';
         const isSoldOut = booth.soldOut || false;
+        const capacity = booth.capacity ?? '';
         item.innerHTML = `
             <input type="checkbox" id="soldout_${index}" ${isSoldOut ? 'checked' : ''}>
             <label for="soldout_${index}">${booth.name}</label>
+            <div class="capacity-field">
+                <label for="capacity_${index}">定員</label>
+                <input type="number" id="capacity_${index}" min="0" step="1" value="${capacity}" placeholder="なし">
+                <span>枠</span>
+            </div>
+            <span class="capacity-status" id="capacityStatus_${index}"></span>
         `;
+        // 入力に合わせて、その場で残枠の見込みを出し直す
+        item.querySelector(`#soldout_${index}`).addEventListener('change', () => renderCapacityStatus(index));
+        item.querySelector(`#capacity_${index}`).addEventListener('input', () => renderCapacityStatus(index));
         container.appendChild(item);
     });
+
+    renderAllCapacityStatus();
+}
+
+/**
+ * 定員の入力値を読む。空欄は null（定員なし）、0以上の整数はその数、それ以外（小数・マイナス）は NaN。
+ */
+function parseCapacityInput(value) {
+    const text = String(value ?? '').trim();
+    if (text === '') return null;
+    const capacity = Number(text);
+    return Number.isInteger(capacity) && capacity >= 0 ? capacity : NaN;
+}
+
+// ブースごとの申込数を読み込む（満枠設定タブを開いたとき・再読み込みボタン）
+async function loadBoothCounts() {
+    const statusEl = document.getElementById('boothCountsStatus');
+    statusEl.className = 'hint';
+    statusEl.textContent = '申込数を読み込み中...';
+
+    try {
+        const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value;
+        let url = `${API_BASE}/api/admin/booth-counts`;
+        if (spreadsheetId) {
+            url += `?spreadsheetId=${encodeURIComponent(spreadsheetId)}`;
+        }
+
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+
+        if (response.status === 401) {
+            handleLogout();
+            return;
+        }
+
+        const result = await response.json();
+        if (!result.success) throw new Error(result.error || '不明なエラー');
+
+        boothCounts = result.counts || {};
+        const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        statusEl.textContent = `申込数は ${time} 時点の「申込データ」シートの件数です。`;
+    } catch (error) {
+        console.error('Load booth counts error:', error);
+        boothCounts = null;
+        statusEl.className = 'status error';
+        // GASが古いと、この読み込みも申込（定員のあるブース）も通らない。気づけるようにここで出す
+        statusEl.textContent = `⚠️ 申込数を読み込めませんでした（${error.message}）。`
+            + 'GASが古い可能性があります。「デプロイ」タブからGASデプロイを実行してください。';
+    }
+
+    renderAllCapacityStatus();
+}
+
+function renderAllCapacityStatus() {
+    (config?.booths || []).forEach((_, index) => renderCapacityStatus(index));
+}
+
+// 「申込 3件・残り2枠」のように、いまの申込数と入力中の定員から見込みを出す（保存前でも分かるように）
+function renderCapacityStatus(index) {
+    const el = document.getElementById(`capacityStatus_${index}`);
+    const capacityInput = document.getElementById(`capacity_${index}`);
+    if (!el || !capacityInput) return;
+
+    const capacity = parseCapacityInput(capacityInput.value);
+    capacityInput.classList.toggle('invalid', Number.isNaN(capacity));
+
+    if (!boothCounts) {
+        el.textContent = '';
+        el.className = 'capacity-status';
+        return;
+    }
+
+    const booth = config.booths[index];
+    const applied = boothCounts[String(booth.name || '').trim()] || 0;
+    const threshold = parseInt(document.getElementById('remainingDisplayThreshold').value) || DEFAULT_REMAINING_THRESHOLD;
+
+    let text = `申込 ${applied}件`;
+    let state = '';
+    if (document.getElementById(`soldout_${index}`).checked) {
+        text += '・満枠（チェック）';
+        state = 'full';
+    } else if (capacity !== null && !Number.isNaN(capacity)) {
+        const remaining = Math.max(capacity - applied, 0);
+        if (remaining === 0) {
+            text += '・満枠（定員に到達）';
+            state = 'full';
+        } else {
+            text += `・残り${remaining}枠`;
+            if (remaining <= threshold) state = 'few';
+        }
+    }
+
+    el.textContent = text;
+    el.className = `capacity-status ${state}`.trim();
 }
 
 // ========================================
@@ -541,6 +663,8 @@ function renderAvailability() {
 function switchTab(tabName) {
     // 連携が切れていてもデプロイを押すまで気づけないため、タブを開いた時点で出す
     if (tabName === 'deploy') loadGoogleOAuthStatus();
+    // 残枠はシートの申込数で変わるので、開くたびに読み直す
+    if (tabName === 'availability') loadBoothCounts();
 
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -553,6 +677,16 @@ function switchTab(tabName) {
 // 設定保存
 // ========================================
 async function saveConfig() {
+    // 定員の入力ミス（小数・マイナス）を「定員なし」として保存しないよう、先に止める
+    const invalidCapacity = (config.booths || []).find((_, index) =>
+        Number.isNaN(parseCapacityInput(document.getElementById(`capacity_${index}`)?.value))
+    );
+    if (invalidCapacity) {
+        switchTab('availability');
+        alert(`「${invalidCapacity.name}」の定員は、0以上の整数で入力してください（定員なしにする場合は空欄）。`);
+        return;
+    }
+
     // UIから設定を収集
     collectConfigFromUI();
 
@@ -646,8 +780,19 @@ function collectConfigFromUI() {
 
     // 満枠設定
     config.waitlistEnabled = document.getElementById('waitlistEnabled').checked;
+    config.remainingDisplay = document.querySelector('input[name="remainingDisplay"]:checked')?.value || 'hidden';
+    config.remainingDisplayThreshold = Math.max(
+        parseInt(document.getElementById('remainingDisplayThreshold').value) || DEFAULT_REMAINING_THRESHOLD, 1
+    );
     config.booths.forEach((booth, index) => {
         booth.soldOut = document.getElementById(`soldout_${index}`).checked;
+        // 定員なし（空欄）は項目ごと消す。申込フォーム・Workerは「定員なし＝手動の満枠チェックだけ」で判定する
+        const capacity = parseCapacityInput(document.getElementById(`capacity_${index}`).value);
+        if (capacity === null) {
+            delete booth.capacity;
+        } else {
+            booth.capacity = capacity;
+        }
     });
 }
 

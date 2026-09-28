@@ -341,46 +341,9 @@ function initBoothAccordion() {
         content.className = 'accordion-content';
 
         booths.forEach(booth => {
-            const earlyPrice = booth.prices.earlyBird;
-            const regularPrice = booth.prices.regular;
-
-            // 通常価格と早割価格が同じ場合は通常価格を併記しない
-            let priceDisplay;
-            if (isEarlyBird()) {
-                if (earlyPrice === regularPrice) {
-                    priceDisplay = `¥${earlyPrice.toLocaleString()}`;
-                } else {
-                    priceDisplay = `¥${earlyPrice.toLocaleString()} <span class="booth-price-early">(通常¥${regularPrice.toLocaleString()})</span>`;
-                }
-            } else {
-                priceDisplay = `¥${regularPrice.toLocaleString()}`;
-            }
-
             const option = document.createElement('label');
-
-            if (booth.soldOut && isWaitlistEnabled()) {
-                // 満枠でも、キャンセル待ちとして選べる（振込の案内は届かない）
-                option.className = 'booth-option waitlist';
-                option.innerHTML = `
-        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
-        <span class="ml-2 flex-1">${booth.name}<span class="waitlist-badge">満枠・キャンセル待ち受付中</span></span>
-      `;
-            } else if (booth.soldOut) {
-                // 満枠でキャンセル待ちも締め切っている場合は選択不可
-                option.className = 'booth-option sold-out';
-                option.innerHTML = `
-        <input type="radio" name="boothRadio" value="${booth.id}" disabled>
-        <span class="ml-2 flex-1">${booth.name}</span>
-        <span class="sold-out-badge">満枠</span>
-      `;
-            } else {
-                option.className = 'booth-option';
-                option.innerHTML = `
-        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
-        <span class="ml-2 flex-1">${booth.name}</span>
-        <span class="booth-price">${priceDisplay}</span>
-      `;
-            }
+            option.dataset.boothId = booth.id;
+            renderBoothOption(option, booth);
             content.appendChild(option);
         });
 
@@ -393,6 +356,131 @@ function initBoothAccordion() {
         container.appendChild(header);
         container.appendChild(content);
     });
+
+    // 定員のあるブースの空き状況を取りにいく。届くまでは config.json の満枠チェックだけで表示しておく
+    loadBoothAvailability();
+}
+
+// ブース1件分の選択肢を描く（空き状況が届いたときに描き直せるよう、選択肢の要素ごとに作る）
+function renderBoothOption(option, booth) {
+    const earlyPrice = booth.prices.earlyBird;
+    const regularPrice = booth.prices.regular;
+
+    // 通常価格と早割価格が同じ場合は通常価格を併記しない
+    let priceDisplay;
+    if (isEarlyBird()) {
+        if (earlyPrice === regularPrice) {
+            priceDisplay = `¥${earlyPrice.toLocaleString()}`;
+        } else {
+            priceDisplay = `¥${earlyPrice.toLocaleString()} <span class="booth-price-early">(通常¥${regularPrice.toLocaleString()})</span>`;
+        }
+    } else {
+        priceDisplay = `¥${regularPrice.toLocaleString()}`;
+    }
+
+    if (isBoothFull(booth) && isWaitlistEnabled()) {
+        // 満枠でも、キャンセル待ちとして選べる（振込の案内は届かない）
+        option.className = 'booth-option waitlist';
+        option.innerHTML = `
+        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
+        <span class="ml-2 flex-1">${booth.name}<span class="waitlist-badge">満枠・キャンセル待ち受付中</span></span>
+      `;
+    } else if (isBoothFull(booth)) {
+        // 満枠でキャンセル待ちも締め切っている場合は選択不可
+        option.className = 'booth-option sold-out';
+        option.innerHTML = `
+        <input type="radio" name="boothRadio" value="${booth.id}" disabled>
+        <span class="ml-2 flex-1">${booth.name}</span>
+        <span class="sold-out-badge">満枠</span>
+      `;
+    } else {
+        option.className = 'booth-option';
+        option.innerHTML = `
+        <input type="radio" name="boothRadio" value="${booth.id}" onchange="selectBooth('${booth.id}')">
+        <span class="ml-2 flex-1">${booth.name}${remainingBadgeHtml(booth)}</span>
+        <span class="booth-price">${priceDisplay}</span>
+      `;
+    }
+}
+
+// ========================================
+// 空き状況（定員・残枠）
+// ========================================
+// Workerから届いたブースごとの空き状況。{ [boothId]: { full, remaining?, few? } }
+// 残りの枠数（remaining）は、管理画面で残枠を表示する設定のときだけ届く。
+let boothAvailability = {};
+
+// 定員（枠数）を設定したブースか（管理画面の満枠設定）
+function hasBoothCapacity(booth) {
+    return booth.capacity !== undefined && booth.capacity !== null && booth.capacity !== '';
+}
+
+/**
+ * ブースの空き状況をWorkerから取る。
+ * 定員を設定したブースが無ければ取りにいかない（config.json の満枠チェックだけで足りる）。
+ * 取れなかったときもそのままの表示で続ける。申込の受付可否は、送信時にサーバー側で数えて決めるため、
+ * ここで取れなくても定員を超えて受け付けることはない。
+ */
+async function loadBoothAvailability() {
+    if (!CONFIG.workerUrl || !CONFIG.booths.some(hasBoothCapacity)) return;
+
+    try {
+        const response = await fetch(`${CONFIG.workerUrl}/api/public/booth-availability`);
+        if (!response.ok) return;
+        const result = await response.json();
+        if (!result.success || !result.booths) return;
+
+        boothAvailability = result.booths;
+        refreshBoothOptions();
+    } catch (error) {
+        console.warn('空き状況の取得に失敗（満枠チェックだけで表示します）:', error);
+    }
+}
+
+// 空き状況が届いたら、選択肢を描き直す。選んでいたブースはそのまま（満枠で選べなくなったときだけ外す）
+function refreshBoothOptions() {
+    document.querySelectorAll('#boothAccordion .booth-option[data-booth-id]').forEach(option => {
+        const booth = CONFIG.booths.find(b => b.id === option.dataset.boothId);
+        if (booth) renderBoothOption(option, booth);
+    });
+
+    if (!selectedBooth) return;
+
+    const radio = document.querySelector(`input[name="boothRadio"][value="${selectedBooth.id}"]`);
+    if (radio && !radio.disabled) {
+        radio.checked = true;
+        radio.closest('.booth-option').classList.add('selected');
+        // 満枠に変わっていれば、キャンセル待ちの案内と「お支払いなし」に切り替える
+        document.getElementById('waitlistNotice').classList.toggle('hidden', !isWaitlistBooth());
+        calculatePrice();
+        return;
+    }
+
+    selectedBooth = null;
+    document.getElementById('boothIdInput').value = '';
+    document.getElementById('waitlistNotice').classList.add('hidden');
+    document.getElementById('equipmentSection').classList.add('hidden');
+    updateOptionsUI();
+    updateSessionWarning();
+    calculatePrice();
+    alert('お選びのブースは満枠になり、受付を終了しました。お手数ですが、他のブースをお選びください。');
+}
+
+/**
+ * ブースが満枠か。管理画面で満枠にチェックしたブースと、申込が定員に達したブース。
+ */
+function isBoothFull(booth) {
+    return !!(booth && (booth.soldOut || boothAvailability[booth.id]?.full));
+}
+
+// 「残り◯枠」の表示。残枠を見せる設定のときだけ Worker から枠数が届く
+function remainingBadgeHtml(booth) {
+    const status = boothAvailability[booth.id];
+    if (!status || typeof status.remaining !== 'number') return '';
+
+    return status.few
+        ? `<span class="remaining-badge few">残りわずか・あと${status.remaining}枠</span>`
+        : `<span class="remaining-badge">残り${status.remaining}枠</span>`;
 }
 
 /**
@@ -408,7 +496,7 @@ function isWaitlistEnabled() {
  * キャンセル待ちには金額・振込の案内を出さない（誤って入金されるのを防ぐため）。
  */
 function isWaitlistBooth() {
-    return !!(selectedBooth && selectedBooth.soldOut);
+    return isBoothFull(selectedBooth);
 }
 
 // ========================================

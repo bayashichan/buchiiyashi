@@ -230,9 +230,72 @@ main {
     line-height: 1.7;
 }
 
+.remaining-setting {
+    padding: 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 24px;
+}
+
+.remaining-setting h3 {
+    margin-top: 0;
+}
+
+.remaining-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin-bottom: 12px;
+}
+
+.remaining-options label,
+.remaining-threshold {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.remaining-options input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+}
+
+.remaining-threshold input {
+    width: 70px;
+    padding: 6px 8px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.remaining-setting .hint {
+    margin: 10px 0 0;
+    line-height: 1.7;
+}
+
+.availability-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.availability-head h3 {
+    margin: 0;
+}
+
+#boothCountsStatus.status {
+    margin: 0 0 16px;
+}
+
 .availability-item {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 12px;
     padding: 12px 16px;
     background: var(--bg);
     border-radius: 8px;
@@ -242,6 +305,45 @@ main {
 .availability-item label {
     flex: 1;
     cursor: pointer;
+}
+
+.capacity-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.capacity-field label {
+    flex: none;
+}
+
+.capacity-field input {
+    width: 70px;
+    padding: 6px 8px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.capacity-field input.invalid {
+    border-color: var(--error);
+}
+
+.capacity-status {
+    min-width: 200px;
+    font-size: 13px;
+    color: var(--text-light);
+}
+
+.capacity-status.few {
+    color: var(--warning);
+    font-weight: 700;
+}
+
+.capacity-status.full {
+    color: var(--error);
+    font-weight: 700;
 }
 
 .availability-item input[type="checkbox"] {

@@ -165,7 +165,35 @@
                     </p>
                 </div>
 
-                <p class="hint">満枠にしたいブースにチェックを入れてください。</p>
+                <div class="remaining-setting">
+                    <h3>申込フォームでの残枠の表示</h3>
+                    <div class="remaining-options">
+                        <label><input type="radio" name="remainingDisplay" value="hidden"> 表示しない</label>
+                        <label><input type="radio" name="remainingDisplay" value="always"> 最初から表示する</label>
+                        <label><input type="radio" name="remainingDisplay" value="few"> 残りわずかになったら表示する</label>
+                    </div>
+                    <label class="remaining-threshold" for="remainingDisplayThreshold">
+                        残り <input type="number" id="remainingDisplayThreshold" min="1" step="1"> 枠以下で「残りわずか」と表示
+                    </label>
+                    <p class="hint">
+                        残枠は、下で定員を入れたブースだけに表示します（例：「残り5枠」「残りわずか・あと2枠」）。<br>
+                        「最初から表示する」でも、上の枠数以下になると「残りわずか」の目立つ表示に変わります。<br>
+                        「表示しない」を選ぶと、残枠は申込フォームに一切出ません（定員に達したら満枠になるのは同じです）。
+                    </p>
+                </div>
+
+                <div class="availability-head">
+                    <h3>ブースごとの定員・満枠</h3>
+                    <button id="reloadBoothCountsBtn" type="button" class="btn-secondary small">申込数を再読み込み</button>
+                </div>
+                <p class="hint">
+                    定員（枠数）を入れたブースは、申込が定員に達した時点で自動的に満枠になります（空欄は定員なし）。
+                    満枠になったあとは、上の「キャンセル待ちとして受付を続ける」の設定に従います。<br>
+                    チェックを入れたブースは、定員に関係なくすぐ満枠になります。<br>
+                    申込数は、スプレッドシートの「申込データ」シートの行を数えています（「キャンセル待ち」シートは数えません）。
+                    キャンセルが出たときは、その行を削除（または別のシートへ移動）すると、その分の枠が空きます。
+                </p>
+                <p id="boothCountsStatus" class="hint hidden"></p>
                 <div id="availabilityList"></div>
             </section>
 
