@@ -238,7 +238,7 @@
     }
   ],
   "eventDate": "2027年2月23日（火・祝）　10:30~16:30",
-  "eventLocation": "東京都立産業貿易センター　台東館",
+  "eventLocation": "東京都立産業貿易センター　台東館４階",
   "slideTemplates": {
     "earlySns": "1Emruj-C4Io2LNP6gdp3pxzaFb73nLfrJEXP6Xx0Rub8",
     "lateSns": "1dMUmR7gqcQVqkMaST0tWJHKhMBNHzkbvme5Qhvufmro",
@@ -250,6 +250,8 @@
   },
   "introImagesFolderId": "",
   "waitlistEnabled": false,
+  "applicationStart": "2026-10-01 12:00:00",
+  "applicationEnd": "",
   "workshop": {
     "enabled": false,
     "price": 0,
@@ -276,7 +278,5 @@
     ]
   },
   "remainingDisplay": "hidden",
-  "remainingDisplayThreshold": 3,
-  "applicationStart": "2026-10-01 12:00:00",
-  "applicationEnd": ""
+  "remainingDisplayThreshold": 3
 }
