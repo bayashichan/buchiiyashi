@@ -277,6 +277,6 @@
   },
   "remainingDisplay": "hidden",
   "remainingDisplayThreshold": 3,
-  "applicationStart": "",
+  "applicationStart": "2026-10-01 12:00:00",
   "applicationEnd": ""
 }
