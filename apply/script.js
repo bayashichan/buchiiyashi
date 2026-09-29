@@ -387,10 +387,11 @@ function renderPeriodNotice(status, period, isPreview) {
     // 見出しはスマホで語の途中から折り返さないよう、改行位置を決めておく（CSSの white-space: pre-line）
     setText('periodNoticeTitle', before ? '出展者募集\n受付開始のお知らせ' : '出展申込の受付は\n終了しました');
 
-    // 開始日時（開始前のみ）
-    const startBox = document.getElementById('periodStartBox');
-    startBox.classList.toggle('hidden', !(before && start));
-    if (before && start) setText('periodStartText', formatJstDateTime(start));
+    // 開始日時（開始前のみ）。未設定で予告画面になるのはプレビューのときだけなので、「未設定」と出して設定を促す
+    document.getElementById('periodStartBox').classList.toggle('hidden', !before);
+    const startText = document.getElementById('periodStartText');
+    startText.textContent = start ? formatJstDateTime(start) : '未設定';
+    startText.classList.toggle('is-unset', !start);
 
     // 受付期間（開始前は終了日時があるとき、終了後は常に）。スマホで日付の途中から折り返さないよう、日時ごとに改行する
     const rangeEl = document.getElementById('periodRangeText');
@@ -410,6 +411,19 @@ function renderPeriodNotice(status, period, isPreview) {
         setText('periodLineLink', '公式LINEで問い合わせる');
     }
     document.getElementById('periodLineLink').href = OFFICIAL_LINE_URL;
+
+    // プレビューで、この画面に載せる日時が未設定なら、どこで設定すれば表示されるかを案内する
+    const hint = document.getElementById('periodPreviewHint');
+    let hintText = '';
+    if (isPreview && before && !start) {
+        hintText = 'プレビュー表示：受付開始日時が未設定です。管理画面の「基本設定 → 申込受付期間」で保存すると、'
+            + 'ここに開始日時とカウントダウンが表示されます（反映まで1〜2分）。';
+    } else if (isPreview && !before && !end) {
+        hintText = 'プレビュー表示：受付終了日時が未設定です。管理画面の「基本設定 → 申込受付期間」で保存すると、'
+            + 'ここに受付期間が表示されます（反映まで1〜2分）。';
+    }
+    hint.textContent = hintText;
+    hint.classList.toggle('hidden', !hintText);
 
     const countdown = document.getElementById('periodCountdown');
     const counting = before && start && start.getTime() > Date.now();

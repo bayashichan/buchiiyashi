@@ -853,7 +853,7 @@ function doPost(e) {
 
     // 一斉メール：マスターDBの過去出展者一覧（管理画面用）
     if (params.action === 'get_mail_recipients') {
-      const result = getMailRecipients(params.accessToken, params.spreadsheetId);
+      const result = getMailRecipients(params.accessToken, params.spreadsheetId, params.applicationStart);
       return ContentService
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
@@ -2246,11 +2246,6 @@ const CUSTOM_MAIL_LOG_HEADERS = ['送信日時', '件名', 'メールアドレ�
 // 一斉メールで上限を使い切ると、その確認メールが送れず申込がエラーになるため、枠を残しておく。
 const CUSTOM_MAIL_QUOTA_RESERVE = 20;
 
-// 申込の受付を始める日（日本時間）。この日より前は申込が来ないので、上の枠を残さず全部を一斉メールに使う。
-// 次の開催回でも受付開始前に案内を送るなら、その回の受付開始日に書き換える
-// （過ぎた日付のままなら、常に枠を残す安全側の動きになる）。
-const CUSTOM_MAIL_RESERVE_FROM = '2026-10-01';
-
 /**
  * 管理画面（Worker）からの呼び出しであることを確かめる。
  *
@@ -2397,15 +2392,31 @@ function getRemainingMailQuota() {
   }
 }
 
-// 本日、申込の確認メール用に残しておく通数（受付開始前は0）
-function getCustomMailQuotaReserve() {
+/**
+ * 本日、申込の確認メール用に残しておく通数。
+ *
+ * applicationStart は管理画面「申込受付期間」の開始日時（日本時間の "2026-10-01 10:00:00" 形式）で、
+ * Workerが最新の設定（config.json）から付けてくる。
+ * 受付開始日より前の日は申込が来ないので0にして、全部を一斉メールに使えるようにする。
+ * 受付開始日の当日は、開始時刻の前でも枠を残す（その日の送信数を使い切ると、開始後に届いた申込の確認メールが送れないため）。
+ * 開始日時が未設定・読めないときは、常に枠を残す（安全側）。
+ */
+function getCustomMailQuotaReserve(applicationStart) {
+  const startDate = applicationStartDate(applicationStart);
+  if (!startDate) return CUSTOM_MAIL_QUOTA_RESERVE;
   const today = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
-  return today < CUSTOM_MAIL_RESERVE_FROM ? 0 : CUSTOM_MAIL_QUOTA_RESERVE;
+  return today < startDate ? 0 : CUSTOM_MAIL_QUOTA_RESERVE;
 }
 
-// 本日、一斉メールに使える通数（申込の確認メール用の枠を除く）。取得できなければ null
-function getAvailableCustomMailQuota(remainingQuota) {
-  return remainingQuota === null ? null : Math.max(0, remainingQuota - getCustomMailQuotaReserve());
+// "2026-10-01 10:00:00" → "2026-10-01"（設定の値は日本時間なので、日付部分がそのまま日本時間の日付）。読めなければ ''
+function applicationStartDate(text) {
+  const m = String(text || '').trim().match(/^(\d{4}-\d{2}-\d{2})[ T]\d{2}:\d{2}/);
+  return m ? m[1] : '';
+}
+
+// 本日、一斉メールに使える通数（申込の確認メール用の枠 reserve を除く）。取得できなければ null
+function getAvailableCustomMailQuota(remainingQuota, reserve) {
+  return remainingQuota === null ? null : Math.max(0, remainingQuota - reserve);
 }
 
 /**
@@ -2414,7 +2425,7 @@ function getAvailableCustomMailQuota(remainingQuota) {
  * 各送信先には、これまでに一斉メールで送った件名（sent）を添える。
  * 管理画面は入力中の件名と照らして、送信済みの方を選べないようにする。
  */
-function getMailRecipients(accessToken, spreadsheetId) {
+function getMailRecipients(accessToken, spreadsheetId, applicationStart) {
   try {
     verifyAdminAccessToken(accessToken);
 
@@ -2422,6 +2433,7 @@ function getMailRecipients(accessToken, spreadsheetId) {
     const loaded = loadMasterMailRecipients(ss);
     const log = loadCustomMailLog(ss);
     const remainingQuota = getRemainingMailQuota();
+    const reserve = getCustomMailQuotaReserve(applicationStart);
 
     return {
       success: true,
@@ -2437,8 +2449,8 @@ function getMailRecipients(accessToken, spreadsheetId) {
       duplicateRows: loaded.duplicateRows,
       skipped: loaded.skipped,
       remainingQuota: remainingQuota,
-      availableQuota: getAvailableCustomMailQuota(remainingQuota),
-      quotaReserve: getCustomMailQuotaReserve()
+      availableQuota: getAvailableCustomMailQuota(remainingQuota, reserve),
+      quotaReserve: reserve
     };
   } catch (error) {
     console.error('getMailRecipients error:', error);
@@ -2455,8 +2467,10 @@ function getMailRecipients(accessToken, spreadsheetId) {
  * - testEmail を指定したときは、先頭の方のお名前で差し込んだ1通だけをそのアドレスへ送る
  *   （出展者には届かないので、送信履歴には残さない）
  *
+ * - 申込の確認メール用の枠は、applicationStart（受付開始日時）を見て残す（getCustomMailQuotaReserve）
+ *
  * @param {{accessToken: string, spreadsheetId: string, emails: Array<string>,
- *          subject: string, body: string, testEmail: string}} params
+ *          subject: string, body: string, testEmail: string, applicationStart: string}} params
  */
 function sendCustomEmails(params) {
   try {
@@ -2528,8 +2542,8 @@ function sendCustomEmails(params) {
     // 送信途中で日次上限に当たると「一部だけ届いた」状態になるため、先に残数を確認する。
     // 本送信では、申込の確認メール用の枠には手を付けない
     const remainingQuota = getRemainingMailQuota();
-    const reserve = getCustomMailQuotaReserve();
-    const usableQuota = isTest ? remainingQuota : getAvailableCustomMailQuota(remainingQuota);
+    const reserve = getCustomMailQuotaReserve(params.applicationStart);
+    const usableQuota = isTest ? remainingQuota : getAvailableCustomMailQuota(remainingQuota, reserve);
     if (usableQuota !== null && usableQuota < toSend.length) {
       return {
         success: false,
@@ -2601,7 +2615,7 @@ function sendCustomEmails(params) {
       failed: results.filter(r => !r.success && !r.skipped).length,
       results: results,
       remainingQuota: remainingAfter,
-      availableQuota: getAvailableCustomMailQuota(remainingAfter)
+      availableQuota: getAvailableCustomMailQuota(remainingAfter, reserve)
     };
 
   } catch (error) {

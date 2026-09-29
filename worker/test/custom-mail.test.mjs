@@ -85,7 +85,9 @@ test('送信先一覧は、所有アカウントのトークンを添えてGAS�
 
     assert.equal(res.status, 200);
     assert.deepEqual(result.recipients, recipients);
-    assert.deepEqual(sentToGas, [{ action: 'get_mail_recipients', accessToken: 'owner-token', spreadsheetId: 'MASTER' }]);
+    assert.deepEqual(sentToGas, [{
+        action: 'get_mail_recipients', accessToken: 'owner-token', spreadsheetId: 'MASTER', applicationStart: ''
+    }]);
 });
 
 test('送信は、宛先・件名・本文・テスト送信先をそのままGASへ渡す', async () => {
@@ -111,8 +113,55 @@ test('送信は、宛先・件名・本文・テスト送信先をそのままGA
         emails: ['hanako@example.com'],
         subject: '{{氏名}}様へ次回のご案内',
         body: '{{氏名}} 様\n\n次回もよろしくお願いします。',
-        testEmail: 'staff@example.com'
+        testEmail: 'staff@example.com',
+        applicationStart: ''
     }]);
+});
+
+// 受付開始日より前の日は、GASが申込の確認メール用の枠を残さない（全部を一斉メールに使う）。
+// その判定に使う受付開始日時を、Workerが最新の設定（GitHub上のconfig.json）から付けて渡す
+const CONFIG_URL = 'https://api.github.com/repos/owner/repo/contents/apply/config.json';
+
+function stubFetchWithConfig(gasResult, config) {
+    const sentToGas = stubFetch(gasResult);
+    const gasFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+        if (String(url) === CONFIG_URL) {
+            return config === null
+                ? new Response('boom', { status: 500 })
+                : new Response(JSON.stringify(config));
+        }
+        return gasFetch(url, init);
+    };
+    return sentToGas;
+}
+
+const githubEnv = () => ({ ...makeEnv(), GITHUB_TOKEN: 'gh-token', GITHUB_REPO: 'owner/repo' });
+
+test('送信先一覧・送信とも、管理画面で設定した受付開始日時をGASへ渡す', async () => {
+    const sentToGas = stubFetchWithConfig({ success: true, recipients: [] }, { applicationStart: '2026-10-05 10:00:00' });
+
+    await worker.fetch(adminRequest('/api/admin/mail-recipients?spreadsheetId=MASTER'), githubEnv(), {});
+    await worker.fetch(adminRequest('/api/admin/send-custom-email', {
+        method: 'POST',
+        body: { spreadsheetId: 'MASTER', emails: ['hanako@example.com'], subject: '件名', body: '本文' }
+    }), githubEnv(), {});
+
+    assert.deepEqual(sentToGas.map(p => [p.action, p.applicationStart]), [
+        ['get_mail_recipients', '2026-10-05 10:00:00'],
+        ['send_custom_email', '2026-10-05 10:00:00']
+    ]);
+});
+
+test('受付開始日時が未設定・設定が読めないときは空で渡す（GASは確認メール用の枠を残す）', async () => {
+    for (const config of [{}, null]) {
+        const sentToGas = stubFetchWithConfig({ success: true, recipients: [] }, config);
+
+        const res = await worker.fetch(adminRequest('/api/admin/mail-recipients'), githubEnv(), {});
+
+        assert.equal(res.status, 200);
+        assert.equal(sentToGas[0].applicationStart, '');
+    }
 });
 
 test('宛先・件名・本文が欠けていれば、GASへ送らずに断る', async () => {
