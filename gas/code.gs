@@ -2843,7 +2843,9 @@ function generateExhibitorImage(templateId, exhibitorData, imageType, options = 
     // 1. テンプレートをコピー
     const templateFile = DriveApp.getFileById(templateId);
     const copyName = `temp_${exhibitorData.exhibitorName}_${imageType}_${Date.now()}`;
-    const copiedFile = templateFile.makeCopy(copyName);
+    // コピー先を指定しないと元のテンプレートと同じフォルダに作られる。テンプレートが別アカウントの
+    // マイドライブにあると書き込めず「Access denied: DriveApp」になるため、実行アカウント自身のマイドライブに作る
+    const copiedFile = templateFile.makeCopy(copyName, DriveApp.getRootFolder());
     const copiedId = copiedFile.getId();
     
     // 2. スライドを開く
@@ -3287,7 +3289,8 @@ function combinePresentationsInit(title, sourceId) {
     if (sourceId) {
       // テンプレートの縦横比を維持するためにコピーを作成
       const sourceFile = DriveApp.getFileById(sourceId);
-      const newFile = sourceFile.makeCopy(title);
+      // generateExhibitorImage と同じ理由で、コピー先は実行アカウント自身のマイドライブにする
+      const newFile = sourceFile.makeCopy(title, DriveApp.getRootFolder());
       combinedId = newFile.getId();
       
       const combined = SlidesApp.openById(combinedId);
