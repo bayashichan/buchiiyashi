@@ -4,7 +4,7 @@ compatibility_date = "2024-01-01"
 
 # 環境変数（デプロイ時に設定）
 [vars]
-GAS_URL = "https://script.google.com/macros/s/AKfycbxQ5ug6NBUBsS7cIb7_XaJF6-1-ei5kSPOaf49S20SkcICC6G8rzpNUYDKL27PuYdFMzA/exec"
+GAS_URL = "https://script.google.com/macros/s/AKfycbzqUIZkGA-Pl6nOaPg0kaZ2-utIB01nsjhtGGe23O5Rp5wFigJo4sAXSQvPVwN1ZPhy7w/exec"
 R2_PUBLIC_URL = "https://pub-66037ae487194387bd8941466131ce7c.r2.dev"
 GITHUB_REPO = "bayashichan/buchiiyashi"
 
@@ -31,7 +31,6 @@ IG_USER_ID = "17841465230403689"
 # 以下はwrangler secretで設定が必要:
 # - ADMIN_PASSWORD: 管理画面ログインパスワード
 # - GITHUB_TOKEN: GitHub Personal Access Token (repo権限)
-# - GOOGLE_SA_KEY: サービスアカウントJSON (Base64エンコード)
 # - GOOGLE_OAUTH_CLIENT_ID     : GASデプロイ用のOAuthクライアントID
 # - GOOGLE_OAUTH_CLIENT_SECRET : 同シークレット
 #   Apps Script APIはサービスアカウントに対応しておらず、スクリプト自身のトークンも
@@ -40,6 +39,7 @@ IG_USER_ID = "17841465230403689"
 #   リフレッシュトークンはR2の config/google-oauth.json に保存される（管理画面から連携）
 #
 # GAS_SCRIPT_ID はもう使っていない（GASが自分のIDを使うため）。設定済みでも無害
+# GOOGLE_SA_KEY ももう使っていない（スプレッドシート作成はGASを動かすアカウントの権限で行う）。設定済みでも無害
 # - LINE_MANAGER_SECRET: line-manager側のAPPLICANT_INGEST_SECRETと同じ値
 # - LINE_CHANNEL_ACCESS_TOKEN: 公式LINE(Messaging API)のチャネルアクセストークン。
 #   申込完了をLINEでも本人へ通知するために使う。未設定なら通知をスキップする（メールのみ）。

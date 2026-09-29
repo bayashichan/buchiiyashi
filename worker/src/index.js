@@ -612,77 +612,6 @@ async function deployGas(env, corsHeaders) {
     });
 }
 
-async function getGoogleAccessToken(env, scopes) {
-    const saKey = JSON.parse(atob(env.GOOGLE_SA_KEY));
-
-    // JWT作成
-    const header = { alg: 'RS256', typ: 'JWT' };
-    const now = Math.floor(Date.now() / 1000);
-    const payload = {
-        iss: saKey.client_email,
-        scope: scopes || 'https://www.googleapis.com/auth/script.projects',
-        aud: 'https://oauth2.googleapis.com/token',
-        iat: now,
-        exp: now + 3600
-    };
-
-    const jwt = await signJwt(header, payload, saKey.private_key);
-
-    // トークン取得
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-            assertion: jwt
-        })
-    });
-
-    if (!tokenResponse.ok) {
-        throw new Error('Failed to get Google access token');
-    }
-
-    const tokenData = await tokenResponse.json();
-    return tokenData.access_token;
-}
-
-// JWT署名
-async function signJwt(header, payload, privateKeyPem) {
-    const encoder = new TextEncoder();
-
-    const headerB64 = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    const payloadB64 = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-    const unsignedToken = `${headerB64}.${payloadB64}`;
-
-    // PEMからCryptoKey作成
-    const pemContents = privateKeyPem
-        .replace(/-----BEGIN PRIVATE KEY-----/, '')
-        .replace(/-----END PRIVATE KEY-----/, '')
-        .replace(/\n/g, '');
-
-    const binaryKey = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
-
-    const cryptoKey = await crypto.subtle.importKey(
-        'pkcs8',
-        binaryKey,
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-        false,
-        ['sign']
-    );
-
-    // 署名
-    const signature = await crypto.subtle.sign(
-        'RSASSA-PKCS1-v1_5',
-        cryptoKey,
-        encoder.encode(unsignedToken)
-    );
-
-    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-        .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-
-    return `${unsignedToken}.${signatureB64}`;
-}
-
 // Googleスプレッドシート作成
 async function createSpreadsheet(env, body, corsHeaders) {
     try {
@@ -694,16 +623,14 @@ async function createSpreadsheet(env, body, corsHeaders) {
             });
         }
 
-        const accessToken = await getGoogleAccessToken(env);
-
+        // 作成はGASを動かしているアカウントの権限で行われるため、トークンは渡さない
         console.log(`Sending create spreadsheet request to GAS for: ${name}`);
         const gasResponse = await fetch(env.GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'create_spreadsheet',
-                name: name,
-                accessToken: accessToken // GAS側での権限拡張が必要な場合に備えてトークンも渡すが、GAS単体で動くなら不要かも
+                name: name
             })
         });
 
