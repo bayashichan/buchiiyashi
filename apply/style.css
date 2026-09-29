@@ -1323,6 +1323,11 @@ body.modal-open {
   font-variant-numeric: tabular-nums;
 }
 
+/* 開始日時が未設定（プレビューのときだけ） */
+.period-start-date.is-unset {
+  color: var(--text-muted);
+}
+
 .period-countdown-label {
   margin: 0 0 0.5rem;
   font-size: 0.8rem;
@@ -1374,6 +1379,19 @@ body.modal-open {
   line-height: 1.8;
   color: var(--text-muted);
   text-align: left;
+}
+
+/* プレビューで日時が未設定のときの案内（申込者には出ない） */
+.period-preview-hint {
+  margin: 1rem 0 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.75rem;
+  line-height: 1.7;
+  text-align: left;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px dashed #f59e0b;
+  border-radius: 0.5rem;
 }
 
 .period-line-btn {

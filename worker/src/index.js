@@ -909,7 +909,8 @@ async function getMailRecipients(env, spreadsheetId, corsHeaders) {
         const result = await postToGas(env, {
             action: 'get_mail_recipients',
             accessToken,
-            spreadsheetId: spreadsheetId || ''
+            spreadsheetId: spreadsheetId || '',
+            applicationStart: await loadApplicationStart(env)
         });
 
         return new Response(JSON.stringify(result), {
@@ -921,6 +922,22 @@ async function getMailRecipients(env, spreadsheetId, corsHeaders) {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
+    }
+}
+
+/**
+ * 申込の受付開始日時（管理画面「申込受付期間」の開始。config.json の applicationStart）。
+ * GASは一斉メールの送信枠を決めるときに使い、受付開始日より前の日は申込の確認メール用の枠を残さない。
+ * 設定が読めなければ ''（GASは常に枠を残す安全側で動く）。
+ */
+async function loadApplicationStart(env) {
+    if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return '';
+    try {
+        const config = await fetchConfigObject(env);
+        return String(config.applicationStart || '');
+    } catch (error) {
+        console.error('受付開始日時の取得に失敗（一斉メールは確認メール用の枠を残します）:', error);
+        return '';
     }
 }
 
@@ -948,7 +965,8 @@ async function sendCustomEmail(env, body, corsHeaders) {
             emails,
             subject,
             body: mailBody,
-            testEmail: testEmail || ''
+            testEmail: testEmail || '',
+            applicationStart: await loadApplicationStart(env)
         });
 
         return new Response(JSON.stringify(result), {
