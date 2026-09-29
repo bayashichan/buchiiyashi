@@ -250,7 +250,7 @@
   },
   "introImagesFolderId": "",
   "waitlistEnabled": false,
-  "applicationStart": "2026-10-01 12:00:00",
+  "applicationStart": "",
   "applicationEnd": "",
   "workshop": {
     "enabled": true,
