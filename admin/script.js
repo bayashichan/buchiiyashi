@@ -51,6 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // スプレッドシート作成
     document.getElementById('createSpreadsheetBtn').addEventListener('click', createSpreadsheet);
 
+    // 申込受付期間：入力に合わせて「現在の状態」を出し直す
+    ['applicationStart', 'applicationEnd'].forEach(id => {
+        document.getElementById(id)?.addEventListener('input', renderApplicationPeriodStatus);
+    });
+
     // 満枠設定：ブースごとの申込数／料金設定：ワークショップの予約状況（同じ読み込み）
     document.getElementById('reloadBoothCountsBtn')?.addEventListener('click', loadBoothCounts);
     document.getElementById('reloadWorkshopBtn')?.addEventListener('click', loadBoothCounts);
@@ -388,12 +393,82 @@ function renderGeneratorSettings() {
     }
 }
 
+// ========================================
+// 申込受付期間（基本設定タブ）
+// ========================================
+// config.json には日本時間の "2026-10-01 10:00:00" 形式で保存する（申込フォーム・Workerも日本時間として読む）
+
+// config の値 → datetime-local の値（"2026-10-01T10:00"）
+function toDateTimeLocalValue(text) {
+    return text ? String(text).replace(' ', 'T').slice(0, 16) : '';
+}
+
+// datetime-local の値 → config の値。空欄は ''（制限なし）
+function toConfigDateTime(value, seconds) {
+    return value ? `${value.replace('T', ' ')}:${seconds}` : '';
+}
+
+// datetime-local の値を日本時間として Date にする（管理画面を開いている端末のタイムゾーンに左右されないように）
+function parseDateTimeLocalAsJst(value, seconds) {
+    if (!value) return null;
+    const date = new Date(`${value}:${seconds}+09:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function validateApplicationPeriod() {
+    const start = parseDateTimeLocalAsJst(document.getElementById('applicationStart').value, '00');
+    const end = parseDateTimeLocalAsJst(document.getElementById('applicationEnd').value, '59');
+    if (start && end && end <= start) {
+        return '申込受付期間の終了日時は、開始日時より後にしてください。';
+    }
+    return '';
+}
+
+// 入力中の期間で、いま申込フォームがどう見えるか
+function renderApplicationPeriodStatus() {
+    const el = document.getElementById('applicationPeriodStatus');
+    if (!el) return;
+    const start = parseDateTimeLocalAsJst(document.getElementById('applicationStart').value, '00');
+    const end = parseDateTimeLocalAsJst(document.getElementById('applicationEnd').value, '59');
+    const now = new Date();
+
+    let state = 'open';
+    let text = '現在：受付中（申込フォームを表示しています）';
+    if (start && end && end <= start) {
+        state = 'error';
+        text = '終了日時が開始日時より前になっています';
+    } else if (start && now < start) {
+        state = 'before';
+        text = `現在：受付開始前（予告画面を表示しています）・開始まであと${formatRemaining(start - now)}`;
+    } else if (end && now > end) {
+        state = 'closed';
+        text = '現在：受付終了（受付終了の画面を表示しています）';
+    } else if (end) {
+        text = `現在：受付中（申込フォームを表示しています）・締切まであと${formatRemaining(end - now)}`;
+    }
+    el.textContent = `${text}${start || end ? '' : '。期間は未設定です'}`;
+    el.dataset.state = state;
+}
+
+// ミリ秒 → 「3日と5時間」「5時間12分」「12分」
+function formatRemaining(ms) {
+    const minutes = Math.max(1, Math.ceil(ms / 60000));
+    const days = Math.floor(minutes / 1440);
+    const hours = Math.floor(minutes % 1440 / 60);
+    if (days > 0) return hours > 0 ? `${days}日と${hours}時間` : `${days}日`;
+    if (hours > 0) return `${hours}時間${minutes % 60}分`;
+    return `${minutes}分`;
+}
+
 function renderBasicSettings() {
     if (!config) return;
 
     document.getElementById('eventName').value = config.eventName || '';
     document.getElementById('eventDate').value = config.eventDate || '';
     document.getElementById('eventLocation').value = config.eventLocation || '';
+    document.getElementById('applicationStart').value = toDateTimeLocalValue(config.applicationStart);
+    document.getElementById('applicationEnd').value = toDateTimeLocalValue(config.applicationEnd);
+    renderApplicationPeriodStatus();
     document.getElementById('currentSpreadsheetId').value = config.currentSpreadsheetId || '';
     document.getElementById('databaseSpreadsheetId').value = config.databaseSpreadsheetId || '';
     document.getElementById('introImagesFolderId').value = config.introImagesFolderId || '';
@@ -402,11 +477,15 @@ function renderBasicSettings() {
     loadImageFolders();
 
     // 確認ページURLの生成
+    const baseUrl = window.location.href.split('/admin/')[0];
     const confirmUrlInput = document.getElementById('confirmPageUrl');
     if (confirmUrlInput) {
-        const baseUrl = window.location.href.split('/admin/')[0];
         confirmUrlInput.value = `${baseUrl}/confirm/`;
     }
+
+    // 申込フォームの予告・受付終了の画面を、期間に関係なく見るためのリンク
+    document.getElementById('previewPeriodBeforeLink').href = `${baseUrl}/apply/?periodPreview=before`;
+    document.getElementById('previewPeriodClosedLink').href = `${baseUrl}/apply/?periodPreview=closed`;
 
     const openBtn = document.getElementById('openSpreadsheetBtn');
     if (config.currentSpreadsheetId) {
@@ -822,6 +901,13 @@ function switchTab(tabName) {
 // 設定保存
 // ========================================
 async function saveConfig() {
+    // 開始と終了が逆だと、一度も受け付けないまま「受付終了」になってしまう
+    const periodError = validateApplicationPeriod();
+    if (periodError) {
+        switchTab('basic');
+        alert(periodError);
+        return;
+    }
     // 定員の入力ミス（小数・マイナス）を「定員なし」として保存しないよう、先に止める
     const invalidCapacity = (config.booths || []).find((_, index) =>
         Number.isNaN(parseCapacityInput(document.getElementById(`capacity_${index}`)?.value))
@@ -885,6 +971,9 @@ function collectConfigFromUI() {
     config.eventName = document.getElementById('eventName').value;
     config.eventDate = document.getElementById('eventDate').value;
     config.eventLocation = document.getElementById('eventLocation').value;
+    // 申込受付期間（日本時間）。終了はその分の終わりまで受け付けるよう、秒を59にする（空欄は制限なし）
+    config.applicationStart = toConfigDateTime(document.getElementById('applicationStart').value, '00');
+    config.applicationEnd = toConfigDateTime(document.getElementById('applicationEnd').value, '59');
     config.currentSpreadsheetId = document.getElementById('currentSpreadsheetId').value;
     config.introImagesFolderId = document.getElementById('introImagesFolderId').value;
     // databaseSpreadsheetId は readonly なのでそのまま（もしくは hidden があればそこから）

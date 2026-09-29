@@ -1112,8 +1112,17 @@ async function handleFormSubmission(request, env, corsHeaders) {
         delete data.workshopLabel;
         delete data.workshopFee;
 
-        // 満枠・定員・ワークショップの判定に使う最新の設定（読めなければ null）
+        // 受付期間・満枠・定員・ワークショップの判定に使う最新の設定（読めなければ null）
         const config = await loadLatestConfig(env);
+
+        // 受付期間の外なら受け付けない。フォームを開いたまま締切を過ぎた場合や、
+        // 端末の時計がずれていて開始前にフォームが出てしまった場合も、ここで止める
+        const period = resolveApplicationPeriod(config, new Date());
+        if (period.status !== 'open') {
+            return applicationErrorResponse(applicationPeriodMessage(period), corsHeaders, {
+                applicationPeriod: period.status
+            });
+        }
 
         // 満枠のブースへの申込は、キャンセル待ちとして受け付ける（管理画面でオフなら受付終了）
         const availability = resolveBoothAvailability(data, config);
@@ -1280,6 +1289,56 @@ async function loadLatestConfig(env) {
         console.error('満枠の確認に失敗（フォームの判定のみで受け付けます）:', error);
         return null;
     }
+}
+
+// ========================================
+// 申込の受付期間
+// ========================================
+// config.json の applicationStart / applicationEnd は日本時間の "2026-10-01 10:00:00" 形式（管理画面で設定）。
+// Workerの時計はUTCなので、日本時間として読む（apply/script.js・admin/script.js と同じ解釈）。
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+// "2026-10-01 10:00:00" → Date。空欄・読めない値は null（その側は制限なし）
+export function parseJstDateTime(text) {
+    const m = String(text || '').trim()
+        .match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!m) return null;
+    const date = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6] || '00'}+09:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+// Date → "2026年10月1日（木）10:00"（日本時間）
+export function formatJstDateTime(date) {
+    const jst = new Date(date.getTime() + JST_OFFSET_MS);
+    const weekday = '日月火水木金土'[jst.getUTCDay()];
+    const hh = String(jst.getUTCHours()).padStart(2, '0');
+    const mm = String(jst.getUTCMinutes()).padStart(2, '0');
+    return `${jst.getUTCFullYear()}年${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日（${weekday}）${hh}:${mm}`;
+}
+
+/**
+ * いまが申込の受付期間かどうか。
+ *   { status: 'before' | 'open' | 'closed', start, end }（start / end は Date か null）
+ *
+ * 開始日時ちょうどから受け付け、終了日時まで受け付ける（管理画面は終了を「23:59:59」のように分の終わりで保存する）。
+ * 未設定・読めない値の側は制限なし。設定が読めないとき（config が null）は申込ごと落とさないよう受け付ける
+ * （フォームは開始前・終了後には予告・終了の画面を出しているので、通常そこから送られてくることはない）。
+ */
+export function resolveApplicationPeriod(config, now) {
+    const start = config ? parseJstDateTime(config.applicationStart) : null;
+    const end = config ? parseJstDateTime(config.applicationEnd) : null;
+    let status = 'open';
+    if (start && now < start) status = 'before';
+    else if (end && now > end) status = 'closed';
+    return { status, start, end };
+}
+
+// 受付期間の外で申込が届いたときに、申込者へ出す文言
+export function applicationPeriodMessage(period) {
+    if (period.status === 'before') {
+        return `出展申込の受付は ${formatJstDateTime(period.start)} からです。受付開始まで、もうしばらくお待ちください。`;
+    }
+    return `出展申込の受付は ${formatJstDateTime(period.end)} で終了しました。お問い合わせは公式LINEまでお願いいたします。`;
 }
 
 /**
