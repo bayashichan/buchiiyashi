@@ -38,6 +38,7 @@
             <button class="tab" data-tab="availability">📊 満枠設定</button>
             <button class="tab" data-tab="images">📷 画像生成</button>
             <button class="tab" data-tab="captions">✍️ キャプション</button>
+            <button class="tab" data-tab="waitlist">⏳ キャンセル待ち</button>
             <button class="tab" data-tab="resend">📧 メール再送</button>
             <button class="tab" data-tab="mail">✉️ 一斉メール</button>
             <button class="tab" data-tab="deploy">🚀 デプロイ</button>
@@ -468,6 +469,48 @@
                         <button id="downloadAllCaptionsBothBtn" class="btn-secondary">📄 両方まとめてダウンロード</button>
                     </div>
                     <div id="captionDownloadStatus" class="status mt-3"></div>
+                </div>
+            </section>
+
+            <!-- キャンセル待ちタブ -->
+            <section id="tab-waitlist" class="tab-content hidden">
+                <h2>⏳ キャンセル待ちの繰り上げ</h2>
+                <p class="hint">スプレッドシートの「キャンセル待ち」シートに入っている方から、繰り上げる方を選んで出展を確定します。<br>
+                    繰り上げると、その方の行を「申込データ」シートへ移し、<strong>料金・振込先入りの案内</strong>をメール（LINE連携済みの方はLINEにも）でお送りします。<br>
+                    ワークショップの希望がある方は、その時間帯が空いていれば押さえて料金に含めます（埋まっていれば希望のまま、料金に含めません）。</p>
+
+                <div class="card">
+                    <h3>繰り上げる方を選ぶ</h3>
+                    <div class="flex-row">
+                        <input type="text" id="waitlistFilter" placeholder="出展名・お名前・メールアドレス・ブースで絞り込み"
+                            style="flex-grow: 1;">
+                        <button id="loadWaitlistBtn" class="btn-secondary small">キャンセル待ちを読み込む</button>
+                    </div>
+
+                    <div id="waitlistBoothSummary" class="mt-2"></div>
+
+                    <div id="waitlistList" class="exhibitor-list mt-2">
+                        <p class="hint">「キャンセル待ちを読み込む」を押してください。</p>
+                    </div>
+                    <p id="waitlistSelectedCount" class="hint mt-2"></p>
+                </div>
+
+                <div class="card mt-4">
+                    <h3>繰り上げて案内を送る</h3>
+
+                    <div class="form-group">
+                        <label>テスト送信先（任意）</label>
+                        <input type="email" id="waitlistTestEmail" placeholder="例: staff@example.com">
+                        <p class="hint">入力すると、<strong>繰り上げはせず</strong>、選んだ方のうち1人分の案内メールをこのアドレスへ送ります（文面の確認用）。<br>
+                            空欄のときは、選んだ方を繰り上げて、ご本人へ案内を送ります。</p>
+                    </div>
+
+                    <div class="button-group mt-3">
+                        <button id="promoteWaitlistBtn" class="btn-primary">選んだ方を繰り上げて案内を送る</button>
+                    </div>
+
+                    <div id="waitlistStatus" class="status"></div>
+                    <div id="waitlistResults" class="mt-3"></div>
                 </div>
             </section>
 

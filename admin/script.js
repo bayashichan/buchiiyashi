@@ -100,6 +100,19 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('selectAllResendExhibitors')?.addEventListener('change', toggleAllResendExhibitors);
     document.getElementById('resendConfirmationBtn')?.addEventListener('click', resendConfirmationEmails);
 
+    // キャンセル待ちの繰り上げ
+    document.getElementById('loadWaitlistBtn')?.addEventListener('click', loadWaitlist);
+    document.getElementById('waitlistFilter')?.addEventListener('input', renderWaitlist);
+    document.getElementById('waitlistList')?.addEventListener('change', (e) => {
+        if (e.target.name !== 'waitlistEntry') return;
+        const entry = waitlistEntries[parseInt(e.target.dataset.index, 10)];
+        if (!entry) return;
+        if (e.target.checked) waitlistSelectedKeys.add(entry.key);
+        else waitlistSelectedKeys.delete(entry.key);
+        updateWaitlistSelectedCount();
+    });
+    document.getElementById('promoteWaitlistBtn')?.addEventListener('click', promoteSelectedWaitlist);
+
     // 過去の出展者への一斉メール
     document.getElementById('loadMailRecipientsBtn')?.addEventListener('click', loadMailRecipients);
     document.getElementById('mailFilter')?.addEventListener('input', renderMailRecipientList);
@@ -2109,6 +2122,275 @@ function renderResendResults(results) {
                     ? escapeHtml(r.sentTo || '') + (r.isTest ? '（テスト送信）' : '')
                     : escapeHtml(r.error || '送信できませんでした')}</span>
             </div>`).join('')}
+        </div>`;
+}
+
+// ========================================
+// キャンセル待ちの繰り上げ
+// ========================================
+
+// 1リクエストあたりの件数。GAS側の上限(10件)より小さくして、進捗を細かく出す。
+const PROMOTE_CHUNK_SIZE = 3;
+
+// GASから読んだキャンセル待ちの方（{ key, submittedAt, name, email, exhibitorName, boothName, totalFee, workshopWish, lineLinked }）
+let waitlistEntries = [];
+// 「申込データ」のブースごとの件数（繰り上げ前に空きを確かめるため）
+let waitlistBoothCounts = {};
+// 絞り込みで非表示になっても選択を保つため、行のキーをSetで持つ
+let waitlistSelectedKeys = new Set();
+
+async function loadWaitlist() {
+    showLoading();
+    try {
+        const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value || '';
+        const response = await fetch(`${API_BASE}/api/admin/waitlist?spreadsheetId=${encodeURIComponent(spreadsheetId)}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+
+        if (response.status === 401) {
+            handleLogout();
+            return;
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || '不明なエラー');
+        }
+
+        waitlistEntries = result.entries || [];
+        waitlistBoothCounts = result.boothCounts || {};
+        // 読み直したら、もういない方の選択は外す
+        const keys = new Set(waitlistEntries.map(e => e.key));
+        waitlistSelectedKeys = new Set([...waitlistSelectedKeys].filter(k => keys.has(k)));
+        renderWaitlist();
+    } catch (error) {
+        console.error('Load waitlist error:', error);
+        alert('キャンセル待ちの取得に失敗しました: ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// キャンセル待ちのいるブースごとに、いまの申込数と定員を出す（繰り上げすぎないように）
+function renderWaitlistBoothSummary() {
+    const el = document.getElementById('waitlistBoothSummary');
+    if (!el) return;
+
+    const waiting = {};
+    waitlistEntries.forEach(e => {
+        const name = String(e.boothName || '').trim();
+        waiting[name] = (waiting[name] || 0) + 1;
+    });
+    const names = Object.keys(waiting);
+    if (names.length === 0) {
+        el.innerHTML = '';
+        return;
+    }
+
+    el.innerHTML = names.map(name => {
+        const booth = (config?.booths || []).find(b => String(b.name || '').trim() === name);
+        const applied = waitlistBoothCounts[name] || 0;
+        const capacity = booth && booth.capacity !== undefined && booth.capacity !== null && booth.capacity !== ''
+            ? Number(booth.capacity) : null;
+        let state = '';
+        let text = `申込データ ${applied}件`;
+        if (capacity !== null) {
+            text += ` / 定員 ${capacity}`;
+            if (applied >= capacity) state = 'full';
+        }
+        if (booth?.soldOut) {
+            text += '・満枠チェック中';
+        }
+        return `<div class="capacity-status ${state}">${escapeHtml(name || '（ブース未記入）')}：キャンセル待ち ${waiting[name]}名 ／ ${text}</div>`;
+    }).join('');
+}
+
+function renderWaitlist() {
+    renderWaitlistBoothSummary();
+
+    const container = document.getElementById('waitlistList');
+    if (!container) return;
+
+    if (waitlistEntries.length === 0) {
+        container.innerHTML = '<p class="hint">キャンセル待ちの方はいません</p>';
+        updateWaitlistSelectedCount();
+        return;
+    }
+
+    const keyword = (document.getElementById('waitlistFilter')?.value || '').trim().toLowerCase();
+    const visible = waitlistEntries
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => !keyword || [entry.exhibitorName, entry.name, entry.email, entry.boothName]
+            .some(v => (v || '').toLowerCase().includes(keyword)));
+
+    if (visible.length === 0) {
+        container.innerHTML = '<p class="hint">絞り込み条件に一致する方がいません</p>';
+        updateWaitlistSelectedCount();
+        return;
+    }
+
+    container.innerHTML = visible.map(({ entry, index }) => {
+        const checked = waitlistSelectedKeys.has(entry.key) ? 'checked' : '';
+        // メールアドレスがない行は選べないようにする（案内を送れないため）
+        const disabled = entry.email ? '' : 'disabled';
+        const emailLabel = entry.email
+            ? escapeHtml(entry.email)
+            : '<span style="color:#c53030;">メールアドレス未登録</span>';
+        const details = [
+            escapeHtml(entry.boothName || ''),
+            `¥${Number(entry.totalFee || 0).toLocaleString()}`,
+            entry.workshopWish
+                ? `WS希望 ${escapeHtml(entry.workshopWish)}（空いていれば +¥${Number(entry.workshopFee || 0).toLocaleString()}）`
+                : '',
+            entry.lineLinked ? 'LINE連携あり' : 'LINE連携なし',
+            `申込 ${escapeHtml(entry.submittedAt || '')}`
+        ].filter(Boolean).join(' / ');
+
+        return `
+        <label class="exhibitor-item" style="align-items: flex-start;">
+            <input type="checkbox" name="waitlistEntry" data-index="${index}" ${checked} ${disabled}>
+            <span class="exhibitor-name">${escapeHtml(entry.exhibitorName || '')}
+                <span class="exhibitor-seat" style="display:block;">${escapeHtml(entry.name || '')} / ${emailLabel}</span>
+                <span class="exhibitor-seat" style="display:block;">${details}</span>
+            </span>
+        </label>`;
+    }).join('');
+
+    updateWaitlistSelectedCount();
+}
+
+function updateWaitlistSelectedCount() {
+    const el = document.getElementById('waitlistSelectedCount');
+    if (el) el.textContent = waitlistSelectedKeys.size > 0 ? `${waitlistSelectedKeys.size}名を選択中` : '';
+}
+
+async function promoteSelectedWaitlist() {
+    const statusEl = document.getElementById('waitlistStatus');
+    const resultsEl = document.getElementById('waitlistResults');
+    const targets = waitlistEntries.filter(e => waitlistSelectedKeys.has(e.key));
+
+    if (targets.length === 0) {
+        alert('繰り上げる方を選択してください');
+        return;
+    }
+
+    const testEmail = (document.getElementById('waitlistTestEmail')?.value || '').trim();
+    if (testEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail)) {
+        alert('テスト送信先のメールアドレスの形式が正しくありません');
+        return;
+    }
+
+    // 出展者本人へ振込先入りの案内が届き、取り消せないので、送信前に必ず確認してもらう
+    const names = targets.slice(0, 10).map(e => `・${e.exhibitorName}（${e.boothName}）`).join('\n');
+    const more = targets.length > 10 ? `\n…ほか${targets.length - 10}名` : '';
+    const message = testEmail
+        ? `テスト送信です。繰り上げはせず、「${targets[0].exhibitorName}」さんの繰り上げ案内メールを ${testEmail} へ1通送ります。\n\nよろしいですか？`
+        : `${targets.length}名を繰り上げて、ご本人へ料金・振込先入りの案内を送ります。\n`
+            + `「キャンセル待ち」シートから「申込データ」シートへ移します（元に戻すときは手作業になります）。\n\n`
+            + `${names}${more}\n\nよろしいですか？`;
+    if (!confirm(message)) return;
+
+    const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value || '';
+    const databaseSpreadsheetId = document.getElementById('databaseSpreadsheetId')?.value || '';
+    const sendTargets = testEmail ? targets.slice(0, 1) : targets;
+    const allResults = [];
+    let done = 0;
+
+    showLoading();
+    statusEl.className = 'status loading';
+    statusEl.style.whiteSpace = 'pre-line';
+    statusEl.textContent = `処理中... (0/${sendTargets.length})`;
+    resultsEl.innerHTML = '';
+
+    try {
+        // GAS側のロックを長く握らないよう、小分けにして送る
+        for (let i = 0; i < sendTargets.length; i += PROMOTE_CHUNK_SIZE) {
+            const chunk = sendTargets.slice(i, i + PROMOTE_CHUNK_SIZE);
+
+            const response = await fetch(`${API_BASE}/api/admin/promote-waitlist`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${authToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    spreadsheetId,
+                    databaseSpreadsheetId,
+                    keys: chunk.map(e => e.key),
+                    testEmail
+                })
+            });
+
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+
+            const result = await response.json();
+            if (!result.success) {
+                throw new Error(result.error || '不明なエラー');
+            }
+
+            allResults.push(...(result.results || []));
+            done += chunk.length;
+            statusEl.textContent = `処理中... (${done}/${sendTargets.length})`;
+        }
+
+        const succeeded = allResults.filter(r => r.success).length;
+        const failed = allResults.length - succeeded;
+        statusEl.className = failed > 0 ? 'status error' : 'status success';
+        statusEl.textContent = testEmail
+            ? (failed > 0 ? '❌ テスト送信に失敗しました' : `✅ テスト送信しました（${testEmail}）。繰り上げはしていません`)
+            : (failed > 0
+                ? `⚠️ ${succeeded}名を繰り上げました（${failed}名は失敗。下の一覧をご確認ください）`
+                : `✅ ${succeeded}名を繰り上げ、案内を送りました`);
+    } catch (error) {
+        console.error('Promote waitlist error:', error);
+        statusEl.className = 'status error';
+        // 途中まで繰り上げている可能性があるので、成功分も残して表示する
+        statusEl.textContent = `❌ エラー: ${error.message}\n（${allResults.filter(r => r.success).length}名は処理済み）`;
+    } finally {
+        renderPromoteResults(allResults);
+        hideLoading();
+    }
+
+    // 繰り上げた方は一覧から消えるので、読み直す
+    if (!testEmail && allResults.some(r => r.moved)) {
+        waitlistSelectedKeys = new Set();
+        await loadWaitlist();
+    }
+}
+
+function renderPromoteResults(results) {
+    const resultsEl = document.getElementById('waitlistResults');
+    if (!resultsEl) return;
+    if (!results || results.length === 0) {
+        resultsEl.innerHTML = '';
+        return;
+    }
+
+    resultsEl.innerHTML = `
+        <div class="exhibitor-list">
+            ${results.map(r => {
+                let detail;
+                if (r.success) {
+                    const parts = [
+                        `${r.sentTo || ''}${r.isTest ? '（テスト送信）' : ''}`,
+                        `¥${Number(r.totalFee || 0).toLocaleString()}`,
+                        r.workshopNote || '',
+                        r.isTest ? '' : (r.lineSent === true ? 'LINE送信済み' : r.lineSent === false ? 'LINEは送れませんでした（メールは送信済み）' : 'LINE連携なし')
+                    ].filter(Boolean);
+                    detail = parts.map(escapeHtml).join(' / ');
+                } else {
+                    detail = escapeHtml(r.error || '処理できませんでした');
+                }
+                return `
+            <div class="exhibitor-item">
+                <span>${r.success ? '✅' : (r.moved ? '⚠️' : '❌')}</span>
+                <span class="exhibitor-name">${escapeHtml(r.exhibitorName || '')}</span>
+                <span class="exhibitor-seat">${detail}</span>
+            </div>`;
+            }).join('')}
         </div>`;
 }
 

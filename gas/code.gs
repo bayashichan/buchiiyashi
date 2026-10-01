@@ -13,7 +13,7 @@ const CONFIG = {
   SHEET_NAME: '申込データ',
   // 満枠のブースへの申込（キャンセル待ち）を保存するシート。列は「申込データ」と同じ。
   // 出展者一覧・SNS画像・確認メール再送は「申込データ」だけを見るので、ここの行は対象外になる。
-  // 繰り上げが決まったら行を「申込データ」へ移し、管理画面から確認メールを再送すれば、振込先入りの案内が届く。
+  // 繰り上げは管理画面の「キャンセル待ち」タブから行う（行を「申込データ」へ移し、振込先入りの案内を送る）。
   WAITLIST_SHEET_NAME: 'キャンセル待ち',
   
   // Google Drive 画像保存フォルダID
@@ -851,6 +851,22 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // キャンセル待ちの一覧（管理画面用）
+    if (params.action === 'get_waitlist') {
+      const result = getWaitlistEntries(params);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // キャンセル待ちの繰り上げ：申込データへ移し、料金・振込先入りの案内を送る（管理画面用）
+    if (params.action === 'promote_waitlist') {
+      const result = promoteWaitlistEntries(params);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 一斉メール：マスターDBの過去出展者一覧（管理画面用）
     if (params.action === 'get_mail_recipients') {
       const result = getMailRecipients(params.accessToken, params.spreadsheetId, params.applicationStart);
@@ -1555,6 +1571,8 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   // キャンセル待ちには金額・振込先・振込期限を一切載せない（誤って入金されるのを防ぐため）。
   // 繰り上げが決まったら、行を「申込データ」へ移して再送すると通常の案内が届く。
   const isWaitlist = data.waitlist === true;
+  // キャンセル待ちから繰り上げて出展が確定した方（管理画面の「キャンセル待ち」タブから送る）
+  const isPromoted = !isWaitlist && data.promoted === true;
   
   // テンプレート用のデータを準備（フィールド名をテンプレートの期待する形式に変換）
   const formData = {
@@ -1606,6 +1624,8 @@ function sendConfirmationEmail(data, calculationResult, recipientOverride) {
   template.imageUploadOk = !!data.profileImageUrl;
   template.exhibitorName = data.exhibitorName || '';
   template.isWaitlist = isWaitlist;
+  template.isPromoted = isPromoted;
+  template.promotedMessage = PROMOTED_MESSAGE;
   template.workshop = workshop;
 
   // HTMLを評価
@@ -1672,7 +1692,8 @@ Email: ${CONFIG.REPLY_TO_EMAIL}
 ${data.name} 様
 
 この度は「ぶち癒やしフェスタin東京」へのお申し込み、誠にありがとうございます。
-以下の内容でお申し込みを受け付けました。
+${isPromoted ? `${PROMOTED_MESSAGE}
+お支払いについて、以下のとおりご案内いたします。` : '以下の内容でお申し込みを受け付けました。'}
 ${imageMessage}
 ${applicationSummary}
 
@@ -1689,7 +1710,9 @@ Email: ${CONFIG.REPLY_TO_EMAIL}
   // メール送信
   const subject = isWaitlist
     ? `【ぶち癒やしフェスタin東京】キャンセル待ちのお申し込みを受け付けました`
-    : `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
+    : isPromoted
+      ? `【ぶち癒やしフェスタin東京】キャンセル待ち繰り上げ・出展確定のご案内`
+      : `【ぶち癒やしフェスタin東京】お申し込みありがとうございます`;
   
   const recipient = recipientOverride || data.email;
 
@@ -1772,6 +1795,9 @@ function composeLineConfirmationText(data, calculationResult, notes) {
     out.push('・お振り込みは不要です。このメッセージでは振込先のご案内はしておりません。');
     out.push('・空きが出た場合は、事務局よりこのトークまたはメールでご連絡いたします。');
     out.push('・繰り上げで出展が決まりましたら、そのときに改めてお支払いについてご案内いたします。');
+  } else if (data.promoted === true) {
+    out.push(PROMOTED_MESSAGE);
+    out.push('お支払いについて、以下のとおりご案内いたします。');
   } else {
     out.push('以下の内容でお申し込みを受け付けました。');
   }
@@ -2033,6 +2059,323 @@ function resendConfirmationEmails(spreadsheetId, rowIds, testEmail) {
   } catch (error) {
     console.error('resendConfirmationEmails error:', error);
     return { success: false, error: error.message, results: [] };
+  }
+}
+
+// ========================================
+// キャンセル待ちの繰り上げ（管理画面用）
+// ========================================
+
+// 1回のリクエストで繰り上げられる上限。doPost のロックを長時間握らないための保険。
+const PROMOTE_MAX_PER_REQUEST = 10;
+
+// マスターDBの「申込区分」列に入れる値（キャンセル待ちから繰り上げて出展が確定した申込）
+const PROMOTED_LABEL = '繰り上げ';
+
+// 繰り上げの案内（確認メール・LINE）の冒頭に入れる文
+const PROMOTED_MESSAGE = 'キャンセル待ちでお申し込みいただいていたブースに空きが出ましたので、繰り上げにより出展が確定いたしました。';
+
+/**
+ * キャンセル待ちの行を見分けるキー（申込日時・メールアドレス・出展名）。
+ *
+ * 行番号は、繰り上げで行を消すたびにずれる。管理画面で一覧を読んだあとに
+ * 別の行が動いても、選んだ人とは別の人を繰り上げてしまわないよう、行の中身で探す。
+ */
+function waitlistRowKey(headers, row) {
+  const cell = (name) => {
+    const idx = headers.indexOf(name);
+    return idx > -1 && idx < row.length ? String(row[idx] || '').trim() : '';
+  };
+  return [cell('申込日時'), cell('メールアドレス'), cell('出展名')].join('\t');
+}
+
+/**
+ * 「キャンセル待ち」シートの一覧（管理画面で繰り上げる人を選ぶため）。
+ *
+ * 連絡先を返すので、一斉メールと同じく所有アカウント本人のトークンがあるときだけ応じる。
+ * 繰り上げ前に枠の空きを確かめられるよう、「申込データ」のブースごとの件数も返す。
+ */
+function getWaitlistEntries(params) {
+  try {
+    verifyAdminAccessToken(params.accessToken);
+
+    const ss = SpreadsheetApp.openById(params.spreadsheetId || CONFIG.SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(CONFIG.WAITLIST_SHEET_NAME);
+    const boothCounts = countApplicationsByBooth(params.spreadsheetId);
+    if (!sheet || sheet.getLastRow() <= 1) {
+      return { success: true, entries: [], boothCounts: boothCounts };
+    }
+
+    const values = sheet.getDataRange().getDisplayValues();
+    const headers = values[0].map(h => String(h).trim());
+    const entries = [];
+
+    for (let i = 1; i < values.length; i++) {
+      const data = buildApplicationDataFromRow(headers, values[i]);
+      if (!data.exhibitorName && !data.name) continue;
+
+      entries.push({
+        key: waitlistRowKey(headers, values[i]),
+        submittedAt: data.submittedAt,
+        name: data.name,
+        email: data.email,
+        exhibitorName: data.exhibitorName,
+        boothName: data.boothName,
+        // 繰り上げたときに案内する金額（ワークショップの希望は、時間帯が空いていれば加わる）
+        totalFee: rebuildCalculationResult(data).totalFee,
+        workshopWish: data.workshop && !data.workshop.reserved ? data.workshop.label : '',
+        workshopFee: data.workshop ? data.workshop.fee : 0,
+        lineLinked: !!data.lineUserId
+      });
+    }
+
+    return { success: true, entries: entries, boothCounts: boothCounts };
+  } catch (error) {
+    console.error('getWaitlistEntries error:', error);
+    return { success: false, error: error.message, entries: [] };
+  }
+}
+
+/**
+ * 選んだキャンセル待ちの方を繰り上げ、料金・振込先入りの案内を送る。
+ *
+ * 1人ずつ、次の順に行う。
+ *   1. ワークショップの希望があれば、その時間帯が空いているときだけ押さえる（埋まっていれば希望のまま）
+ *   2. 行を「キャンセル待ち」から「申込データ」へ移す（マスターDBの申込区分は「繰り上げ」にする）
+ *   3. 料金・振込先入りの確認メールを送る（LINEの本文は返して、Workerが送る）
+ * 行を移してからメールを送るので、メールだけ失敗しても繰り上げは済んでいる
+ * （その場合は「メール再送」タブから再送できる）。
+ *
+ * テスト送信先を指定したときは、行は動かさず、繰り上げた場合のメールをそのアドレスへ1通だけ送る。
+ *
+ * @param {Object} params { accessToken, spreadsheetId, databaseSpreadsheetId, keys: string[], testEmail }
+ */
+function promoteWaitlistEntries(params) {
+  try {
+    verifyAdminAccessToken(params.accessToken);
+
+    const seen = {};
+    let keys = (Array.isArray(params.keys) ? params.keys : [])
+      .map(k => String(k || ''))
+      .filter(k => {
+        if (!k.trim() || seen[k]) return false;
+        seen[k] = true;
+        return true;
+      });
+
+    if (keys.length === 0) {
+      return { success: false, error: '繰り上げる方が選択されていません', results: [] };
+    }
+    if (keys.length > PROMOTE_MAX_PER_REQUEST) {
+      return {
+        success: false,
+        error: `一度に繰り上げられるのは${PROMOTE_MAX_PER_REQUEST}件までです（${keys.length}件が指定されました）`,
+        results: []
+      };
+    }
+
+    const override = normalizeEmailAddress(params.testEmail);
+    if (override && !isValidEmail(override)) {
+      return { success: false, error: `テスト送信先のメールアドレスが正しくありません: ${override}`, results: [] };
+    }
+    const isTest = !!override;
+    // テスト送信は、文面の確認用に1通だけ送る
+    if (isTest) keys = keys.slice(0, 1);
+
+    // 送信途中で日次上限に当たると「繰り上げたのに案内が届かない」人が出るため、先に残数を確認する
+    let remainingQuota = null;
+    try {
+      remainingQuota = MailApp.getRemainingDailyQuota();
+    } catch (quotaError) {
+      console.warn('Failed to read mail quota: ' + quotaError.message);
+    }
+    if (remainingQuota !== null && remainingQuota < keys.length) {
+      return {
+        success: false,
+        error: `本日の送信可能数が足りません（残り${remainingQuota}件 / 繰り上げ${keys.length}件）。時間をおいて再度お試しください。`,
+        results: []
+      };
+    }
+
+    const spreadsheetId = params.spreadsheetId || CONFIG.SPREADSHEET_ID;
+    const ss = SpreadsheetApp.openById(spreadsheetId);
+    const waitSheet = ss.getSheetByName(CONFIG.WAITLIST_SHEET_NAME);
+    if (!waitSheet) {
+      return { success: false, error: '「キャンセル待ち」シートが見つかりません', results: [] };
+    }
+
+    const results = [];
+    keys.forEach(key => {
+      let exhibitorName = '';
+      let moved = false;
+      try {
+        // 行を消すたびに位置がずれるので、1人ごとに読み直して探す
+        const display = waitSheet.getDataRange().getDisplayValues();
+        const headers = (display[0] || []).map(h => String(h).trim());
+        let rowIndex = -1;
+        for (let i = 1; i < display.length; i++) {
+          if (waitlistRowKey(headers, display[i]) === key) {
+            rowIndex = i;
+            break;
+          }
+        }
+        if (rowIndex < 0) {
+          throw new Error('キャンセル待ちシートに見つかりません（繰り上げ済みか、行が変更・削除されています。一覧を読み込み直してください）');
+        }
+
+        const data = buildApplicationDataFromRow(headers, display[rowIndex]);
+        exhibitorName = data.exhibitorName || data.name || `${rowIndex + 1}行目`;
+
+        if (!data.email) {
+          throw new Error('メールアドレスが登録されていません');
+        }
+        if (!isTest && !isValidEmail(data.email)) {
+          throw new Error(`メールアドレスの形式が正しくありません: ${data.email}`);
+        }
+        if (!data.boothId) {
+          throw new Error(`出展ブース「${data.boothName || '（空欄）'}」がブース定義（CONFIG.BOOTHS）と一致しません`);
+        }
+
+        // ワークショップの希望は、時間帯が空いているときだけ押さえる（空いていなければ希望のまま案内する）
+        let workshopNote = '';
+        if (data.workshop && !data.workshop.reserved) {
+          if (data.workshop.slot && !isWorkshopSlotTaken(spreadsheetId, data.workshop.slot)) {
+            data.workshop.reserved = true;
+            workshopNote = `ワークショップ ${data.workshop.label} を確保`;
+          } else {
+            workshopNote = `ワークショップ ${data.workshop.label} は埋まっているため希望のまま（料金に含めていません）`;
+          }
+        }
+
+        data.waitlist = false;
+        data.promoted = true;
+        const calculationResult = rebuildCalculationResult(data);
+
+        if (!isTest) {
+          moveWaitlistRow(ss, waitSheet, headers, rowIndex, data);
+          moved = true;
+          markMasterRowPromoted(params.databaseSpreadsheetId, spreadsheetId, data);
+        }
+
+        const recipient = override || data.email;
+        try {
+          sendConfirmationEmail(data, calculationResult, recipient);
+        } catch (mailError) {
+          throw new Error(isTest
+            ? `メールを送れませんでした: ${mailError.message}`
+            : `繰り上げは完了しましたが、メールを送れませんでした（「メール再送」タブから再送できます）: ${mailError.message}`);
+        }
+
+        // LINEで送る本文（送信はWorkerが行う）。組み立てに失敗してもメールは届いている
+        let lineMessage = '';
+        if (!isTest && data.lineUserId) {
+          try {
+            lineMessage = buildLineConfirmationText(data, calculationResult);
+          } catch (lineError) {
+            console.error('Failed to build LINE promotion text:', lineError);
+          }
+        }
+
+        results.push({
+          key: key,
+          exhibitorName: exhibitorName,
+          registeredEmail: data.email,
+          sentTo: recipient,
+          isTest: isTest,
+          totalFee: calculationResult.totalFee,
+          workshopNote: workshopNote,
+          lineUserId: lineMessage ? data.lineUserId : '',
+          lineMessage: lineMessage,
+          moved: moved,
+          success: true
+        });
+      } catch (rowError) {
+        console.error(`Promote failed for ${key}:`, rowError);
+        results.push({ key: key, exhibitorName: exhibitorName, moved: moved, success: false, error: rowError.message });
+      }
+    });
+
+    return {
+      success: true,
+      total: results.length,
+      succeeded: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results: results
+    };
+  } catch (error) {
+    console.error('promoteWaitlistEntries error:', error);
+    return { success: false, error: error.message, results: [] };
+  }
+}
+
+/**
+ * キャンセル待ちの1行を「申込データ」の末尾へ移す（列は見出し名で合わせる）。
+ * 値は表示文字列ではなくセルの値のまま写す（金額・日時の型を変えないため）。
+ * ワークショップの時間帯を押さえたときは、「希望：…」を時間帯の表記に書き換える。
+ */
+function moveWaitlistRow(ss, waitSheet, waitHeaders, rowIndex, data) {
+  let mainSheet = ss.getSheetByName(CONFIG.SHEET_NAME);
+  if (!mainSheet) {
+    mainSheet = ss.insertSheet(CONFIG.SHEET_NAME, 0);
+  }
+  if (mainSheet.getLastRow() === 0) {
+    addEventHeaderRow(mainSheet);
+  }
+  ensureImageStatusHeader(mainSheet);
+  ensureSlideNameHeader(mainSheet);
+  ensureWorkshopHeaders(mainSheet, 'スライド用出展名');
+
+  const lastCol = Math.max(mainSheet.getLastColumn(), 1);
+  const mainHeaders = mainSheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const raw = waitSheet.getRange(rowIndex + 1, 1, 1, Math.max(waitSheet.getLastColumn(), 1)).getValues()[0];
+
+  const row = mainHeaders.map(header => {
+    if (header === WORKSHOP_SLOT_HEADER && data.workshop) return formatWorkshopSlotCell(data);
+    const idx = header ? waitHeaders.indexOf(header) : -1;
+    return idx > -1 && idx < raw.length ? raw[idx] : '';
+  });
+
+  mainSheet.appendRow(row);
+  waitSheet.deleteRow(rowIndex + 1);
+  // 次の人の空き確認（ワークショップ）・定員の数え直しで、この行が見えているように
+  SpreadsheetApp.flush();
+}
+
+/**
+ * マスターDBの同じ申込の「申込区分」を「キャンセル待ち」から「繰り上げ」に変える。
+ * 次回の申込で前回の内容を呼び出すときや、再送でも振込先入りの案内になるように。
+ * 見つからなくても繰り上げ自体は止めない（ログのみ）。
+ */
+function markMasterRowPromoted(databaseSpreadsheetId, eventSpreadsheetId, data) {
+  try {
+    if (!databaseSpreadsheetId || databaseSpreadsheetId === eventSpreadsheetId) return;
+
+    const sheet = SpreadsheetApp.openById(databaseSpreadsheetId).getSheetByName(CONFIG.SHEET_NAME);
+    if (!sheet || sheet.getLastRow() <= 1) return;
+
+    const values = sheet.getDataRange().getDisplayValues();
+    const headers = values[0].map(h => String(h).trim());
+    const col = (name) => headers.indexOf(name);
+    const typeIdx = col('申込区分');
+    if (typeIdx < 0) return;
+
+    // 新しい行ほど下にあるので、下から探す
+    for (let i = values.length - 1; i >= 1; i--) {
+      const row = values[i];
+      if (String(row[typeIdx]).trim() !== WAITLIST_LABEL) continue;
+      if (String(row[col('申込日時')] || '').trim() !== data.submittedAt) continue;
+      if (String(row[col('メールアドレス')] || '').trim() !== data.email) continue;
+
+      sheet.getRange(i + 1, typeIdx + 1).setValue(PROMOTED_LABEL);
+      const slotIdx = col(WORKSHOP_SLOT_HEADER);
+      if (slotIdx > -1 && data.workshop) {
+        sheet.getRange(i + 1, slotIdx + 1).setValue(formatWorkshopSlotCell(data));
+      }
+      return;
+    }
+    console.warn(`markMasterRowPromoted: マスターDBに該当行が見つかりません (${data.email})`);
+  } catch (e) {
+    console.warn('markMasterRowPromoted failed: ' + e.message);
   }
 }
 

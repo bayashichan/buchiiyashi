@@ -181,6 +181,17 @@ async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
             return await resendConfirmation(env, body, corsHeaders);
         }
 
+        // GET /api/admin/waitlist - キャンセル待ちの一覧（繰り上げる人を選ぶため）
+        if (url.pathname === '/api/admin/waitlist' && request.method === 'GET') {
+            return await getWaitlist(env, url.searchParams.get('spreadsheetId'), corsHeaders);
+        }
+
+        // POST /api/admin/promote-waitlist - キャンセル待ちを繰り上げ、料金・振込先入りの案内を送る
+        if (url.pathname === '/api/admin/promote-waitlist' && request.method === 'POST') {
+            const body = await request.json();
+            return await promoteWaitlist(env, body, corsHeaders);
+        }
+
         // GET /api/admin/mail-recipients - 一斉メールの送信先（マスターDBの過去出展者）
         if (url.pathname === '/api/admin/mail-recipients' && request.method === 'GET') {
             const spreadsheetId = url.searchParams.get('spreadsheetId');
@@ -815,6 +826,85 @@ async function resendConfirmation(env, body, corsHeaders) {
     } catch (error) {
         console.error('Resend confirmation error:', error);
         return new Response(JSON.stringify({ error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// ========================================
+// キャンセル待ちの繰り上げ（GASへ中継）
+// ========================================
+//
+// 連絡先を返す・申込データを動かす・振込先入りのメールを送る操作なので、一斉メールと同じく
+// 管理画面の認証を通ったリクエストにだけ、連携済みのGoogleトークンを付けてGASへ渡す。
+
+// キャンセル待ちの一覧
+async function getWaitlist(env, spreadsheetId, corsHeaders) {
+    try {
+        const accessToken = await getGoogleUserAccessToken(env);
+        const result = await postToGas(env, {
+            action: 'get_waitlist',
+            accessToken,
+            spreadsheetId: spreadsheetId || ''
+        });
+
+        return new Response(JSON.stringify(result), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Get waitlist error:', error);
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+/**
+ * 選んだキャンセル待ちの方を繰り上げる。
+ *
+ * GASが行を「申込データ」へ移して、料金・振込先入りの確認メールを送る。
+ * LINE連携済みの方には、GASが組み立てた同じ内容の本文をここからLINEでも送る（申込時と同じ二本立て）。
+ * テスト送信（testEmail あり）のときは、GASは行を動かさずテスト先へメールだけ送り、LINEは送らない。
+ */
+async function promoteWaitlist(env, body, corsHeaders) {
+    const { spreadsheetId, databaseSpreadsheetId, keys, testEmail } = body || {};
+
+    if (!Array.isArray(keys) || keys.length === 0) {
+        return new Response(JSON.stringify({ success: false, error: '繰り上げる方が選択されていません' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+
+    try {
+        const accessToken = await getGoogleUserAccessToken(env);
+        const result = await postToGas(env, {
+            action: 'promote_waitlist',
+            accessToken,
+            spreadsheetId: spreadsheetId || '',
+            databaseSpreadsheetId: databaseSpreadsheetId || '',
+            keys,
+            testEmail: testEmail || ''
+        });
+
+        // LINEの本文と送り先はWorkerで使うためのもの。ブラウザへは「送れたか」だけ返す
+        const results = [];
+        for (const row of (result && result.results) || []) {
+            const { lineMessage, lineUserId, ...rest } = row;
+            if (row.success && !row.isTest && lineUserId && lineMessage) {
+                rest.lineSent = await sendLineConfirmation({ lineUserId }, { lineMessage }, env);
+            }
+            results.push(rest);
+        }
+
+        return new Response(JSON.stringify({ ...result, results }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Promote waitlist error:', error);
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
             status: 500,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -1525,17 +1615,18 @@ async function registerApplicantToLineManager(data, env, accepted) {
  * 確認メールも送信済みのため、LINEが届かなくても申込者への案内は成立する。
  *
  * 送れない条件（トークン未設定・LINE未連携・友だち未追加）は例外にせずスキップする。
+ * 届いたら true、送れなかったら false を返す（繰り上げの結果表示に使う）。
  */
 async function sendLineConfirmation(data, gasResult, env) {
     if (!env.LINE_CHANNEL_ACCESS_TOKEN) {
         console.log('LINE通知: LINE_CHANNEL_ACCESS_TOKEN未設定のためスキップ');
-        return;
+        return false;
     }
 
     // LIFFログインが取れていない申込は送り先が分からない（メールのみで案内する）
     if (!data.lineUserId) {
         console.warn(`LINE通知: lineUserIdが空のためスキップ (lineLinkStatus: ${data.lineLinkStatus || '不明'})`);
-        return;
+        return false;
     }
 
     const body = JSON.stringify({
@@ -1560,7 +1651,7 @@ async function sendLineConfirmation(data, gasResult, env) {
 
             if (response.ok) {
                 console.log('LINE通知: 送信成功');
-                return;
+                return true;
             }
 
             const errorText = await response.text();
@@ -1568,13 +1659,13 @@ async function sendLineConfirmation(data, gasResult, env) {
             // 友だち未追加・ブロック中。再送しても結果は変わらない（案内はメールで届いている）
             if (response.status === 403) {
                 console.warn(`LINE通知: 友だち未追加またはブロック中のため送信できません: ${errorText}`);
-                return;
+                return false;
             }
 
             // 認証エラーやリクエスト不備は再送しても直らない
             if (response.status !== 429 && response.status < 500) {
                 console.error(`LINE通知に失敗: ${response.status} ${errorText}`);
-                return;
+                return false;
             }
 
             console.warn(`LINE通知が一時的に失敗 (${attempt}回目): ${response.status} ${errorText}`);
@@ -1589,6 +1680,7 @@ async function sendLineConfirmation(data, gasResult, env) {
     }
 
     console.error('LINE通知: リトライしても送信できませんでした');
+    return false;
 }
 
 // LINEのテキストメッセージの上限は5000文字

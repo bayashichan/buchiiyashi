@@ -179,6 +179,17 @@
                 <li>繰り上げで出展が決まりましたら、そのときに改めてお支払いについてご案内いたします。</li>
             </ul>
         </div>
+        <? } else if (isPromoted) { ?>
+        <!-- キャンセル待ちから繰り上げて出展が確定した方（管理画面の「キャンセル待ち」タブから送る） -->
+        <div style="background:#e8f5e9; border:2px solid #43a047; border-radius:8px; padding:16px; margin:20px 0;">
+            <p style="margin:0 0 8px; font-weight:bold; color:#2e7d32; font-size:16px;">
+                🎉 出展が確定しました
+            </p>
+            <p style="margin:0; font-size:14px; line-height:1.8;">
+                <?= promotedMessage ?><br>
+                お支払いについて、以下のとおりご案内いたします。
+            </p>
+        </div>
         <? } else { ?>
         <p>以下の内容でお申し込みを受け付けました。</p>
         <? } ?>
