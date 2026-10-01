@@ -673,6 +673,19 @@
                     <button id="deployGasBtn" class="btn-primary">GASをデプロイ</button>
                     <div id="gasStatus" class="status"></div>
                 </div>
+                <hr>
+                <div class="deploy-section">
+                    <h3>🏷️ LINE管理アプリへ再連携</h3>
+                    <p>申込スプレッドシートのLINE連携済みの方を、LINE管理アプリ（line-manager）へ送り直します。
+                        出展名を管理用ネームに登録し、「申込データ」の方には「第◯回出展者」、
+                        「キャンセル待ち」の方には「第◯回キャンセル待ち」のタグを付けます。</p>
+                    <p class="hint">申込時の連携がうまくいかずタグが付いていないときに使います。何度押しても同じ結果になります
+                        （同じタグが二重に付くことはありません）。まだ友だち追加していない方は、友だち追加したときにタグが付きます。<br>
+                        連携できなかった場合は、理由が下に表示されます。</p>
+                    <button id="syncLineManagerBtn" class="btn-primary">LINE管理アプリへ再連携</button>
+                    <div id="lineManagerSyncStatus" class="status"></div>
+                    <div id="lineManagerSyncResults" class="mt-3"></div>
+                </div>
             </section>
         </main>
 

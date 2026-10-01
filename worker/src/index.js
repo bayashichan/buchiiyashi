@@ -192,6 +192,17 @@ async function handleAdminAPI(request, env, corsHeaders, url, ctx) {
             return await promoteWaitlist(env, body, corsHeaders);
         }
 
+        // GET /api/admin/line-manager-targets - LINE管理アプリへ送り直す申込者（LINE連携済みの方）
+        if (url.pathname === '/api/admin/line-manager-targets' && request.method === 'GET') {
+            return await getLineManagerTargets(env, url.searchParams.get('spreadsheetId'), corsHeaders);
+        }
+
+        // POST /api/admin/line-manager-sync - 選んだ申込者をLINE管理アプリへ送り直す（出展名・開催回タグ）
+        if (url.pathname === '/api/admin/line-manager-sync' && request.method === 'POST') {
+            const body = await request.json();
+            return await syncLineManagerApplicants(env, body, corsHeaders);
+        }
+
         // GET /api/admin/mail-recipients - 一斉メールの送信先（マスターDBの過去出展者）
         if (url.pathname === '/api/admin/mail-recipients' && request.method === 'GET') {
             const spreadsheetId = url.searchParams.get('spreadsheetId');
@@ -839,6 +850,81 @@ async function resendConfirmation(env, body, corsHeaders) {
 // 連絡先を返す・申込データを動かす・振込先入りのメールを送る操作なので、一斉メールと同じく
 // 管理画面の認証を通ったリクエストにだけ、連携済みのGoogleトークンを付けてGASへ渡す。
 
+// ========================================
+// LINE管理アプリへの再連携（管理画面用）
+// ========================================
+//
+// 申込時の連携は失敗しても申込を止めない（ログのみ）ため、設定の食い違いなどで失敗が続くと
+// 誰にもタグが付かないまま気づけない。管理画面からシートの申込者を送り直し、
+// line-managerが断った理由をその場で見せる。
+
+// 1リクエストで送り直す上限（Workerの外部リクエスト数の上限に収めるため）
+export const LINE_MANAGER_SYNC_MAX = 20;
+
+async function getLineManagerTargets(env, spreadsheetId, corsHeaders) {
+    try {
+        const accessToken = await getGoogleUserAccessToken(env);
+        const result = await postToGas(env, {
+            action: 'get_line_manager_targets',
+            accessToken,
+            spreadsheetId: spreadsheetId || ''
+        });
+
+        return new Response(JSON.stringify({ ...result, missingSettings: missingLineManagerSettings(env) }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    } catch (error) {
+        console.error('Get line-manager targets error:', error);
+        return new Response(JSON.stringify({ success: false, error: error.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+/**
+ * 申込者をLINE管理アプリへ送り直す。申込時と同じ連携で、出展名を管理用ネームに、開催回タグを付ける。
+ * 出展者（申込データ）は「第◯回出展者」を付けて「第◯回キャンセル待ち」を外す（繰り上げた方を含むため）。
+ * キャンセル待ちの方は「第◯回キャンセル待ち」を付ける。
+ */
+async function syncLineManagerApplicants(env, body, corsHeaders) {
+    const targets = Array.isArray(body && body.targets) ? body.targets : [];
+    if (targets.length === 0 || targets.length > LINE_MANAGER_SYNC_MAX) {
+        return new Response(JSON.stringify({
+            success: false,
+            error: targets.length === 0 ? '送り直す方がいません' : `一度に送れるのは${LINE_MANAGER_SYNC_MAX}件までです`
+        }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const missing = missingLineManagerSettings(env);
+    if (missing.length > 0) {
+        return new Response(JSON.stringify({
+            success: false,
+            error: `Workerの設定が足りません（${missing.join('・')}）。Cloudflareのシークレットをご確認ください`
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const eventName = await loadLatestEventName(env);
+    const results = [];
+    for (const target of targets) {
+        const data = {
+            lineUserId: String(target.lineUserId || ''),
+            lineDisplayName: target.lineDisplayName || '',
+            exhibitorName: target.exhibitorName || '',
+            eventName,
+            submittedAt: sheetDateTimeToIso(target.submittedAt),
+            waitlist: target.waitlist ? '1' : '0'
+        };
+        const profile = target.waitlist ? buildLineManagerProfile(data) : buildPromotedLineManagerProfile(data);
+        const synced = await registerApplicantToLineManager(data, env, true, profile);
+        results.push({ lineUserId: data.lineUserId, exhibitorName: data.exhibitorName, waitlist: !!target.waitlist, ...synced });
+    }
+
+    return new Response(JSON.stringify({ success: true, eventName, results }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+}
+
 // 最新の設定のイベント名（読めなければ ''。タグは付け替えず、管理用ネームだけ連携する）
 async function loadLatestEventName(env) {
     const config = await loadLatestConfig(env);
@@ -916,8 +1002,10 @@ async function promoteWaitlist(env, body, corsHeaders) {
                     eventName,
                     submittedAt: sheetDateTimeToIso(submittedAt)
                 };
-                rest.lineTagUpdated = await registerApplicantToLineManager(
+                const synced = await registerApplicantToLineManager(
                     data, env, true, buildPromotedLineManagerProfile(data));
+                rest.lineTagUpdated = synced.ok;
+                if (!synced.ok) rest.lineTagError = synced.error;
             }
             results.push(rest);
         }
@@ -1607,13 +1695,13 @@ function lineManagerEventNumber(eventName) {
 async function registerApplicantToLineManager(data, env, accepted, profile = buildLineManagerProfile(data)) {
     if (!env.LINE_MANAGER_URL || !env.LINE_MANAGER_SECRET || !env.LINE_MANAGER_CHANNEL_ID) {
         console.log('line-manager連携: 未設定のためスキップ');
-        return false;
+        return { ok: false, error: `Workerの設定が足りません（${missingLineManagerSettings(env).join('・')}）` };
     }
 
     // LINE情報が取れていない申込は連携できない（誰の申込か特定できないため）
     if (!data.lineUserId) {
         console.warn(`line-manager連携: lineUserIdが空のためスキップ (lineLinkStatus: ${data.lineLinkStatus || '不明'})`);
-        return false;
+        return { ok: false, error: 'LINEユーザーIDがありません' };
     }
 
     try {
@@ -1636,16 +1724,47 @@ async function registerApplicantToLineManager(data, env, accepted, profile = bui
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`line-manager連携に失敗: ${response.status} ${errorText}`);
-            return false;
+            return { ok: false, status: response.status, error: describeLineManagerError(response.status, errorText) };
         }
 
         const result = await response.json();
         console.log(`line-manager連携成功: isFriend=${result.isFriend} profileApplied=${result.profileApplied}`);
-        return true;
+        return { ok: true, isFriend: !!result.isFriend, profileApplied: !!result.profileApplied };
     } catch (error) {
         console.error('line-manager連携エラー:', error);
+        return { ok: false, error: `line-managerへ接続できません: ${error.message}` };
     }
-    return false;
+}
+
+// Workerに足りないline-manager連携の設定（wrangler.toml の変数・Cloudflareのシークレット）
+function missingLineManagerSettings(env) {
+    return [
+        ['LINE_MANAGER_URL', env.LINE_MANAGER_URL],
+        ['LINE_MANAGER_SECRET', env.LINE_MANAGER_SECRET],
+        ['LINE_MANAGER_CHANNEL_ID', env.LINE_MANAGER_CHANNEL_ID]
+    ].filter(([, value]) => !value).map(([name]) => name);
+}
+
+/**
+ * line-managerの申込者連携が断ったときの理由を、直し方が分かる言葉にする。
+ * 断られた申込は line-manager に何も残らないため、ここで分からないと原因を追えない。
+ */
+export function describeLineManagerError(status, text) {
+    let message = String(text || '').trim();
+    try {
+        message = JSON.parse(message).error || message;
+    } catch (e) {
+        // JSONでなければ本文のまま
+    }
+    message = message.slice(0, 200);
+
+    const hint = {
+        401: 'WorkerのLINE_MANAGER_SECRETと、line-manager（Vercel）のAPPLICANT_INGEST_SECRETが一致していません',
+        404: 'WorkerのLINE_MANAGER_CHANNEL_IDに当たるチャネルが、line-managerにありません',
+        500: 'line-manager側の設定・データベースのエラーです（APPLICANT_INGEST_SECRET未設定など。Vercelのログもご確認ください）',
+        502: 'line-managerがLINEへの友だち確認に失敗しました（チャネルアクセストークンをご確認ください）'
+    }[status];
+    return `HTTP ${status} ${message}${hint ? `：${hint}` : ''}`;
 }
 
 /**

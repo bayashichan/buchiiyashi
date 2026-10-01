@@ -100,6 +100,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('selectAllResendExhibitors')?.addEventListener('change', toggleAllResendExhibitors);
     document.getElementById('resendConfirmationBtn')?.addEventListener('click', resendConfirmationEmails);
 
+    // LINE管理アプリへの再連携
+    document.getElementById('syncLineManagerBtn')?.addEventListener('click', syncLineManager);
+
     // キャンセル待ちの繰り上げ
     document.getElementById('loadWaitlistBtn')?.addEventListener('click', loadWaitlist);
     document.getElementById('waitlistFilter')?.addEventListener('input', renderWaitlist);
@@ -2364,8 +2367,110 @@ async function promoteSelectedWaitlist() {
 // LINE管理アプリのタグ（キャンセル待ち → 出展者）を付け替えられたか
 function lineTagLabel(r) {
     if (r.lineTagUpdated === true) return 'LINE管理のタグを出展者に変更';
-    if (r.lineTagUpdated === false) return 'LINE管理のタグを変更できませんでした（LINE管理アプリで手動で変更してください）';
+    if (r.lineTagUpdated === false) {
+        return `LINE管理のタグを変更できませんでした（${r.lineTagError || '理由不明'}。デプロイタブの「LINE管理アプリへ再連携」で送り直せます）`;
+    }
     return '';
+}
+
+// ========================================
+// LINE管理アプリへの再連携
+// ========================================
+
+// 1リクエストあたりの件数（Worker側の上限は20件）
+const LINE_MANAGER_SYNC_CHUNK_SIZE = 10;
+
+async function syncLineManager() {
+    const statusEl = document.getElementById('lineManagerSyncStatus');
+    const resultsEl = document.getElementById('lineManagerSyncResults');
+    const spreadsheetId = document.getElementById('currentSpreadsheetId')?.value || '';
+    statusEl.style.whiteSpace = 'pre-line';
+    resultsEl.innerHTML = '';
+
+    showLoading();
+    const results = [];
+    try {
+        statusEl.className = 'status loading';
+        statusEl.textContent = '申込者を読み込み中...';
+        const listResponse = await fetch(`${API_BASE}/api/admin/line-manager-targets?spreadsheetId=${encodeURIComponent(spreadsheetId)}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (listResponse.status === 401) {
+            handleLogout();
+            return;
+        }
+        const list = await listResponse.json();
+        if (!list.success) throw new Error(list.error || '申込者を読み込めませんでした');
+        if (list.missingSettings && list.missingSettings.length > 0) {
+            throw new Error(`Workerの設定が足りません（${list.missingSettings.join('・')}）。Cloudflareのシークレットをご確認ください`);
+        }
+
+        const targets = list.targets || [];
+        if (targets.length === 0) {
+            statusEl.className = 'status error';
+            statusEl.textContent = 'LINE連携済みの申込者がいません';
+            return;
+        }
+        if (!confirm(`LINE連携済みの${targets.length}名を、LINE管理アプリへ送り直します。よろしいですか？`)) {
+            statusEl.className = 'status';
+            statusEl.textContent = '';
+            return;
+        }
+
+        for (let i = 0; i < targets.length; i += LINE_MANAGER_SYNC_CHUNK_SIZE) {
+            statusEl.textContent = `送信中... (${i}/${targets.length})`;
+            const response = await fetch(`${API_BASE}/api/admin/line-manager-sync`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targets: targets.slice(i, i + LINE_MANAGER_SYNC_CHUNK_SIZE) })
+            });
+            if (response.status === 401) {
+                handleLogout();
+                return;
+            }
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error || '不明なエラー');
+            results.push(...(result.results || []));
+
+            // 全員同じ理由で断られている（設定の食い違い）なら、残りを送っても同じなので止める
+            if (i === 0 && results.length > 0 && results.every(r => !r.ok && r.status && r.status !== 502)) {
+                break;
+            }
+        }
+
+        const ok = results.filter(r => r.ok);
+        const failed = results.filter(r => !r.ok);
+        const pending = ok.filter(r => !r.isFriend).length;
+        statusEl.className = failed.length > 0 ? 'status error' : 'status success';
+        statusEl.textContent = [
+            `${ok.length}名を連携しました${pending > 0 ? `（うち${pending}名は未友だちのため、友だち追加したときにタグが付きます）` : ''}`,
+            failed.length > 0 ? `${failed.length}名は連携できませんでした：${failed[0].error || '理由不明'}` : ''
+        ].filter(Boolean).join('\n');
+    } catch (error) {
+        console.error('LINE manager sync error:', error);
+        statusEl.className = 'status error';
+        statusEl.textContent = `❌ ${error.message}${results.length > 0 ? `\n（${results.filter(r => r.ok).length}名は連携済み）` : ''}`;
+    } finally {
+        renderLineManagerSyncResults(results);
+        hideLoading();
+    }
+}
+
+function renderLineManagerSyncResults(results) {
+    const resultsEl = document.getElementById('lineManagerSyncResults');
+    if (!resultsEl || results.length === 0) return;
+
+    resultsEl.innerHTML = `
+        <div class="exhibitor-list">
+            ${results.map(r => `
+            <div class="exhibitor-item">
+                <span>${r.ok ? '✅' : '❌'}</span>
+                <span class="exhibitor-name">${escapeHtml(r.exhibitorName || r.lineUserId)}${r.waitlist ? '（キャンセル待ち）' : ''}</span>
+                <span class="exhibitor-seat">${escapeHtml(r.ok
+                    ? (r.isFriend ? 'タグ・管理用ネームを反映' : '未友だち（友だち追加時に反映）')
+                    : (r.error || '連携できませんでした'))}</span>
+            </div>`).join('')}
+        </div>`;
 }
 
 function renderPromoteResults(results) {

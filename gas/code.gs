@@ -851,6 +851,14 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // LINE管理アプリへ送り直す申込者（管理画面用）
+    if (params.action === 'get_line_manager_targets') {
+      const result = getLineManagerTargets(params);
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // キャンセル待ちの一覧（管理画面用）
     if (params.action === 'get_waitlist') {
       const result = getWaitlistEntries(params);
@@ -2324,6 +2332,47 @@ function promoteWaitlistEntries(params) {
   } catch (error) {
     console.error('promoteWaitlistEntries error:', error);
     return { success: false, error: error.message, results: [] };
+  }
+}
+
+/**
+ * LINE管理アプリ（line-manager）へ送り直す申込者。LINEユーザーIDのある行だけ。
+ *
+ * 申込時の連携が失敗していた方に、あとから出展名・開催回タグを付けるために使う。
+ * 「申込データ」の方は出展者、「キャンセル待ち」の方はキャンセル待ちとして返す。
+ * 同じLINEの方が両方にいれば、出展者を優先する（キャンセル待ちタグは外す側になる）。
+ */
+function getLineManagerTargets(params) {
+  try {
+    verifyAdminAccessToken(params.accessToken);
+
+    const ss = SpreadsheetApp.openById(params.spreadsheetId || CONFIG.SPREADSHEET_ID);
+    const byUser = {};
+    const order = [];
+    [[CONFIG.SHEET_NAME, false], [CONFIG.WAITLIST_SHEET_NAME, true]].forEach(([sheetName, waitlist]) => {
+      const sheet = ss.getSheetByName(sheetName);
+      if (!sheet || sheet.getLastRow() <= 1) return;
+
+      const values = sheet.getDataRange().getDisplayValues();
+      const headers = values[0].map(h => String(h).trim());
+      for (let i = 1; i < values.length; i++) {
+        const data = buildApplicationDataFromRow(headers, values[i]);
+        if (!data.lineUserId || byUser[data.lineUserId]) continue;
+        byUser[data.lineUserId] = true;
+        order.push({
+          lineUserId: data.lineUserId,
+          lineDisplayName: data.lineDisplayName,
+          exhibitorName: data.exhibitorName,
+          submittedAt: data.submittedAt,
+          waitlist: waitlist
+        });
+      }
+    });
+
+    return { success: true, targets: order };
+  } catch (error) {
+    console.error('getLineManagerTargets error:', error);
+    return { success: false, error: error.message, targets: [] };
   }
 }
 
