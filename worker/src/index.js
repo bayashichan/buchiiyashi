@@ -839,6 +839,12 @@ async function resendConfirmation(env, body, corsHeaders) {
 // 連絡先を返す・申込データを動かす・振込先入りのメールを送る操作なので、一斉メールと同じく
 // 管理画面の認証を通ったリクエストにだけ、連携済みのGoogleトークンを付けてGASへ渡す。
 
+// 最新の設定のイベント名（読めなければ ''。タグは付け替えず、管理用ネームだけ連携する）
+async function loadLatestEventName(env) {
+    const config = await loadLatestConfig(env);
+    return String((config && config.eventName) || '');
+}
+
 // キャンセル待ちの一覧
 async function getWaitlist(env, spreadsheetId, corsHeaders) {
     try {
@@ -889,12 +895,29 @@ async function promoteWaitlist(env, body, corsHeaders) {
             testEmail: testEmail || ''
         });
 
+        const rows = (result && result.results) || [];
+        // LINE管理アプリのタグに開催回を使う（申込時と同じく、最新の設定のイベント名から）
+        const promotedWithLine = rows.filter(row => row.moved && !row.isTest && row.lineUserId);
+        const eventName = promotedWithLine.length > 0 ? await loadLatestEventName(env) : '';
+
         // LINEの本文と送り先はWorkerで使うためのもの。ブラウザへは「送れたか」だけ返す
         const results = [];
-        for (const row of (result && result.results) || []) {
-            const { lineMessage, lineUserId, ...rest } = row;
+        for (const row of rows) {
+            const { lineMessage, lineUserId, lineDisplayName, submittedAt, ...rest } = row;
             if (row.success && !row.isTest && lineUserId && lineMessage) {
                 rest.lineSent = await sendLineConfirmation({ lineUserId }, { lineMessage }, env);
+            }
+            // メールが送れなかった方も、繰り上げ（行の移動）は済んでいるのでタグは付け替える
+            if (row.moved && !row.isTest && lineUserId) {
+                const data = {
+                    lineUserId,
+                    lineDisplayName,
+                    exhibitorName: row.exhibitorName,
+                    eventName,
+                    submittedAt: sheetDateTimeToIso(submittedAt)
+                };
+                rest.lineTagUpdated = await registerApplicantToLineManager(
+                    data, env, true, buildPromotedLineManagerProfile(data));
             }
             results.push(rest);
         }
@@ -1545,13 +1568,29 @@ export function buildPublicWorkshopAvailability(config, reservations) {
  */
 export function buildLineManagerProfile(data) {
     const internalName = String(data.exhibitorName || '').replace(/\s+/g, ' ').trim();
-    const eventName = String(data.eventName || '').trim();
-    const eventNumber = eventName.match(/第.+回/)?.[0] || eventName;
+    const eventNumber = lineManagerEventNumber(data.eventName);
     const tagNames = eventNumber
         ? [`${eventNumber}${data.waitlist === '1' ? 'キャンセル待ち' : '出展者'}`]
         : [];
 
     return { internalName: internalName || null, tagNames };
+}
+
+/**
+ * キャンセル待ちから繰り上げた方の、管理用ネームとタグ。
+ * 「第7回出展者」を付け、申込時に付けた「第7回キャンセル待ち」を外す
+ * （出展者向けの配信が届き、キャンセル待ち向けの配信は届かないように）。
+ */
+export function buildPromotedLineManagerProfile(data) {
+    const profile = buildLineManagerProfile({ ...data, waitlist: '0' });
+    const eventNumber = lineManagerEventNumber(data.eventName);
+    return { ...profile, removeTagNames: eventNumber ? [`${eventNumber}キャンセル待ち`] : [] };
+}
+
+// タグに使う開催回（eventName の「第◯回」。無ければ eventName のまま。空なら ''）
+function lineManagerEventNumber(eventName) {
+    const name = String(eventName || '').trim();
+    return name.match(/第.+回/)?.[0] || name;
 }
 
 /**
@@ -1565,16 +1604,16 @@ export function buildLineManagerProfile(data) {
  *
  * ここでの失敗は申込受付を巻き添えにしない（ログのみ）。申込自体は既にGASへ保存済み。
  */
-async function registerApplicantToLineManager(data, env, accepted) {
+async function registerApplicantToLineManager(data, env, accepted, profile = buildLineManagerProfile(data)) {
     if (!env.LINE_MANAGER_URL || !env.LINE_MANAGER_SECRET || !env.LINE_MANAGER_CHANNEL_ID) {
         console.log('line-manager連携: 未設定のためスキップ');
-        return;
+        return false;
     }
 
     // LINE情報が取れていない申込は連携できない（誰の申込か特定できないため）
     if (!data.lineUserId) {
         console.warn(`line-manager連携: lineUserIdが空のためスキップ (lineLinkStatus: ${data.lineLinkStatus || '不明'})`);
-        return;
+        return false;
     }
 
     try {
@@ -1590,21 +1629,36 @@ async function registerApplicantToLineManager(data, env, accepted) {
                 displayName: data.lineDisplayName || null,
                 source: env.LINE_MANAGER_SOURCE || 'buchiiyashi-apply',
                 appliedAt: data.submittedAt,
-                ...(accepted ? buildLineManagerProfile(data) : {}),
+                ...(accepted ? profile : {}),
             }),
         });
 
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`line-manager連携に失敗: ${response.status} ${errorText}`);
-            return;
+            return false;
         }
 
         const result = await response.json();
         console.log(`line-manager連携成功: isFriend=${result.isFriend} profileApplied=${result.profileApplied}`);
+        return true;
     } catch (error) {
         console.error('line-manager連携エラー:', error);
     }
+    return false;
+}
+
+/**
+ * シートに残っている申込日時（日本時間の "2026/10/1 12:00:00"）を ISO 形式にする。
+ * line-manager の申込日時を、繰り上げの連携で消してしまわないように使う。読めなければ今の時刻。
+ */
+export function sheetDateTimeToIso(text, now = new Date()) {
+    const m = String(text || '').trim()
+        .match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) return now.toISOString();
+    const pad = (v) => String(v).padStart(2, '0');
+    const date = new Date(`${m[1]}-${pad(m[2])}-${pad(m[3])}T${pad(m[4])}:${m[5]}:${m[6] || '00'}+09:00`);
+    return Number.isNaN(date.getTime()) ? now.toISOString() : date.toISOString();
 }
 
 /**

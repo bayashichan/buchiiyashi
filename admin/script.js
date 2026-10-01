@@ -2361,6 +2361,13 @@ async function promoteSelectedWaitlist() {
     }
 }
 
+// LINE管理アプリのタグ（キャンセル待ち → 出展者）を付け替えられたか
+function lineTagLabel(r) {
+    if (r.lineTagUpdated === true) return 'LINE管理のタグを出展者に変更';
+    if (r.lineTagUpdated === false) return 'LINE管理のタグを変更できませんでした（LINE管理アプリで手動で変更してください）';
+    return '';
+}
+
 function renderPromoteResults(results) {
     const resultsEl = document.getElementById('waitlistResults');
     if (!resultsEl) return;
@@ -2378,11 +2385,12 @@ function renderPromoteResults(results) {
                         `${r.sentTo || ''}${r.isTest ? '（テスト送信）' : ''}`,
                         `¥${Number(r.totalFee || 0).toLocaleString()}`,
                         r.workshopNote || '',
-                        r.isTest ? '' : (r.lineSent === true ? 'LINE送信済み' : r.lineSent === false ? 'LINEは送れませんでした（メールは送信済み）' : 'LINE連携なし')
+                        r.isTest ? '' : (r.lineSent === true ? 'LINE送信済み' : r.lineSent === false ? 'LINEは送れませんでした（メールは送信済み）' : 'LINE連携なし'),
+                        lineTagLabel(r)
                     ].filter(Boolean);
                     detail = parts.map(escapeHtml).join(' / ');
                 } else {
-                    detail = escapeHtml(r.error || '処理できませんでした');
+                    detail = [r.error || '処理できませんでした', lineTagLabel(r)].filter(Boolean).map(escapeHtml).join(' / ');
                 }
                 return `
             <div class="exhibitor-item">

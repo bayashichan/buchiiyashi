@@ -2208,6 +2208,9 @@ function promoteWaitlistEntries(params) {
     keys.forEach(key => {
       let exhibitorName = '';
       let moved = false;
+      let movedLineUserId = '';
+      let movedLineDisplayName = '';
+      let movedSubmittedAt = '';
       try {
         // 行を消すたびに位置がずれるので、1人ごとに読み直して探す
         const display = waitSheet.getDataRange().getDisplayValues();
@@ -2254,6 +2257,9 @@ function promoteWaitlistEntries(params) {
         if (!isTest) {
           moveWaitlistRow(ss, waitSheet, headers, rowIndex, data);
           moved = true;
+          movedLineUserId = data.lineUserId;
+          movedLineDisplayName = data.lineDisplayName;
+          movedSubmittedAt = data.submittedAt;
           markMasterRowPromoted(params.databaseSpreadsheetId, spreadsheetId, data);
         }
 
@@ -2284,14 +2290,27 @@ function promoteWaitlistEntries(params) {
           isTest: isTest,
           totalFee: calculationResult.totalFee,
           workshopNote: workshopNote,
-          lineUserId: lineMessage ? data.lineUserId : '',
+          // LINEの送り先・LINE管理アプリのタグの付け替えに使う（Workerはブラウザへ返さない）
+          lineUserId: isTest ? '' : data.lineUserId,
+          lineDisplayName: isTest ? '' : data.lineDisplayName,
+          submittedAt: data.submittedAt,
           lineMessage: lineMessage,
           moved: moved,
           success: true
         });
       } catch (rowError) {
         console.error(`Promote failed for ${key}:`, rowError);
-        results.push({ key: key, exhibitorName: exhibitorName, moved: moved, success: false, error: rowError.message });
+        // 行を移したあとにメールだけ失敗した方も、LINE管理アプリのタグは付け替える（Workerが行う）
+        results.push({
+          key: key,
+          exhibitorName: exhibitorName,
+          moved: moved,
+          lineUserId: moved ? movedLineUserId : '',
+          lineDisplayName: moved ? movedLineDisplayName : '',
+          submittedAt: moved ? movedSubmittedAt : '',
+          success: false,
+          error: rowError.message
+        });
       }
     });
 

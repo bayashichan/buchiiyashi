@@ -14,6 +14,8 @@ import worker from '../src/index.js';
 
 const GAS_URL = 'https://script.google.com/macros/s/TEST/exec';
 const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
+const LINE_MANAGER_URL = 'https://line-manager.example';
+const CONFIG_URL = 'https://api.github.com/repos/owner/repo/contents/apply/config.json';
 const realFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -27,6 +29,11 @@ function makeEnv() {
         GOOGLE_OAUTH_CLIENT_ID: 'client-id',
         GOOGLE_OAUTH_CLIENT_SECRET: 'client-secret',
         LINE_CHANNEL_ACCESS_TOKEN: 'line-token',
+        LINE_MANAGER_URL,
+        LINE_MANAGER_SECRET: 'lm-secret',
+        LINE_MANAGER_CHANNEL_ID: 'channel-1',
+        GITHUB_TOKEN: 'gh-token',
+        GITHUB_REPO: 'owner/repo',
         R2_BUCKET: {
             async get(key) {
                 if (key !== 'config/google-oauth.json') return null;
@@ -48,8 +55,8 @@ function adminRequest(path, { method = 'GET', body, password = 'pw' } = {}) {
 }
 
 // GoogleのトークンAPI・GAS・LINEを差し替え、送った中身を記録する
-function stubFetch(gasResult, { lineStatus = 200 } = {}) {
-    const sent = { gas: [], line: [] };
+function stubFetch(gasResult, { lineStatus = 200, lineManagerStatus = 200 } = {}) {
+    const sent = { gas: [], line: [], lineManager: [] };
     globalThis.fetch = async (url, init = {}) => {
         const target = String(url);
         if (target === 'https://oauth2.googleapis.com/token') {
@@ -58,6 +65,15 @@ function stubFetch(gasResult, { lineStatus = 200 } = {}) {
         if (target.startsWith(GAS_URL)) {
             sent.gas.push(JSON.parse(init.body));
             return new Response(JSON.stringify(gasResult));
+        }
+        if (target === CONFIG_URL) {
+            return new Response(JSON.stringify({ eventName: '第7回ぶち癒やしフェスタin東京' }));
+        }
+        if (target === `${LINE_MANAGER_URL}/api/applicants/register`) {
+            sent.lineManager.push(JSON.parse(init.body));
+            return lineManagerStatus === 200
+                ? new Response(JSON.stringify({ success: true, isFriend: true, profileApplied: true, tagsRemoved: true }))
+                : new Response('error', { status: lineManagerStatus });
         }
         if (target === LINE_PUSH_URL) {
             sent.line.push(JSON.parse(init.body));
@@ -180,4 +196,77 @@ test('テスト送信では、LINEは送らない', async () => {
     assert.equal(res.status, 200);
     assert.equal(sent.gas[0].testEmail, 'staff@example.com');
     assert.equal(sent.line.length, 0);
+    assert.equal(sent.lineManager.length, 0);
+});
+
+test('繰り上げたLINE連携済みの方は、LINE管理アプリのタグをキャンセル待ちから出展者へ付け替える', async () => {
+    const sent = stubFetch({
+        success: true,
+        results: [
+            {
+                key: KEY, exhibitorName: '花\nの部屋', success: true, moved: true, isTest: false,
+                lineUserId: 'U123', lineDisplayName: 'はな', submittedAt: '2026/10/1 12:00:00', lineMessage: '本文'
+            },
+            // 行は移したがメールだけ失敗した方も、タグは付け替える
+            {
+                key: 'k2', exhibitorName: '月', success: false, moved: true, error: 'メールを送れませんでした',
+                lineUserId: 'U456', lineDisplayName: 'つき', submittedAt: '2026/10/01 12:05:00', lineMessage: ''
+            },
+            // 行を移せなかった方は付け替えない
+            { key: 'k3', exhibitorName: '星', success: false, moved: false, error: '見つかりません', lineUserId: '' }
+        ]
+    });
+
+    const res = await worker.fetch(adminRequest('/api/admin/promote-waitlist', {
+        method: 'POST',
+        body: { keys: [KEY, 'k2', 'k3'] }
+    }), makeEnv(), {});
+    const result = await res.json();
+
+    assert.deepEqual(sent.lineManager, [
+        {
+            channelId: 'channel-1',
+            lineUserId: 'U123',
+            displayName: 'はな',
+            source: 'buchiiyashi-apply',
+            appliedAt: '2026-10-01T03:00:00.000Z',
+            internalName: '花 の部屋',
+            tagNames: ['第7回出展者'],
+            removeTagNames: ['第7回キャンセル待ち']
+        },
+        {
+            channelId: 'channel-1',
+            lineUserId: 'U456',
+            displayName: 'つき',
+            source: 'buchiiyashi-apply',
+            appliedAt: '2026-10-01T03:05:00.000Z',
+            internalName: '月',
+            tagNames: ['第7回出展者'],
+            removeTagNames: ['第7回キャンセル待ち']
+        }
+    ]);
+    assert.equal(result.results[0].lineTagUpdated, true);
+    assert.equal(result.results[1].lineTagUpdated, true);
+    assert.equal(result.results[2].lineTagUpdated, undefined);
+    result.results.forEach(r => {
+        assert.equal('lineDisplayName' in r, false);
+        assert.equal('submittedAt' in r, false);
+    });
+});
+
+test('LINE管理アプリへの連携に失敗しても繰り上げは成功のまま、失敗したことだけ返す', async () => {
+    stubFetch({
+        success: true,
+        results: [{ key: KEY, success: true, moved: true, isTest: false, lineUserId: 'U123', lineMessage: '本文' }]
+    }, { lineManagerStatus: 500 });
+
+    const res = await worker.fetch(adminRequest('/api/admin/promote-waitlist', {
+        method: 'POST',
+        body: { keys: [KEY] }
+    }), makeEnv(), {});
+    const result = await res.json();
+
+    assert.equal(result.results[0].success, true);
+    assert.equal(result.results[0].lineSent, true);
+    assert.equal(result.results[0].lineTagUpdated, false);
 });
