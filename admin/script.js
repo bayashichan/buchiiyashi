@@ -59,6 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // 満枠設定：ブースごとの申込数／料金設定：ワークショップの予約状況（同じ読み込み）
     document.getElementById('reloadBoothCountsBtn')?.addEventListener('click', loadBoothCounts);
     document.getElementById('reloadWorkshopBtn')?.addEventListener('click', loadBoothCounts);
+    // 満枠設定：ブースの満枠チェックをまとめて付け外し（保存ボタンを押すまで反映されない）
+    document.getElementById('selectAllSoldOutBtn')?.addEventListener('click', () => setAllSoldOut(true));
+    document.getElementById('clearAllSoldOutBtn')?.addEventListener('click', () => setAllSoldOut(false));
 
     // 確認ページ参照フォルダ
     document.getElementById('refreshFoldersBtn')?.addEventListener('click', () => loadImageFolders(true));
@@ -783,6 +786,15 @@ function renderAvailability() {
         container.appendChild(item);
     });
 
+    renderAllCapacityStatus();
+}
+
+// すべてのブースの満枠チェックを付ける／外す
+function setAllSoldOut(checked) {
+    (config?.booths || []).forEach((_, index) => {
+        const checkbox = document.getElementById(`soldout_${index}`);
+        if (checkbox) checkbox.checked = checked;
+    });
     renderAllCapacityStatus();
 }
 

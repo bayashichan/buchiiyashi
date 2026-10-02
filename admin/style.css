@@ -429,6 +429,13 @@ main {
     margin: 0 0 16px;
 }
 
+.soldout-bulk-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
 .availability-item {
     display: flex;
     align-items: center;
