@@ -1917,6 +1917,11 @@ function composeLineConfirmationText(data, calculationResult, notes) {
     out.push('');
     out.push('☆テーブル配置');
     out.push('イベント10日前を目安に決定し、決まりましたらこの公式LINEでご案内いたします。');
+    out.push('');
+    out.push('☆飲食物を販売される方へ');
+    out.push('・試食・試飲を予定されている方は、事前にこのトークで事務局までお知らせください。');
+    out.push('・日持ちのしない食品（賞味期限・消費期限が1〜3日以内のもの）を販売される方は、台東区保健所へ必要な営業届をご提出いただき、営業届の控えまたはコピーを事務局までお送りください。');
+    out.push('ご不明な点は、このトークでお問い合わせください。');
     if (partyAttend === '出席') {
       out.push('');
       out.push('☆懇親会');
