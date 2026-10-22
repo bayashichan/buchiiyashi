@@ -79,6 +79,7 @@ function initApplicationForm() {
     initBoothAccordion();
     initCharCounters();
     initSnsInputs();
+    initPhoneNumberInput();
     initPostalCodeSearch();
     initEmailConfirmation();
     initFileSizeCheck();
@@ -1521,6 +1522,9 @@ async function sendApplication() {
         formData.set('exhibitorName', joinSlideNameLines(slideName));
         formData.set('exhibitorNameSlide', slideName.includes('\n') ? slideName : '');
 
+        // 電話番号: 先頭0が落ちない形にそろえて送る（スプレッドシート・自動返信の表記用）
+        formData.set('phoneNumber', normalizePhoneNumber(formData.get('phoneNumber')));
+
         // 追加データ
         formData.append('boothId', selectedBooth.id);
         formData.append('boothName', selectedBooth.name);
@@ -1733,6 +1737,39 @@ document.addEventListener('DOMContentLoaded', () => {
         radio.addEventListener('change', calculatePrice);
     });
 });
+
+// ========================================
+// 電話番号（先頭0が消えないようにする）
+// ========================================
+
+/**
+ * 電話番号の表記をそろえる（全角→半角、区切りはハイフン、空白・括弧は除去）。
+ * 「9012345678」のように先頭0が欠けた番号は0を補う。
+ * 数字だけで送るとスプレッドシート側で数値として扱われ、先頭0が落ちるため、
+ * 保存・自動返信で元の番号が残るようにここでそろえておく。
+ */
+function normalizePhoneNumber(raw) {
+    const text = String(raw || '')
+        .trim()
+        .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[‐‑‒–—―ー－]/g, '-')
+        .replace(/[^0-9+-]/g, ''); // 国番号付き（+81…）はそのまま残す
+
+    const digits = text.replace(/-/g, '');
+    if (/^[1-9][0-9]{8,9}$/.test(digits)) return '0' + text;
+
+    return text;
+}
+
+function initPhoneNumberInput() {
+    const input = document.querySelector('input[name="phoneNumber"]');
+    if (!input) return;
+
+    // 入力中は触らない（打っている途中で0を足すと邪魔になる）。入力欄を離れたときにそろえる
+    input.addEventListener('blur', () => {
+        input.value = normalizePhoneNumber(input.value);
+    });
+}
 
 // ========================================
 // 郵便番号から住所自動入力
@@ -2236,7 +2273,7 @@ function fillFormWithData(data) {
         document.getElementById('emailConfirmInput').value = data.email;
     }
     // 電話番号（新規追加項目）
-    if (data.phone) document.querySelector('input[name="phoneNumber"]').value = data.phone;
+    if (data.phone) document.querySelector('input[name="phoneNumber"]').value = normalizePhoneNumber(data.phone);
     // 郵便番号（新規追加項目）
     if (data.postalCode) document.getElementById('postalCode').value = data.postalCode;
 
@@ -2666,7 +2703,7 @@ function buildConfirmHtml() {
         ${group('1. 基本情報', [
             row('お名前', val('name')),
             row('ふりがな', val('furigana')),
-            row('電話番号', val('phoneNumber')),
+            row('電話番号', normalizePhoneNumber(val('phoneNumber'))),
             row('郵便番号', val('postalCode')),
             row('ご住所', val('address')),
             row('メールアドレス', val('email')),
