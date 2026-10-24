@@ -408,8 +408,8 @@ function searchRepeaterRows(matchRow) {
         name: getCell(row, idx.name),
         email: getCell(row, idx.email),
         furigana: getCell(row, idx.furigana),
-        phone: getCell(row, idx.phone),
-        postalCode: getCell(row, idx.zip),
+        phone: normalizePhoneNumber(getCell(row, idx.phone)),
+        postalCode: normalizePostalCode(getCell(row, idx.zip)),
         address: getCell(row, idx.address),
         category: getCell(row, idx.category),
         specialtyGenres: getCell(row, idx.specialtyGenres),
@@ -971,6 +971,9 @@ function doPost(e) {
       profileImageUrl: profileImageUrl,
       imageUploadError: imageUploadError,
       imageUploadOk: !!profileImageUrl,
+      // 「09012345678」のような数字だけの入力でも、シート・メール・LINEで先頭0が残るように
+      phoneNumber: normalizePhoneNumber(params.phoneNumber),
+      postalCode: normalizePostalCode(params.postalCode),
       waitlist: isWaitlist,
       // reserved: 時間帯を押さえた（出展確定）/ false: キャンセル待ちの希望
       workshop: workshopRequest ? { ...workshopRequest, reserved: !isWaitlist } : null
@@ -1192,12 +1195,13 @@ function saveToEventSpreadsheet(spreadsheetId, data, calculationResult, sheetNam
     ensureImageStatusHeader(sheet);
     ensureSlideNameHeader(sheet);
     ensureWorkshopHeaders(sheet, 'スライド用出展名');
+    ensureTextColumnFormat(sheet);
 
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
 
     // データ行追加（座席番号列を含む、元ファイル名なし）
-    sheet.appendRow([
+    appendApplicationRow(sheet, [
       '',                                          // 座席番号（運営が後で入力）
       data.submittedAt,                            // 申込日時
       data.name,                                   // 氏名
@@ -1266,12 +1270,13 @@ function saveToMasterSpreadsheet(spreadsheetId, data, calculationResult, eventNa
     ensureSlideNameHeader(sheet);
     ensureApplicationTypeHeader(sheet);
     ensureWorkshopHeaders(sheet, '申込区分');
+    ensureTextColumnFormat(sheet);
     
     // 参加人数追加オプション（追加人数のみ、0〜2）
     const additionalStaff = parseInt(data.extraStaff) || 0;
     
     // データ行追加（座席番号列なし、開催回あり）
-    sheet.appendRow([
+    appendApplicationRow(sheet, [
       eventName || '',                             // 開催回（イベント名）
       data.submittedAt,                            // 申込日時
       data.name,                                   // 氏名
@@ -2397,6 +2402,7 @@ function moveWaitlistRow(ss, waitSheet, waitHeaders, rowIndex, data) {
   ensureImageStatusHeader(mainSheet);
   ensureSlideNameHeader(mainSheet);
   ensureWorkshopHeaders(mainSheet, 'スライド用出展名');
+  ensureTextColumnFormat(mainSheet);
 
   const lastCol = Math.max(mainSheet.getLastColumn(), 1);
   const mainHeaders = mainSheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
@@ -2408,7 +2414,7 @@ function moveWaitlistRow(ss, waitSheet, waitHeaders, rowIndex, data) {
     return idx > -1 && idx < raw.length ? raw[idx] : '';
   });
 
-  mainSheet.appendRow(row);
+  appendApplicationRow(mainSheet, row);
   waitSheet.deleteRow(rowIndex + 1);
   // 次の人の空き確認（ワークショップ）・定員の数え直しで、この行が見えているように
   SpreadsheetApp.flush();
@@ -2474,8 +2480,9 @@ function buildApplicationDataFromRow(headers, row) {
     name: cell('氏名'),
     furigana: cell('フリガナ'),
     email: cell('メールアドレス'),
-    phoneNumber: cell('電話番号'),
-    postalCode: cell('郵便番号'),
+    // 数値として保存されてしまった古い行でも、先頭0を戻して再送メールに載せる
+    phoneNumber: normalizePhoneNumber(cell('電話番号')),
+    postalCode: normalizePostalCode(cell('郵便番号')),
     address: cell('住所'),
     isMember: flag('協会会員', 'はい'),
     category: cell('出展カテゴリ'),
@@ -2635,6 +2642,126 @@ function toNumber(value) {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+// ========================================
+// 電話番号・郵便番号（先頭0が消えないようにする）
+// ========================================
+
+// スプレッドシートで数値に直されると困る列。appendApplicationRow で文字列として書き込む
+const TEXT_COLUMN_HEADERS = ['電話番号', '郵便番号'];
+
+/**
+ * 電話番号を文字列にそろえる。
+ *
+ * 「09012345678」のような数字だけの値は、スプレッドシートに入ると数値として
+ * 扱われて先頭の0が落ちる（9012345678）。保存済みの行を読み戻すときや、
+ * 数値で届いたときに、桁数から先頭0を補って元の表記に戻す。
+ */
+function normalizePhoneNumber(value) {
+  if (value === undefined || value === null) return '';
+
+  const text = String(value)
+    .trim()
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[‐‑‒–—―ー－]/g, '-') // 全角・記号のハイフンは半角にそろえる
+    .replace(/[\s()（）]/g, '');
+
+  // 市外局番・携帯の先頭0が欠けている（9012345678 / 834123456 など）
+  const digits = text.replace(/-/g, '');
+  if (/^[1-9][0-9]{8,9}$/.test(digits)) return '0' + text;
+
+  return text;
+}
+
+/**
+ * 郵便番号を「123-4567」の形にそろえる。
+ *
+ * 電話番号と同じく、「0120123」のような数字だけの値はスプレッドシートで
+ * 数値として扱われて先頭の0が落ちる（120123）。6桁になっていれば0を補い、
+ * 7桁そろったところでハイフンを入れて申込フォームと同じ表記に戻す。
+ */
+function normalizePostalCode(value) {
+  if (value === undefined || value === null) return '';
+
+  const text = String(value)
+    .trim()
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[‐‑‒–—―ー－]/g, '-')
+    .replace(/[\s〒]/g, '');
+
+  let digits = text.replace(/-/g, '');
+  if (!/^[0-9]+$/.test(digits)) return text; // 数字以外が混ざっていれば触らない
+
+  if (digits.length === 6) digits = '0' + digits; // 先頭0が落ちている
+  if (digits.length === 7) return digits.slice(0, 3) + '-' + digits.slice(3);
+
+  return text;
+}
+
+/**
+ * 行を追加する。電話番号・郵便番号の列は、Sheetsが数値に直して先頭0を落とさないよう、
+ * セルを「書式なしテキスト」にしてから文字列で入れ直す。
+ */
+function appendApplicationRow(sheet, row) {
+  sheet.appendRow(row);
+
+  try {
+    const rowIndex = sheet.getLastRow();
+    const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0]
+      .map(h => String(h).trim());
+
+    TEXT_COLUMN_HEADERS.forEach(name => {
+      const col = headers.indexOf(name);
+      if (col < 0 || col >= row.length) return;
+      const value = row[col];
+      if (value === undefined || value === null || value === '') return;
+      sheet.getRange(rowIndex, col + 1).setNumberFormat('@').setValue(String(value));
+    });
+  } catch (e) {
+    // 書式の直しに失敗しても申込そのものは通す（値は行に入っている）
+    console.warn('appendApplicationRow: 文字列列の書き込みに失敗 ' + e.message);
+  }
+}
+
+/**
+ * 電話番号・郵便番号の列を文字列として扱えるようにする。
+ * - 列の表示形式を「書式なしテキスト」にする（運営が手入力しても先頭0が残る）
+ * - すでに数値で入ってしまっている行は、先頭0を戻して文字列で入れ直す
+ */
+function ensureTextColumnFormat(sheet) {
+  try {
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    if (sheet.getLastRow() < 1) return;
+
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+
+    TEXT_COLUMN_HEADERS.forEach(name => {
+      const col = headers.indexOf(name);
+      if (col < 0) return;
+
+      const maxRows = sheet.getMaxRows();
+      if (maxRows >= 2) {
+        sheet.getRange(2, col + 1, maxRows - 1, 1).setNumberFormat('@');
+      }
+
+      const lastRow = sheet.getLastRow();
+      if (lastRow < 2) return;
+
+      const normalize = name === '郵便番号' ? normalizePostalCode : normalizePhoneNumber;
+      const range = sheet.getRange(2, col + 1, lastRow - 1, 1);
+      const values = range.getValues();
+      let hasNumber = false;
+      const restored = values.map(([value]) => {
+        if (typeof value !== 'number') return [value];
+        hasNumber = true;
+        return [normalize(value)];
+      });
+      if (hasNumber) range.setValues(restored);
+    });
+  } catch (e) {
+    console.warn('ensureTextColumnFormat failed: ' + e.message);
+  }
 }
 
 // ========================================
