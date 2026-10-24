@@ -1522,8 +1522,9 @@ async function sendApplication() {
         formData.set('exhibitorName', joinSlideNameLines(slideName));
         formData.set('exhibitorNameSlide', slideName.includes('\n') ? slideName : '');
 
-        // 電話番号: 先頭0が落ちない形にそろえて送る（スプレッドシート・自動返信の表記用）
+        // 電話番号・郵便番号: 先頭0が落ちない形にそろえて送る（スプレッドシート・自動返信の表記用）
         formData.set('phoneNumber', normalizePhoneNumber(formData.get('phoneNumber')));
+        formData.set('postalCode', normalizePostalCode(formData.get('postalCode')));
 
         // 追加データ
         formData.append('boothId', selectedBooth.id);
@@ -1739,7 +1740,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ========================================
-// 電話番号（先頭0が消えないようにする）
+// 電話番号・郵便番号（先頭0が消えないようにする）
 // ========================================
 
 /**
@@ -1757,6 +1758,27 @@ function normalizePhoneNumber(raw) {
 
     const digits = text.replace(/-/g, '');
     if (/^[1-9][0-9]{8,9}$/.test(digits)) return '0' + text;
+
+    return text;
+}
+
+/**
+ * 郵便番号を「123-4567」の形にそろえる（全角→半角、〒や空白は除去）。
+ * 「0120123」のように数字だけで送るとスプレッドシート側で数値として扱われ、
+ * 先頭0が落ちるため、6桁になっていれば0を補ってハイフン入りに戻す。
+ */
+function normalizePostalCode(raw) {
+    const text = String(raw || '')
+        .trim()
+        .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+        .replace(/[‐‑‒–—―ー－]/g, '-')
+        .replace(/[\s〒]/g, '');
+
+    let digits = text.replace(/-/g, '');
+    if (!/^[0-9]+$/.test(digits)) return text;
+
+    if (digits.length === 6) digits = '0' + digits;
+    if (digits.length === 7) return digits.slice(0, 3) + '-' + digits.slice(3);
 
     return text;
 }
@@ -1780,7 +1802,10 @@ function initPostalCodeSearch() {
     if (postalCodeInput) {
         // ハイフン自動挿入
         postalCodeInput.addEventListener('input', (e) => {
-            let value = e.target.value.replace(/[^0-9]/g, '');
+            // 全角数字は半角に直してから扱う（そのまま除去すると入力が消えてしまう）
+            let value = e.target.value
+                .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+                .replace(/[^0-9]/g, '');
             if (value.length > 3) {
                 value = value.slice(0, 3) + '-' + value.slice(3, 7);
             }
@@ -2275,7 +2300,7 @@ function fillFormWithData(data) {
     // 電話番号（新規追加項目）
     if (data.phone) document.querySelector('input[name="phoneNumber"]').value = normalizePhoneNumber(data.phone);
     // 郵便番号（新規追加項目）
-    if (data.postalCode) document.getElementById('postalCode').value = data.postalCode;
+    if (data.postalCode) document.getElementById('postalCode').value = normalizePostalCode(data.postalCode);
 
     // 出展内容
     // 前回、改行位置を指定していればその表記で戻す
@@ -2704,7 +2729,7 @@ function buildConfirmHtml() {
             row('お名前', val('name')),
             row('ふりがな', val('furigana')),
             row('電話番号', normalizePhoneNumber(val('phoneNumber'))),
-            row('郵便番号', val('postalCode')),
+            row('郵便番号', normalizePostalCode(val('postalCode'))),
             row('ご住所', val('address')),
             row('メールアドレス', val('email')),
         ])}
