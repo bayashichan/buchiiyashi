@@ -126,7 +126,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_1",
@@ -141,7 +141,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_2",
@@ -156,7 +156,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_prod_half",
@@ -172,7 +172,7 @@
         "maxChairs": 0,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_prod_1",
@@ -188,7 +188,7 @@
         "maxChairs": 1,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "wall_prod_2",
@@ -204,7 +204,7 @@
         "maxChairs": 2,
         "allowPower": true
       },
-      "soldOut": false
+      "soldOut": true
     },
     {
       "id": "body_small",
