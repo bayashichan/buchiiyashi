@@ -194,6 +194,23 @@
         <p>以下の内容でお申し込みを受け付けました。</p>
         <? } ?>
 
+        <? if (!isWaitlist) { ?>
+        <!-- 振込の案内はメールの下の方にあるため、やることと「振込後の連絡は不要」を冒頭で先に伝える。
+             事務局は入金を随時確認しており、「振り込みました」の連絡への対応が手間になるため。
+             LINEメッセージ用の buildLineConfirmationText（code.gs）も合わせて直すこと -->
+        <div style="background:#f0fdf4; border:3px solid #16a34a; border-radius:8px; padding:16px; margin:20px 0;">
+            <p style="margin:0 0 10px; font-weight:bold; color:#15803d; font-size:17px;">
+                📌 このあとの流れ
+            </p>
+            <ol style="margin:0; padding-left:22px; font-size:14px; line-height:1.9; color:#14532d;">
+                <li>出展料をお振り込みください（金額・期限・振込先は、下記「出展料振り込みについて」をご覧ください）。</li>
+                <li><strong style="font-size:16px; background-color:#fef08a;">お振り込み後のご連絡は不要です。</strong></li>
+                <li>期限を過ぎても入金が確認できない場合のみ、事務局からご連絡します。<br>
+                    <strong>事務局から連絡がなければ、無事に届いています。</strong></li>
+            </ol>
+        </div>
+        <? } ?>
+
         <? if (!imageUploadOk) { ?>
         <!-- 画像が登録できなかった場合のお願い -->
         <div style="background:#fff8e1; border:2px solid #ffb300; border-radius:8px; padding:16px; margin:20px 0;">
@@ -473,11 +490,28 @@
                 ※銀行名の検索では「ジーエムオー」と入力するか、金融機関コード「0310」で探してください。<br>
                 ※「あおぞら銀行」とは別の銀行です。お間違えのないようご注意ください。
             </p>
-            <p style="color: #e74c3c; font-weight: bold; margin-top: 10px;">
-                ※出展料金の入金状況は随時確認しておりますので、お振込み後のご連絡は不要です。<br>
-                また、入金確認の個別連絡は行っておりませんので、ご了承ください。<br>
-                確認が取れない場合のみ、こちらからご連絡させていただきます。
-            </p>
+            <!-- 振込後の連絡は不要の案内。振込先を見て振り込むときに目に入るよう、振込先のすぐ下に置く。
+                 警告に見えて不安にさせないよう、赤ではなく緑にしている。
+                 LINEメッセージ用の buildLineConfirmationText（code.gs）・申込フォーム（apply/）も合わせて直すこと -->
+            <div style="background:#f0fdf4; border:3px solid #16a34a; border-radius:8px; padding:16px; margin-top:16px; color:#14532d;">
+                <p style="margin:0 0 10px; font-weight:bold; color:#15803d; font-size:19px; line-height:1.5;">
+                    ✅ お振り込み後のご連絡は<span style="white-space:nowrap;"><span style="font-size:24px; background-color:#fef08a; padding:0 4px;">不要</span>です</span>
+                </p>
+                <ul style="margin:0; padding-left:20px; font-size:14px; line-height:1.8;">
+                    <li>入金は事務局が随時オンラインで確認しています。</li>
+                    <li>期限を過ぎても確認できない場合のみ、事務局からご連絡します。</li>
+                    <li><strong>事務局から連絡がなければ、無事に届いています。ご安心ください。</strong></li>
+                    <li>振込明細（振込完了画面のスクショ）は領収書の代わりになります。別途の領収書は発行しておりませんので、保管しておいてください。</li>
+                </ul>
+                <div style="background:#ffffff; border:1px solid #86efac; border-radius:6px; padding:10px 12px; margin-top:12px; font-size:14px; line-height:1.8;">
+                    <strong>📩 <a href="https://lin.ee/uqhsDx3" class="line-link">公式LINE</a>へのご連絡が必要なのは、この3つだけです</strong>
+                    <ul style="margin:4px 0 0; padding-left:20px;">
+                        <li>振込名義が申込者名と違うとき（振り込む前に）</li>
+                        <li>期限までに振り込めないとき（入金予定日をお知らせください）</li>
+                        <li>キャンセルするとき</li>
+                    </ul>
+                </div>
+            </div>
         </div>
 
         <div class="cancellation-note">

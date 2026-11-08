@@ -1701,6 +1701,8 @@ function showCompleteModal(result, clientImageError) {
         ? 'キャンセル待ちで受け付けました'
         : 'お申し込みありがとうございます！';
     document.getElementById('completeWaitlistNotice').classList.toggle('hidden', !waitlist);
+    // 振込が必要な方にだけ「振込後の連絡は不要」を出す（キャンセル待ちは振込自体が不要）
+    document.getElementById('completeNoContactNotice')?.classList.toggle('hidden', waitlist);
 
     // サーバーの判定を優先する（ブラウザ側が失敗してもWorker側の変換で救えている場合があるため）。
     // 古いGASデプロイで imageStatus が返らない場合のみ、ブラウザ側の結果で判断する。
@@ -2783,6 +2785,11 @@ function buildConfirmHtml() {
             </div>
             ${fee.memberNote ? `<p class="text-xs text-gray-600 mt-2">${escapeHtml(fee.memberNote)}</p>` : ''}
             <p class="text-xs text-gray-600 mt-1">お振込先は、お申し込み後の確認メールでご案内します。</p>
+            <div class="no-contact-notice">
+                <p class="no-contact-title">✅ お振り込み後のご連絡は<span class="no-contact-keep"><span class="no-contact-emph">不要</span>です</span></p>
+                <p>入金は事務局が随時オンラインで確認しています。期限を過ぎても確認できない場合のみ、事務局からご連絡します。</p>
+                <p class="font-bold mt-1">事務局から連絡がなければ、無事に届いています。ご安心ください。</p>
+            </div>
         </section>`}
 
         <div class="confirm-final-note">
