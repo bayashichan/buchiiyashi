@@ -20,7 +20,7 @@
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
   <!-- Custom CSS -->
-  <link rel="stylesheet" href="style.css?v=20260929a">
+  <link rel="stylesheet" href="style.css?v=20261108a">
 </head>
 
 <body class="period-checking">
@@ -811,6 +811,13 @@
         内容をご確認ください。
       </p>
 
+      <!-- お振り込み後の連絡は不要の案内（キャンセル待ちには出さない。JSで表示切替） -->
+      <div id="completeNoContactNotice" class="no-contact-notice hidden mb-6">
+        <p class="no-contact-title">✅ お振り込み後のご連絡は<span class="no-contact-keep"><span class="no-contact-emph">不要</span>です</span></p>
+        <p>入金は事務局が随時オンラインで確認しています。期限を過ぎても確認できない場合のみ、事務局からご連絡します。</p>
+        <p class="font-bold mt-1">事務局から連絡がなければ、無事に届いています。ご安心ください。</p>
+      </div>
+
       <!-- 画像が登録できた場合の確認（JSで表示切替） -->
       <p id="imageOkNotice" class="hidden mb-6 text-sm font-bold text-green-700">
         ✅ お写真も登録できました
@@ -892,12 +899,30 @@
           <h3 class="font-bold text-orange-600 mb-2 border-b border-orange-200 pb-1">【出展料の支払】</h3>
           <ul class="space-y-2 list-disc pl-5">
             <li>お支払いは銀行振込みになります。（お申し込み後お知らせいたします。）</li>
-            <li>お申し込みをいただきましてから2週間以内にお振り込みをお願いいたします。</li>
+            <li>お申し込みをいただきましてから<span class="font-bold">1週間以内</span>にお振り込みをお願いいたします。</li>
             <li>お振込み手数料は各自ご負担お願いいたします。</li>
-            <li>2週間以内のご入金をお願いしておりますが、ご事情によりどうしても遅れる場合は必ず入金予定日をご連絡ください。※入金予定日お知らせ後、早目のご入金のご協力をお願い致します。</li>
+            <li>1週間以内のご入金をお願いしておりますが、ご事情によりどうしても遅れる場合は必ず入金予定日をご連絡ください。※入金予定日お知らせ後、早目のご入金のご協力をお願い致します。</li>
             <li>なお、イベントを1か月切ってからのお申し込みの場合は、<span class="font-bold text-red-500">3日以内</span>のお振込みをお願いいたします。</li>
-            <li>金融機関の振込明細書または振込完了画面をもって領収書に代えさせていただきます。別途、領収書の発行は行っておりませんのでご了承ください。</li>
           </ul>
+
+          <!-- お振り込み後の連絡は不要の案内（確認メール・LINE通知と同じ文面にそろえる） -->
+          <div class="no-contact-notice">
+            <p class="no-contact-title">✅ お振り込み後のご連絡は<span class="no-contact-keep"><span class="no-contact-emph">不要</span>です</span></p>
+            <ul class="space-y-1">
+              <li>入金は事務局が随時オンラインで確認しています。</li>
+              <li>期限を過ぎても確認できない場合のみ、事務局からご連絡します。</li>
+              <li><strong>事務局から連絡がなければ、無事に届いています。ご安心ください。</strong></li>
+              <li>振込明細（振込完了画面のスクショ）は領収書の代わりになります。別途の領収書は発行しておりませんので、保管しておいてください。</li>
+            </ul>
+            <div class="no-contact-exceptions">
+              <p class="font-bold">📩 公式LINEへのご連絡が必要なのは、この3つだけです</p>
+              <ul>
+                <li>振込名義が申込者名と違うとき（振り込む前に）</li>
+                <li>期限までに振り込めないとき（入金予定日をお知らせください）</li>
+                <li>キャンセルするとき</li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         <!-- キャンセルについて -->
@@ -1006,7 +1031,7 @@
   <!-- Scripts -->
   <!-- LIFF SDKは<head>で読み込み済みなのでここでは読まない -->
   <script src="config.js?v=20260929a"></script>
-  <script src="script.js?v=20260929a"></script>
+  <script src="script.js?v=20261108a"></script>
 </body>
 
 </html>
